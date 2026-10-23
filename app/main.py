@@ -60,11 +60,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await hook(app)
                 except Exception:
                     log.exception('shutdown hook failed')
-            if settings.workers_inprocess:
-                await app.state.queue.stop()
             for task in list(app.state.background_tasks):
                 task.cancel()
             await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+            if settings.workers_inprocess:
+                await app.state.queue.stop()
             engine.dispose()
 
     app = FastAPI(title=settings.app_name, version=VERSION, lifespan=lifespan, docs_url='/api/docs', openapi_url='/api/openapi.json')

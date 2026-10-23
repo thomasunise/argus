@@ -81,10 +81,15 @@ class JobQueue:
         # marshalled onto that loop with _call().
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._stopped = False
 
     async def _call(self, fn, *args, **kwargs):
         """Run an async backend operation on the worker loop from any thread or loop."""
         if self._loop is None or not self._loop.is_running():
+            if self._stopped and isinstance(self._backend, _RedisBackend):
+                # Never open a Redis connection on the caller's loop after shutdown: on Windows a stray
+                # socket keeps the HTTP loop from closing, and on any OS the job would be lost.
+                raise RuntimeError('job queue is stopped')
             return await fn(*args, **kwargs)
         future = asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self._loop)
         return await asyncio.wrap_future(future)
@@ -190,6 +195,7 @@ class JobQueue:
         if not self._running:
             return
         self._running = False
+        self._stopped = True
         loop, thread = self._loop, self._thread
 
         async def shutdown():
@@ -386,7 +392,10 @@ class _RedisBackend:
 
     async def close(self):
         if self.redis:
-            await self.redis.aclose()
+            try:
+                await self.redis.aclose()
+            finally:
+                self.redis = None
 
     def _key(self, job_id: str) -> str:
         return f'sentinel:job:{job_id}'
