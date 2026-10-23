@@ -1,0 +1,19 @@
+# Cloud and platform SDKs used by collectors, action executors and audit sinks.
+# Install only what your deployment integrates with.
+boto3>=1.34
+azure-identity>=1.15
+azure-mgmt-resource>=23
+azure-mgmt-compute>=30
+azure-mgmt-network>=25
+azure-mgmt-authorization>=4
+azure-storage-blob>=12.19
+google-cloud-asset>=3.24
+google-cloud-securitycenter>=1.28
+google-cloud-resource-manager>=1.12
+kubernetes>=29
+
+# Observability
+opentelemetry-api>=1.24
+opentelemetry-sdk>=1.24
+opentelemetry-exporter-otlp-proto-http>=1.24
+opentelemetry-instrumentation-fastapi>=0.45b0

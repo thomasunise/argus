@@ -1,5 +1,5 @@
-"""A model cannot override these authorizations. DNS validation is defense in depth;
-production deployments MUST additionally enforce egress filtering against DNS rebinding."""
+"""Target validation. A model cannot override these checks. DNS validation is defense in
+depth; production deployments MUST additionally enforce egress filtering against DNS rebinding."""
 from __future__ import annotations
 
 import ipaddress
@@ -7,13 +7,8 @@ import socket
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import HTTPException
-
 from .config import Settings
-
-
-class PolicyDenied(ValueError):
-    pass
+from .errors import PolicyDenied
 
 
 def allowed_ip(ip: str, settings: Settings) -> bool:
@@ -23,7 +18,6 @@ def allowed_ip(ip: str, settings: Settings) -> bool:
     if settings.allow_private_targets:
         for cidr in settings.private_target_cidrs.split(','):
             if cidr.strip() and addr in ipaddress.ip_network(cidr.strip(), strict=False):
-                # Never permit multicast, unspecified, or loopback via internal exception.
                 return not (addr.is_multicast or addr.is_unspecified or addr.is_loopback or addr.is_link_local)
     return False
 
@@ -51,7 +45,6 @@ def validate_web_target(target: str, settings: Settings, *, resolve: bool = True
 
 
 def validate_repo_target(target: str, settings: Settings) -> Path:
-    """Resolve paths; ensure repos are strictly BELOW the configured scan root."""
     root = settings.scan_root.resolve()
     path = (root / target).resolve()
     if not target or Path(target).is_absolute() or path == root or root not in path.parents:
@@ -61,24 +54,12 @@ def validate_repo_target(target: str, settings: Settings) -> Path:
     return path
 
 
-def check_scan_permission(asset, scanner: str, settings: Settings) -> None:
-    if not asset.approved:
-        raise PolicyDenied('Asset is not approved; attest you administer it first')
-    if scanner == 'web-baseline':
-        if asset.kind != 'web':
-            raise PolicyDenied('Web baseline only supports web assets')
-        validate_web_target(asset.target, settings)
-    elif scanner == 'trivy-repo':
-        if asset.kind != 'repo' or not settings.enable_trivy:
-            raise PolicyDenied('Trivy is disabled or this is not a repository asset')
-        validate_repo_target(asset.target, settings)
-    else:
-        raise PolicyDenied('Scanner not on the approved scanner allowlist')
-
-
-def require_policy(fn):
-    """Convert a checked validation failure to a safe API error."""
-    try:
-        return fn()
-    except PolicyDenied as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+def validate_target(kind: str, target: str, settings: Settings, *, resolve: bool = True) -> str:
+    """Normalizes targets for all asset kinds. Non-scannable kinds are inventory only."""
+    if kind == 'web':
+        return validate_web_target(target, settings, resolve=resolve)
+    if kind == 'repo':
+        return str(validate_repo_target(target, settings).relative_to(settings.scan_root.resolve())).replace('\\', '/')
+    if not target or len(target) > 512:
+        raise PolicyDenied('Target is required')
+    return target.strip()
