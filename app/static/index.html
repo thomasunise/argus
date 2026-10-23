@@ -3,55 +3,36 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Sentinel — Security Operations</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/styles.css">
-<script>try{var t=localStorage.getItem('sentinel-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}</script>
+<script src="/static/theme.js"></script>
 </head><body>
 <div id="login" class="login-overlay hidden">
-  <div class="login-card">
-    <h1>Sentinel</h1>
-    <p>Security operations</p>
-    <form id="login-form">
-      <label class="field-label" for="password">Administrator password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button type="submit" class="btn primary full">Sign in</button>
-      <div id="login-error" class="login-error"></div>
-    </form>
-    <div class="login-foot"><span class="status-led"></span> Self-hosted · Restricted access</div>
-  </div>
+  <div class="login-card" id="login-card"></div>
 </div>
-<div class="app-shell" id="shell">
+<div class="app-shell hidden" id="shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand"><div class="brand-text">Sentinel <small>Security operations</small></div></div>
-    <div class="nav-group-title">Workspace</div>
-    <nav id="navigation">
-      <button class="nav-item active" data-page="overview">Overview</button>
-      <button class="nav-item" data-page="assets">Asset inventory</button>
-      <button class="nav-item" data-page="findings">Findings <span class="nav-count" id="findings-count">0</span></button>
-      <button class="nav-item" data-page="scans">Scan operations</button>
-      <button class="nav-item" data-page="investigations">AI investigations</button>
-      <button class="nav-item" data-page="activity">Event activity</button>
-    </nav>
-    <div class="nav-group-title group-gap">Administration</div>
-    <nav>
-      <button class="nav-item" data-page="approvals">Approvals <span class="nav-count" id="approvals-count">0</span></button>
-      <button class="nav-item" data-page="integrations">Integrations</button>
-      <button class="nav-item" data-page="settings">Configuration</button>
-    </nav>
+    <div id="tenant-switch" class="tenant-switch hidden"></div>
+    <div id="navigation" class="nav-scroll"></div>
     <div class="sidebar-bottom">
-      <div class="agent-mini"><span class="status-led"></span><strong>API</strong><small id="side-health">Connecting…</small></div>
+      <div class="agent-mini"><span class="status-led" id="side-led"></span><strong>API</strong><small id="side-health">Connecting…</small></div>
       <div class="sidebar-separator"></div>
-      <div class="profile-row"><div><strong>Administrator</strong><small>Local operator</small></div><button id="logout" class="icon-btn" title="Sign out">Sign out</button></div>
+      <div class="profile-row" id="profile-row"><div><strong id="profile-name">—</strong><small id="profile-role">—</small></div><button id="user-menu-btn" class="icon-btn" aria-haspopup="menu" aria-expanded="false">Account</button></div>
+      <div id="user-menu" class="user-menu hidden" role="menu"></div>
     </div>
   </aside>
   <div class="workspace">
+    <div id="kill-banner" class="kill-banner hidden" role="alert"></div>
     <header class="topbar">
-      <div class="top-left"><button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation">☰</button><span class="top-section">Security / <strong id="breadcrumb">Overview</strong></span></div>
-      <div class="top-actions"><div class="environment-pill"><span class="status-led"></span> Connected</div><span class="top-divider"></span><button class="btn subtle top-btn" id="refresh"><span>Refresh</span></button><button class="btn subtle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button><div class="date-display" id="display-date"></div></div>
+      <div class="top-left"><button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation">☰</button><span class="top-section" id="breadcrumb">Security / <strong>Overview</strong></span></div>
+      <div class="top-actions"><div class="environment-pill"><span class="status-led"></span> <span id="tenant-pill">Connected</span></div><span class="top-divider"></span><button class="btn subtle top-btn" id="refresh"><span>Refresh</span></button><button class="btn subtle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button><div class="date-display" id="display-date"></div></div>
     </header>
     <main id="main" class="main-content"><div class="loading">Loading…</div></main>
   </div>
 </div>
-<div class="modal-backdrop hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading"><div class="modal-panel"><div class="modal-head"><h2 id="modal-heading">Details</h2><button id="modal-close" class="close-btn" aria-label="Close">×</button></div><div id="modal-body"></div></div></div>
+<div class="overlay-backdrop drawer-backdrop hidden" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-heading"><aside class="overlay-panel"><div class="overlay-head"><h2 id="drawer-heading">Details</h2><button class="close-btn" data-close="drawer" aria-label="Close">×</button></div><div class="overlay-body"></div></aside></div>
+<div class="overlay-backdrop modal-backdrop hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading"><div class="overlay-panel"><div class="overlay-head"><h2 id="modal-heading">Details</h2><button class="close-btn" data-close="modal" aria-label="Close">×</button></div><div class="overlay-body"></div></div></div>
 <div id="toast-area" class="toast-area" role="status" aria-live="polite"></div>
-<script src="/static/app.js" defer></script>
+<script type="module" src="/static/app.js"></script>
 </body></html>

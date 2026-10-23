@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text
+from sqlalchemy import Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, utcnow
+from .base import Base, UTCDateTime, utcnow
 
 
 class AuditEntry(Base):
@@ -22,4 +22,4 @@ class AuditEntry(Base):
     previous_hash: Mapped[str] = mapped_column(String(64), default='0' * 64)
     entry_hash: Mapped[str] = mapped_column(String(64))
     signature: Mapped[str] = mapped_column(String(64), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

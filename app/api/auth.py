@@ -59,7 +59,7 @@ def _record_failure(request: Request) -> None:
 
 def _memberships(db: Session, user_id: str) -> list[tuple[Membership, Tenant]]:
     rows = db.execute(select(Membership, Tenant).join(Tenant, Tenant.id == Membership.tenant_id)
-                      .where(Membership.user_id == user_id, Tenant.is_active.is_(True))).all()
+                      .where(Membership.user_id == user_id, Tenant.is_active.is_(True)).order_by(Membership.created_at.asc(), Tenant.slug.asc())).all()
     return [(m, t) for m, t in rows]
 
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 
 class AgentRun(TenantMixin, Base):
@@ -28,9 +28,9 @@ class AgentRun(TenantMixin, Base):
     parent_run_id: Mapped[str | None] = mapped_column(String(36))
     job_id: Mapped[str] = mapped_column(String(36), default='')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class AgentStep(Base):
@@ -47,7 +47,7 @@ class AgentStep(Base):
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class EvalRun(TenantMixin, Base):
@@ -61,5 +61,5 @@ class EvalRun(TenantMixin, Base):
     failed: Mapped[int] = mapped_column(Integer, default=0)
     report_json: Mapped[str] = mapped_column(Text, default='{}')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

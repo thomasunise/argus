@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 DETECTION_STATUSES = ('open', 'investigating', 'resolved', 'false_positive')
 BASELINE_DIMENSIONS = ('actor_rate', 'entity_rate', 'actor_novel_actions', 'action_rate', 'source_rate')
@@ -31,13 +31,13 @@ class Detection(TenantMixin, Base):
     entity: Mapped[str] = mapped_column(String(200), default='')
     entity_kind: Mapped[str] = mapped_column(String(32), default='')  # identity, asset, host, canary, action, source
     evidence_json: Mapped[str] = mapped_column(Text, default='{}')
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     occurrences: Mapped[int] = mapped_column(Integer, default=1)
     finding_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('findings.id'))
     tags_json: Mapped[str] = mapped_column(Text, default='[]')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Baseline(TenantMixin, Base):
@@ -58,8 +58,8 @@ class Baseline(TenantMixin, Base):
     variance: Mapped[float] = mapped_column(Float, default=0.0)
     samples: Mapped[int] = mapped_column(Integer, default=0)
     last_value: Mapped[float] = mapped_column(Float, default=0.0)
-    last_bucket_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_bucket_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Canary(TenantMixin, Base):
@@ -72,11 +72,11 @@ class Canary(TenantMixin, Base):
     placement: Mapped[str] = mapped_column(Text, default='')
     metadata_json: Mapped[str] = mapped_column(Text, default='{}')
     created_by: Mapped[str] = mapped_column(String(200), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_hit_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class CanaryHit(TenantMixin, Base):
@@ -88,7 +88,7 @@ class CanaryHit(TenantMixin, Base):
     user_agent: Mapped[str] = mapped_column(String(300), default='')
     headers_json: Mapped[str] = mapped_column(Text, default='{}')
     payload_json: Mapped[str] = mapped_column(Text, default='{}')
-    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    received_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class DetectionRuleState(TenantMixin, Base):
@@ -101,7 +101,7 @@ class DetectionRuleState(TenantMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     params_json: Mapped[str] = mapped_column(Text, default='{}')
     updated_by: Mapped[str] = mapped_column(String(200), default='')
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class DetectionRun(TenantMixin, Base):
@@ -111,9 +111,9 @@ class DetectionRun(TenantMixin, Base):
     __table_args__ = (Index('ix_detection_runs_tenant_started', 'tenant_id', 'started_at'),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     trigger: Mapped[str] = mapped_column(String(24), default='scheduler')  # scheduler, api, job
-    since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    since: Mapped[datetime] = mapped_column(UTCDateTime())
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     rules_run: Mapped[int] = mapped_column(Integer, default=0)
     detections_created: Mapped[int] = mapped_column(Integer, default=0)
     detections_updated: Mapped[int] = mapped_column(Integer, default=0)

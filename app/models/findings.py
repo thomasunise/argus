@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'informational')
 FINDING_STATUSES = ('open', 'investigating', 'resolved', 'accepted', 'false_positive')
@@ -34,8 +34,8 @@ class Finding(TenantMixin, Base):
     assignee: Mapped[str] = mapped_column(String(36), default='')
     tags_json: Mapped[str] = mapped_column(Text, default='[]')
     occurrences: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class SecurityEvent(TenantMixin, Base):
@@ -53,8 +53,8 @@ class SecurityEvent(TenantMixin, Base):
     action: Mapped[str] = mapped_column(String(120), default='')
     title: Mapped[str] = mapped_column(String(300))
     metadata_json: Mapped[str] = mapped_column(Text, default='{}')
-    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    occurred_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    received_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class ScanRun(TenantMixin, Base):
@@ -68,8 +68,8 @@ class ScanRun(TenantMixin, Base):
     result_count: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class Investigation(TenantMixin, Base):
@@ -83,7 +83,7 @@ class Investigation(TenantMixin, Base):
     recommended_steps: Mapped[str] = mapped_column(Text, default='[]')
     limitations: Mapped[str] = mapped_column(Text, default='[]')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Approval(TenantMixin, Base):
@@ -97,5 +97,5 @@ class Approval(TenantMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default='pending')
     requested_by: Mapped[str] = mapped_column(String(36), default='')
     decided_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

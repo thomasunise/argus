@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, uid, utcnow
+from .base import Base, UTCDateTime, uid, utcnow
 
 
 class Tenant(Base):
@@ -16,7 +16,7 @@ class Tenant(Base):
     settings_json: Mapped[str] = mapped_column(Text, default='{}')
     actions_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class User(Base):
@@ -28,8 +28,8 @@ class User(Base):
     totp_secret: Mapped[str] = mapped_column(String(128), default='')
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class Membership(Base):
@@ -39,7 +39,7 @@ class Membership(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey('users.id'), index=True)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey('tenants.id'), index=True)
     role: Mapped[str] = mapped_column(String(16), default='viewer')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class ApiKey(Base):
@@ -53,9 +53,9 @@ class ApiKey(Base):
     # Comma separated scope strings such as "ingest" or "ingest,findings:read". Empty = role permissions.
     scopes: Mapped[str] = mapped_column(String(512), default='')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class OidcIdentity(Base):
@@ -65,4 +65,4 @@ class OidcIdentity(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey('users.id'), index=True)
     issuer: Mapped[str] = mapped_column(String(256))
     subject: Mapped[str] = mapped_column(String(256))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

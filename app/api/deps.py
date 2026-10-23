@@ -25,6 +25,7 @@ def get_settings(request: Request) -> Settings:
 
 def get_db(request: Request) -> Iterator[Session]:
     db = request.app.state.db_factory()
+    request.state.db = db
     try:
         yield db
         db.commit()

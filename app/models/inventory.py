@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 ASSET_KINDS = {'web', 'repo', 'cloud_account', 'host', 'k8s_cluster', 'database', 'identity_provider', 'saas', 'network'}
 ENVIRONMENTS = {'production', 'staging', 'lab', 'development'}
@@ -26,9 +26,9 @@ class Asset(TenantMixin, Base):
     external_id: Mapped[str] = mapped_column(String(256), default='')
     approved: Mapped[bool] = mapped_column(Boolean, default=False)  # True when a current authorization exists
     graph_node_id: Mapped[str | None] = mapped_column(String(36))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_scan_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class AssetAuthorization(TenantMixin, Base):
@@ -42,6 +42,6 @@ class AssetAuthorization(TenantMixin, Base):
     allow_active: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_intrusive: Mapped[bool] = mapped_column(Boolean, default=False)
     scope_document_ref: Mapped[str] = mapped_column(String(512), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

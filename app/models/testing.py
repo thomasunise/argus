@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 TIERS = ('passive', 'active', 'intrusive')
 RUN_STATUSES = ('queued', 'running', 'completed', 'failed', 'denied')
@@ -33,9 +33,9 @@ class TestScope(TenantMixin, Base):
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     signed_document_ref: Mapped[str] = mapped_column(String(512), default='')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class TestPlan(TenantMixin, Base):
@@ -50,8 +50,8 @@ class TestPlan(TenantMixin, Base):
     schedule_minutes: Mapped[int | None] = mapped_column(Integer)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class TestRun(TenantMixin, Base):
@@ -71,9 +71,9 @@ class TestRun(TenantMixin, Base):
     job_id: Mapped[str] = mapped_column(String(36), default='')
     stats_json: Mapped[str] = mapped_column(Text, default='{}')
     triggered_by: Mapped[str] = mapped_column(String(64), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class TestResult(TenantMixin, Base):
@@ -88,4 +88,4 @@ class TestResult(TenantMixin, Base):
     severity: Mapped[str] = mapped_column(String(16), default='medium')
     evidence_json: Mapped[str] = mapped_column(Text, default='{}')
     raw_hash: Mapped[str] = mapped_column(String(64), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

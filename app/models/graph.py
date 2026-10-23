@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 NODE_KINDS = ('asset', 'identity', 'role', 'permission', 'network', 'exposure', 'vuln', 'secret', 'data_store', 'finding', 'event',
               'canary', 'host', 'container', 'k8s_workload', 'cloud_resource', 'repo')
@@ -34,8 +34,8 @@ class GraphNode(TenantMixin, Base):
     source: Mapped[str] = mapped_column(String(40), default='')  # collector or package name
     criticality: Mapped[str] = mapped_column(String(12), default='medium')  # low, medium, high, critical
     exposure_score: Mapped[float] = mapped_column(Float, default=0.0)  # 0..100, refreshed by graph.recompute
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     is_stale: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -49,8 +49,8 @@ class GraphEdge(TenantMixin, Base):
     rel: Mapped[str] = mapped_column(String(24))
     props_json: Mapped[str] = mapped_column(Text, default='{}')
     source: Mapped[str] = mapped_column(String(40), default='')
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class AttackPath(TenantMixin, Base):
@@ -64,4 +64,4 @@ class AttackPath(TenantMixin, Base):
     score: Mapped[float] = mapped_column(Float, default=0.0)
     summary: Mapped[str] = mapped_column(Text, default='')
     status: Mapped[str] = mapped_column(String(12), default='open')  # open, accepted, resolved
-    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    computed_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

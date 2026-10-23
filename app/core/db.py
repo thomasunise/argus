@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, TypeVar
@@ -70,3 +71,26 @@ def scoped(model: type[M], principal: 'Principal | str') -> Select:
 def get_scoped(db: Session, model: type[M], principal: 'Principal | str', object_id: str) -> M | None:
     tenant_id = principal if isinstance(principal, str) else principal.tenant_id
     return db.execute(select(model).where(model.id == object_id, model.tenant_id == tenant_id)).scalar_one_or_none()  # type: ignore[attr-defined]
+
+
+class CommitBeforeResponseMiddleware:
+    """Pure ASGI middleware: commits the request's database session (request.state.db) before the
+    first response byte leaves, so a client that reads immediately after a write sees it. The
+    get_db dependency still commits on teardown as a no-op safety net."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message['type'] == 'http.response.start' and 200 <= message.get('status', 500) < 400:
+                session = scope.get('state', {}).get('db')
+                if session is not None and session.is_active:
+                    await asyncio.to_thread(session.commit)
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)

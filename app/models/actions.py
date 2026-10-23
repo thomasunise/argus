@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved')
 RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed')
@@ -40,9 +40,9 @@ class ActionRequest(TenantMixin, Base):
     policy_json: Mapped[str] = mapped_column(Text, default='{}')  # the PolicyDecision taken at request time
     required_approvals: Mapped[int] = mapped_column(Integer, default=1)
     owner_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class ActionApproval(TenantMixin, Base):
@@ -55,7 +55,7 @@ class ActionApproval(TenantMixin, Base):
     can_approve_critical: Mapped[bool] = mapped_column(Boolean, default=False)  # held actions:approve_critical when deciding
     decision: Mapped[str] = mapped_column(String(8))  # approve | reject
     comment: Mapped[str] = mapped_column(Text, default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class ActionRun(TenantMixin, Base):
@@ -71,8 +71,8 @@ class ActionRun(TenantMixin, Base):
     executed_by: Mapped[str] = mapped_column(String(64), default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')
     rollback_job_id: Mapped[str] = mapped_column(String(36), default='')
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    rolled_back_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     rolled_back_by: Mapped[str] = mapped_column(String(64), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

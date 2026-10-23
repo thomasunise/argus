@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, uid, utcnow
+from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 DELIVERY_STATUSES = ('queued', 'sent', 'failed', 'skipped')
 
@@ -29,11 +29,11 @@ class IntegrationConfig(TenantMixin, Base):
     topics_json: Mapped[str] = mapped_column(Text, default='[]')
     min_severity: Mapped[str] = mapped_column(String(16), default='low')
     state_json: Mapped[str] = mapped_column(Text, default='{}')  # cursor state for pull integrations (e.g. last sync time)
-    last_delivery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_delivery_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_error: Mapped[str] = mapped_column(Text, default='')
     created_by: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class WebhookDelivery(TenantMixin, Base):
@@ -53,9 +53,9 @@ class WebhookDelivery(TenantMixin, Base):
     response_code: Mapped[int | None] = mapped_column(Integer)
     external_ref: Mapped[str] = mapped_column(String(200), default='')  # ticket key, incident number, message ts
     job_id: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class IngestBatch(TenantMixin, Base):
@@ -72,4 +72,4 @@ class IngestBatch(TenantMixin, Base):
     error_samples_json: Mapped[str] = mapped_column(Text, default='[]')
     received: Mapped[int] = mapped_column(Integer, default=0)
     api_key_id: Mapped[str] = mapped_column(String(36), default='')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

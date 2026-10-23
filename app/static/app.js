@@ -1,127 +1,355 @@
-'use strict';
-const state = {csrf:null, page:'overview', dashboard:null, assets:[], findings:[], scans:[],events:[], investigations:[],approvals:[], settings:{}, audit:[]};
-const $ = (s) => document.querySelector(s);
-const esc = (x) => String(x ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ago = (value) => {if(!value)return 'Never';let d=Math.floor((Date.now()-new Date(value).getTime())/1000);if(!Number.isFinite(d))return 'Unknown';if(d<60)return 'Just now';if(d<3600)return `${Math.floor(d/60)}m ago`;if(d<86400)return `${Math.floor(d/3600)}h ago`;return `${Math.floor(d/86400)}d ago`};
-const fmt = (value) => value ? new Date(value).toLocaleString():'—';
-const nice = (s) => String(s||'').replaceAll('-',' ').replace(/\b\w/g,m=>m.toUpperCase());
-const severity = (s) => `<span class="severity-pill severity-${esc(s)}">${esc(s)}</span>`;
-const tag = (s) => `<span class="state-tag ${esc(s)}">${esc(s)}</span>`;
-const empty = (title,subtitle,icon='◇') => `<div class="empty"><div class="empty-icon">${icon}</div><strong>${esc(title)}</strong>${esc(subtitle)}</div>`;
-const heading = (over,title,description,actions='') => `<div class="page-heading"><div><div class="overline">${esc(over)}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div><div class="footer-toolbar">${actions}</div></div>`;
-const btn=(label,action,cls='')=>`<button class="btn ${cls}" data-action="${esc(action)}">${label}</button>`;
-const dateTitle = ()=>{const d=new Date();$('#display-date').textContent=d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});};
-async function api(path, options={}){
-  let headers={'Accept':'application/json',...(options.body!==undefined?{'Content-Type':'application/json'}:{}), ...(state.csrf?{'X-CSRF-Token':state.csrf}:{})};
-  const response=await fetch(path,{...options,headers:{...headers,...options.headers},credentials:'same-origin'});
-  if(response.status===401 && !path.includes('/login')){showLogin();throw new Error('Session expired');}
-  let data;try{data=await response.json();}catch{data={};}
-  if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:`Request failed (${response.status})`);
-  return data;
+// Shell: boot, hash router, navigation, login, user menu, tenant switcher, kill-switch banner, theme.
+import { api, get, post } from './api.js';
+import { store, prefSet } from './store.js';
+import { $, $$, bind, closeDrawer, closeModal, esc, fields, formActions, loading, errorBox, modal, nice, onSubmit, readFields, toast } from './ui.js';
+import { qrSvg } from './qr.js';
+
+const NAV = [
+  { group: 'Workspace', items: [
+    { id: 'overview', label: 'Overview', perm: 'reports:read' },
+    { id: 'assets', label: 'Assets', perm: 'assets:read' },
+    { id: 'findings', label: 'Findings', perm: 'findings:read' },
+    { id: 'events', label: 'Events', perm: 'events:read' },
+    { id: 'graph', label: 'Graph', perm: 'graph:read' },
+  ] },
+  { group: 'Detection', items: [
+    { id: 'detections', label: 'Detections', perm: 'detections:read' },
+    { id: 'collectors', label: 'Collectors', perm: 'collectors:read' },
+    { id: 'agents', label: 'Agents', perm: 'agents:read' },
+    { id: 'testing', label: 'Testing', perm: 'tests:read' },
+  ] },
+  { group: 'Response', items: [
+    { id: 'actions', label: 'Actions', perm: 'actions:read' },
+    { id: 'integrations', label: 'Integrations', perm: 'integrations:read' },
+  ] },
+  { group: 'Governance', items: [
+    { id: 'audit', label: 'Audit', perm: 'audit:read' },
+    { id: 'reports', label: 'Reports', perm: 'reports:read' },
+    { id: 'admin', label: 'Admin', perm: 'admin:users' },
+  ] },
+];
+const PAGE_LABELS = Object.fromEntries(NAV.flatMap((g) => g.items.map((i) => [i.id, i.label])));
+
+let cleanup = null;
+let currentPath = '';
+let healthTimer = null;
+
+// ---------------------------------------------------------------- router
+
+export function parseHash(hash = location.hash) {
+  const raw = hash.replace(/^#\/?/, '');
+  const [pathPart, queryPart = ''] = raw.split('?');
+  const segments = pathPart.split('/').filter(Boolean).map(decodeURIComponent);
+  const query = Object.fromEntries(new URLSearchParams(queryPart));
+  return { page: segments[0] || 'overview', params: segments.slice(1), query, path: raw };
 }
-function toast(msg,isError=false){const e=document.createElement('div');e.className='toast'+(isError?' error':'');e.textContent=msg;$('#toast-area').append(e);setTimeout(()=>e.remove(),4800);}
-function showLogin(){$('#login').classList.remove('hidden');$('#password').focus();}
-function closeLogin(){$('#login').classList.add('hidden');}
-async function boot(){dateTitle();try{const data=await api('/api/session');if(!data.authenticated){showLogin();return;}state.csrf=data.csrf;closeLogin();await refresh();}catch{showLogin();}}
-async function refresh(){try{
-  const calls=['/api/dashboard','/api/assets','/api/findings','/api/scans','/api/events','/api/investigations','/api/approvals','/api/settings','/api/audit'];
-  const [dashboard,assets,findings,scans,events,investigations,approvals,settings,audit]=await Promise.all(calls.map(x=>api(x)));
-  Object.assign(state,{dashboard,assets,findings,scans,events,investigations,approvals,settings,audit});
-  $('#findings-count').textContent=findings.filter(f=>['open','investigating'].includes(f.status)).length;
-  $('#approvals-count').textContent=approvals.filter(a=>a.status==='pending').length;
-  $('#side-health').textContent='API operational';
-  render();
-}catch(err){toast(err.message,true);}}
-function navigate(page){state.page=page;document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===page));$('#breadcrumb').textContent=nice(page);$('#sidebar').classList.remove('is-open');render();}
-function render(){
-  const pages={overview:renderOverview,assets:renderAssets,findings:renderFindings,scans:renderScans,investigations:renderInvestigations,activity:renderActivity,approvals:renderApprovals,integrations:renderIntegrations,settings:renderSettings};
-  $('#main').innerHTML=(pages[state.page]||renderOverview)();
+
+export function navigate(path, { replace = false } = {}) {
+  const hash = `#/${path.replace(/^#?\/?/, '')}`;
+  if (replace) history.replaceState(null, '', hash); else location.hash = hash;
 }
-function renderOverview(){const d=state.dashboard||{assets:0,approved_assets:0,open_findings:0,critical:0,events:0,severity_counts:{}};
-const count=d.severity_counts||{};const total=Object.values(count).reduce((a,b)=>a+b,0);const colors={critical:'var(--sev-critical)',high:'var(--sev-high)',medium:'var(--sev-medium)',low:'var(--sev-low)',informational:'var(--sev-informational)'};
-const bars=total?Object.entries(colors).map(([k,color])=>`<span class="risk-segment" style="width:${(count[k]||0)/total*100}%;background:${color}" title="${k}: ${count[k]||0}"></span>`).join(''):'<span class="risk-segment" style="width:100%;background:var(--track)"></span>';
-return heading('COMMAND CENTER','Security Overview','Live workspace metrics from your connected assets and imported telemetry.',btn('+ Add asset','add-asset','primary')+btn('Export report','export-report'))+
-`<div class="metric-grid">
-${metric('Monitored assets',d.assets,'▤',`${d.approved_assets} authorized for scans`)}
-${metric('Active findings',d.open_findings,'◇','Unresolved security observations')}
-${metric('Critical findings',d.critical,'!','Requires prioritization')}
-${metric('Security events',d.events,'◎','Events retained in normalized store')}
-</div>
-<div class="content-grid">
-  <section class="panel"><div class="panel-head"><div><h2>Risk distribution</h2><small>Open and investigating findings, by severity</small></div><span class="pill">${total} active findings</span></div><div class="panel-body"><div class="risk-track">${bars}</div><div class="risk-legend">${Object.entries(colors).map(([k,color])=>`<span class="risk-item"><i class="dot" style="background:${color}"></i>${nice(k)} <strong>${count[k]||0}</strong></span>`).join('')}</div><div class="risk-stat-row"><div><strong>${d.approved_assets}</strong><span>AUTHORIZED ASSETS</span></div><div><strong>${state.scans.filter(x=>x.status==='completed').length}</strong><span>COMPLETED SCANS</span></div><div><strong>${state.investigations.length}</strong><span>INVESTIGATIONS</span></div></div></div></section>
-  <section class="panel"><div class="panel-head"><div><h2>Latest security activity</h2><small>Recent alerts from connected monitoring sources</small></div><button class="ghost-link" data-page-go="activity">View all →</button></div><div class="panel-body">${d.recent_events?.length?`<div class="activity-list">${d.recent_events.slice(0,4).map(e=>`<div class="activity-item"><div class="activity-marker">◎</div><div class="activity-text"><strong>${esc(e.title)}</strong><span>${esc(e.source)} · ${ago(e.received_at)}</span></div>${severity(e.severity)}</div>`).join('')}</div>`:empty('No incoming telemetry yet','Connect a sensor or import an event to populate this feed','∿')}</div></section>
-</div>
-<div class="overview-bottom"><section class="panel"><div class="panel-head"><div><h2>Recent scan operations</h2><small>Authorized checks and execution status</small></div><button class="ghost-link" data-page-go="scans">Open scanner →</button></div><div class="panel-body">${state.scans.length?`<div class="activity-list">${state.scans.slice(0,4).map(x=>`<div class="activity-item"><div class="activity-marker">▤</div><div class="activity-text"><strong>${esc(assetName(x.asset_id))}</strong><span>${esc(x.scanner)} · ${ago(x.created_at)} · ${x.result_count} findings</span></div>${tag(x.status)}</div>`).join('')}</div>`:empty('No completed scans','Approve an asset and launch your first security baseline','▤')}</div></section>
-<section class="panel"><div class="panel-head"><div><h2>Getting started</h2><small>First-time deployment checklist</small></div></div><div class="panel-body"><div class="guide"><div class="guide-num">01</div><div><strong>Register a protected asset</strong><span>Add an HTTPS origin or local repository, then attest ownership or administrative control.</span></div></div><div class="guide"><div class="guide-num">02</div><div><strong>Perform an authorized assessment</strong><span>Run a limited baseline scan and review the evidence-backed findings.</span></div></div><div class="guide"><div class="guide-num">03</div><div><strong>Connect telemetry and analysis</strong><span>Send Wazuh or Falco alerts, and configure an optional private or hosted language model.</span></div></div></div></section></div>
-<p class="footer-note">Findings reflect only attached telemetry and enabled checks. A clean dashboard does not imply that an asset is secure.</p>`;}
-function metric(name,value,icon,caption,color){return `<div class="metric-card"><div class="metric-top"><span>${esc(name)}</span></div><div class="metric-value">${Number(value).toLocaleString()}</div><div class="metric-caption">${esc(caption)}</div></div>`;}
-function assetName(id){const a=state.assets.find(x=>x.id===id);return a?a.name:'Unmapped asset';}
-function renderAssets(){return heading('DISCOVERY & INVENTORY','Protected Assets','Add systems you own or are explicitly authorized to administer.',btn('+ Register asset','add-asset','primary'))+
-`<div class="callout">Assets are never scanned automatically until expressly approved. HTTPS origin checks are limited to authorized hosts and ports. Local/private networks require explicit server-side policy configuration.</div>
-<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Asset</th><th>Target</th><th>Environment</th><th>Authorization</th><th>Last scanned</th><th>Actions</th></tr></thead><tbody>${state.assets.map(a=>`<tr><td><div class="asset-cell"><span class="asset-type-icon">${a.kind==='web'?'◈':a.kind==='repo'?'⌘':'▤'}</span><div><div class="primary-cell">${esc(a.name)}</div><div class="secondary-cell">${esc(nice(a.kind))}</div></div></div></td><td><span class="mono truncate" title="${esc(a.target)}">${esc(a.target)}</span></td><td>${esc(nice(a.environment))}</td><td>${a.approved?tag('approved'):tag('pending')}</td><td>${esc(ago(a.last_scan_at))}</td><td><div class="inline-actions">${!a.approved?btn('Authorize',`approve:${a.id}`,'small'):a.kind==='web'?btn('Scan',`scan:${a.id}:web-baseline`,'small'):a.kind==='repo'?btn('Scan',`scan:${a.id}:trivy-repo`,'small'):''}</div></td></tr>`).join('')||`<tr><td colspan="6">${empty('No assets registered','Create your first managed asset to begin','▤')}</td></tr>`}</tbody></table></div></div>`;}
-function renderFindings(){let filter=$('#findings-filter')?.value||'active';let all=state.findings;let current=filter==='active'?all.filter(x=>x.status==='open'||x.status==='investigating'):filter==='all'?all:all.filter(x=>x.status===filter);
-return heading('RISK MANAGEMENT','Security Findings','Deduplicated, evidence-linked issues across integrated security systems.',btn('Export CSV','export-csv')+btn('Launch scan','go-scans','primary'))+
-`<div class="toolbar"><div class="tool-filters"><select class="select" id="findings-filter"><option value="active" ${filter==='active'?'selected':''}>Active findings</option><option value="all" ${filter==='all'?'selected':''}>All findings</option>${['open','investigating','resolved','accepted'].map(x=>`<option ${filter===x?'selected':''}>${x}</option>`).join('')}</select></div><span class="muted">${current.length} findings</span></div>
-<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Finding</th><th>Severity</th><th>Source</th><th>Status</th><th>Last detected</th><th>Actions</th></tr></thead><tbody>${current.map(f=>`<tr><td><div class="primary-cell truncate">${esc(f.title)}</div><div class="secondary-cell">${esc(assetName(f.asset_id))} · ${f.occurrences} occurrence${f.occurrences!==1?'s':''}</div></td><td>${severity(f.severity)}</td><td>${esc(f.source)}</td><td>${tag(f.status)}</td><td>${ago(f.updated_at)}</td><td>${btn('Inspect',`finding:${f.id}`,'small')}</td></tr>`).join('')||`<tr><td colspan="6">${empty('No matching findings','Run a scan or connect monitoring tools to populate findings','◇')}</td></tr>`}</tbody></table></div></div>`;}
-function renderScans(){return heading('CONTINUOUS VALIDATION','Scan Operations','Safe, explicit security assessments with execution history.',btn('+ New scan','new-scan','primary'))+
-`<div class="content-grid"><section class="panel"><div class="panel-head"><div><h2>Available scanners</h2><small>Enforced command allowlist</small></div></div><div class="panel-body"><div class="guide"><div class="guide-num">01</div><div><strong>HTTPS security baseline</strong><span>Validated TLS, certificate expiry, and secure response headers. No exploits, redirects, or fuzzing.</span></div></div><div class="guide"><div class="guide-num">02</div><div><strong>Trivy repository audit</strong><span>Vulnerable packages, misconfigurations and secret detection. Requires optional Trivy installation.</span></div></div></div></section><section class="panel"><div class="panel-head"><div><h2>Safety constraints</h2><small>Enforced outside of the AI model</small></div></div><div class="panel-body"><div class="guide"><div class="guide-num">✓</div><div><strong>Authorized assets only</strong><span>Unapproved assets cannot be scanned.</span></div></div><div class="guide"><div class="guide-num">✓</div><div><strong>Restricted target scope</strong><span>No HTTP, redirects, arbitrary ports, or executable instructions.</span></div></div><div class="guide"><div class="guide-num">✓</div><div><strong>Audited execution</strong><span>Every scan request and completion is recorded.</span></div></div></div></section></div>
-<div class="section-heading"><div><h2>Execution history</h2><p>Most recent 100 jobs</p></div></div><div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Target</th><th>Scanner</th><th>Started</th><th>Findings</th><th>Status</th></tr></thead><tbody>${state.scans.map(r=>`<tr><td class="primary-cell">${esc(assetName(r.asset_id))}</td><td>${esc(r.scanner)}</td><td>${fmt(r.created_at)}</td><td>${r.result_count}</td><td>${tag(r.status)} ${r.error?`<span class="secondary-cell" title="${esc(r.error)}">${esc(r.error)}</span>`:''}</td></tr>`).join('')||`<tr><td colspan="5">${empty('No scan history','Authorize an asset and run an assessment to populate this table','◎')}</td></tr>`}</tbody></table></div></div>`;}
-function renderInvestigations(){return heading('MODEL-ASSISTED TRIAGE','AI Investigations','Review findings with private or hosted models. Analysis cannot execute tools or modify systems.',btn('Open findings','go-findings','primary'))+
-`<div class="callout">Current reasoning engine: <strong>${esc(state.settings.ai_model||'rules-only')}</strong> (${esc(state.settings.ai_provider||'none')}). Evidence summaries are minimized before being sent to any configured external provider.</div>
-<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Finding</th><th>Model</th><th>Summary</th><th>Investigated</th><th>Actions</th></tr></thead><tbody>${state.investigations.map(a=>`<tr><td class="primary-cell truncate">${esc(state.findings.find(x=>x.id===a.finding_id)?.title||a.finding_id)}</td><td class="mono">${esc(a.model)}</td><td class="truncate">${esc(a.summary)}</td><td>${ago(a.created_at)}</td><td>${btn('View',`investigation:${a.id}`,'small')}</td></tr>`).join('')||`<tr><td colspan="5">${empty('No investigations yet','Open any finding and select Investigate to generate a documented analysis','⟐')}</td></tr>`}</tbody></table></div></div>`;}
-function renderActivity(){return heading('SECURITY TELEMETRY','Event Activity','Normalized alerts received from Wazuh and Falco. Raw logs are not stored here.',btn('View integrations','go-integrations'))+
-`<div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Event</th><th>Severity</th><th>Source</th><th>Received</th><th>Identifier</th></tr></thead><tbody>${state.events.map(e=>`<tr><td class="primary-cell truncate">${esc(e.title)}</td><td>${severity(e.severity)}</td><td>${esc(e.source)}</td><td>${fmt(e.received_at)}</td><td class="mono truncate">${esc(e.external_id)}</td></tr>`).join('')||`<tr><td colspan="5">${empty('No events received','Configure a Wazuh or Falco forwarder using the ingestion API','∿')}</td></tr>`}</tbody></table></div></div>`;}
-function renderApprovals(){return heading('HUMAN-IN-THE-LOOP','Action Approvals','Review high-impact action proposals. Execution is intentionally not implemented in this build.')+
-`<div class="callout warning-callout">Approval records document decisions only. They do not invoke credential revocation, host isolation, patch deployment, or firewall changes.</div><div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Action</th><th>Finding</th><th>Rationale</th><th>Status</th><th>Decision</th></tr></thead><tbody>${state.approvals.map(a=>`<tr><td class="primary-cell">${esc(nice(a.action))}</td><td class="truncate">${esc(state.findings.find(f=>f.id===a.finding_id)?.title||a.finding_id)}</td><td class="truncate">${esc(a.rationale)}</td><td>${tag(a.status)}</td><td><div class="inline-actions">${a.status==='pending'?btn('Approve',`decide:${a.id}:approved`,'small')+btn('Deny',`decide:${a.id}:denied`,'small'):esc(fmt(a.decided_at))}</div></td></tr>`).join('')||`<tr><td colspan="5">${empty('No requested actions','Action proposals are created from the finding detail screen','✓')}</td></tr>`}</tbody></table></div></div>`;}
-const integrations=[['Wazuh','Host telemetry, endpoint alerts and event correlation','wazuh'],['Falco','Linux runtime detections and suspicious process signals','falco'],['Trivy','Repository findings: packages, secrets and configurations','trivy'],['Prowler','Cloud posture assessments via normalized future adapter','prowler'],['Nuclei','Approved web testing via future reviewed template worker','nuclei'],['MITRE CALDERA','Lab-only adversary emulation via future approved integration','caldera']];
-function renderIntegrations(){return heading('SENSOR ECOSYSTEM','Integrations','Ingest real observations from existing security platforms.',btn('View setup guide','show-ingest'))+
-`<div class="integration-grid">${integrations.map(([name,desc,id])=>`<div class="integration"><div class="integration-logo">${esc(name[0])}</div><h3>${name}</h3><p>${desc}</p><span class="state-tag ${id==='wazuh'&&state.settings.wazuh_configured?'approved':''}">${id==='wazuh'&&state.settings.wazuh_configured?'Indexer configured':id==='wazuh'||id==='falco'||id==='trivy'?'Ingestion endpoint ready':'Adapter not included'}</span>${id==='wazuh'&&state.settings.wazuh_configured?`<div style="margin-top:13px">${btn('Sync Wazuh alerts','sync-wazuh','small')}</div>`:''}</div>`).join('')}</div>
-<div class="section-heading"><div><h2>Ingestion architecture</h2><p>Connected sensors authenticate using a separate ingestion token</p></div></div><div class="panel"><div class="panel-body"><div class="code-block">Wazuh ─┐<br>Falco ─┼──► Authentication → Event normalizer → Correlation → Findings<br>Trivy ─┘<br><br>Findings → Rules-based analysis or configured LLM → Audit trail</div><p class="info-line">The Wazuh indexer can also be polled using read-only credentials. See the README for example HTTP requests and safe deployment instructions.</p></div></div>`;}
-function renderSettings(){return heading('SYSTEM SETTINGS','Configuration','Read-only deployment status. Set credentials and environment options in the server-side .env file.')+
-`<div class="config-list">${[['AI provider',state.settings.ai_provider||'none'],['Reasoning model',state.settings.ai_model||'rules-only'],['Scheduled scanning',state.settings.autoscan_enabled?'Enabled':'Disabled'],['Scheduled interval',`${state.settings.autoscan_minutes||360} minutes`],['Trivy worker',state.settings.trivy_enabled?'Enabled':'Disabled'],['Wazuh polling',state.settings.wazuh_configured?'Configured':'Not configured'],['Internal target scanning',state.settings.private_targets_enabled?'Policy-enabled':'Disabled'],['Application', 'Sentinel v0.1.0']].map(([k,v])=>`<div class="config-item"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
-<div class="section-heading"><div><h2>Audit integrity</h2><p>Verify the local append-ordered hash chain</p></div>${btn('Verify audit log','verify-audit')}</div><div class="panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>Action</th><th>Actor</th><th>Subject</th><th>Date</th></tr></thead><tbody>${state.audit.slice(0,15).map(a=>`<tr><td class="primary-cell">${esc(a.action)}</td><td>${esc(a.actor)}</td><td class="mono truncate">${esc(a.subject)}</td><td>${fmt(a.created_at)}</td></tr>`).join('')||'<tr><td colspan="4">No audit events yet.</td></tr>'}</tbody></table></div></div>
-<p class="footer-note">Local hash chains do not prevent an administrator with database write access from rewriting the entire chain. Export or anchor digest records in a trusted external location for stronger guarantees.</p>`;}
-function modal(title,html){$('#modal-heading').textContent=title;$('#modal-body').innerHTML=html;$('#modal').classList.remove('hidden');}
-function closeModal(){$('#modal').classList.add('hidden');}
-function addAssetModal(){modal('Register protected asset',`<form id="asset-form" class="form-stack"><div><label class="field-label">ASSET NAME</label><input name="name" class="field-input" placeholder="Production application" maxlength="120" required></div><div><label class="field-label">ASSET TYPE</label><select name="kind" class="select" style="width:100%"><option value="web">HTTPS website / API</option><option value="repo">Local source repository</option><option value="host">Host (telemetry only)</option><option value="cloud">Cloud account (telemetry only)</option><option value="database">Database (telemetry only)</option></select></div><div><label class="field-label">TARGET</label><input name="target" class="field-input" placeholder="https://app.example.com" maxlength="512" required><p class="form-hint">HTTPS: origin only, port 443 or 8443. Repository: relative directory below SCAN_ROOT. Other types are inventory entries only.</p></div><div><label class="field-label">ENVIRONMENT</label><select name="environment" class="select" style="width:100%"><option>production</option><option>staging</option><option>development</option></select></div><div class="form-actions"><button type="button" class="btn subtle" data-action="close-modal">Cancel</button><button type="submit" class="btn primary">Register asset →</button></div></form>`);}
-function approvalModal(id){let a=state.assets.find(a=>a.id===id);if(!a)return;modal('Authorize scan target',`<div class="callout warning-callout"><strong>${esc(a.name)}</strong><br>${esc(a.target)}</div><p class="info-line">By authorizing this asset, you confirm you own or have explicit administrative permission to perform the available security assessments. This approval is recorded.</p><div class="form-stack"><label style="display:flex;gap:10px;font-size:12px"><input type="checkbox" id="asset-attest"> I confirm that I am authorized to scan this exact asset.</label><div class="form-actions"><button class="btn subtle" data-action="close-modal">Cancel</button><button class="btn primary" data-action="confirm-approve:${id}">Authorize asset</button></div></div>`);}
-function scanModal(){let approved=state.assets.filter(a=>a.approved && (a.kind==='web'||a.kind==='repo'));modal('Start approved assessment',`<form id="scan-form" class="form-stack"><div><label class="field-label">APPROVED ASSET</label><select name="asset_id" class="select" style="width:100%">${approved.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.kind)}</option>`).join('')}</select></div><div><label class="field-label">SCANNER</label><select name="scanner" class="select" style="width:100%"><option value="web-baseline">HTTPS baseline</option><option value="trivy-repo">Trivy repository audit</option></select></div><p class="form-hint">The server will independently re-validate the asset and scanner combination before running any check.</p><div class="form-actions"><button type="button" class="btn subtle" data-action="close-modal">Cancel</button><button type="submit" class="btn primary" ${!approved.length?'disabled':''}>Run assessment →</button></div></form>`);}
-function findingModal(id){const f=state.findings.find(x=>x.id===id);if(!f)return;modal('Finding detail',`<div style="display:flex;gap:9px;margin-bottom:15px">${severity(f.severity)} ${tag(f.status)} <span class="muted" style="font-size:11px">${esc(f.source)}</span></div><h3 style="font-size:17px;line-height:1.5">${esc(f.title)}</h3><div class="field-label">DESCRIPTION</div><p class="info-line">${esc(f.description)}</p><div class="field-label">RECOMMENDED REMEDIATION</div><p class="info-line">${esc(f.remediation)}</p><div class="field-label">EVIDENCE METADATA</div><div class="code-block">${esc(JSON.stringify(JSON.parse(f.evidence||'{}'),null,2))}</div><p class="info-line">Asset: ${esc(assetName(f.asset_id))} · Occurrences: ${f.occurrences} · Updated: ${fmt(f.updated_at)}</p><div class="footer-toolbar" style="margin-top:19px">${btn('Investigate with AI',`investigate:${id}`,'primary')}${btn('Mark investigating',`status:${id}:investigating`)}${btn('Resolve',`status:${id}:resolved`)}${btn('Accept risk',`status:${id}:accepted`)}${btn('Propose action',`propose:${id}`)}</div>`);}
-function investigateModal(data){modal('Security investigation',`<div style="display:flex;gap:8px;align-items:center;margin-bottom:19px"><span class="pill">${esc(data.model)}</span><span class="muted">Confidence: ${esc(data.confidence)}</span></div><div class="field-label">ANALYSIS</div><div class="analysis-block">${esc(data.summary)}</div><div class="field-label" style="margin-top:19px">NEXT STEPS</div><ol class="steps">${(data.next_steps||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ol><div class="field-label">LIMITATIONS</div><ul class="steps">${(data.limitations||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><p class="info-line">Analysis is advisory and has no permissions to make changes.</p>`);}
-function proposeModal(id){modal('Request a controlled action',`<form id="proposal-form" class="form-stack"><input type="hidden" name="finding_id" value="${esc(id)}"><div><label class="field-label">ACTION TYPE</label><select name="action" class="select" style="width:100%"><option value="isolate_endpoint">Isolate endpoint</option><option value="revoke_credential">Revoke credential</option><option value="deploy_patch">Deploy patch</option><option value="change_firewall">Change firewall rule</option></select></div><div><label class="field-label">JUSTIFICATION</label><textarea name="rationale" class="field-input" style="width:100%;height:110px" minlength="8" maxlength="800" required placeholder="Describe the evidence and required response"></textarea></div><div class="callout warning-callout">This creates an approval record only. No production action will be executed.</div><div class="form-actions"><button class="btn primary" type="submit">Create approval request</button></div></form>`);}
-function showIngest(){modal('Sensor setup',`<p class="info-line">Use the unique INGEST_API_KEY from your server-side .env. Never expose it in a browser or commit it to source control.</p><div class="code-block">POST /api/ingest/wazuh\nPOST /api/ingest/falco\nPOST /api/ingest/trivy\n\nHeader: X-Ingest-Key: &lt;YOUR_SECRET&gt;\nContent-Type: application/json</div><p class="info-line">Wazuh and Falco endpoints accept their respective native event JSON format. Trivy accepts full JSON reports. Consult README.md for validated commands and examples.</p>`);}
-async function handleAction(act){try{
- if(act==='add-asset')return addAssetModal();if(act==='new-scan')return scanModal();if(act==='close-modal')return closeModal();
- if(act==='export-report')return window.open('/api/reports/summary','_blank','noopener');
- if(act==='export-csv')return window.location.assign('/api/reports/findings.csv');
- if(act==='go-scans')return navigate('scans');if(act==='go-findings')return navigate('findings');if(act==='go-integrations')return navigate('integrations');if(act==='show-ingest')return showIngest();
- if(act==='verify-audit'){let r=await api('/api/audit/verify');return toast(r.valid?'Audit chain verified (local integrity only)':'Audit chain verification failed',!r.valid);}
- if(act==='sync-wazuh'){let r=await api('/api/integrations/wazuh/sync',{method:'POST',body:'{}'});toast(`Imported ${r.ingested} Wazuh events`);return refresh();}
- let [verb,id,value]=act.split(':');
- if(verb==='approve')return approvalModal(id);
- if(verb==='confirm-approve'){if(!$('#asset-attest')?.checked)throw new Error('Authorization attestation is required');await api(`/api/assets/${id}/approve`,{method:'POST',body:JSON.stringify({attestation:true})});closeModal();toast('Asset authorized');return refresh();}
- if(verb==='scan'){await api('/api/scans',{method:'POST',body:JSON.stringify({asset_id:id,scanner:value})});toast('Assessment queued');return refresh();}
- if(verb==='finding')return findingModal(id);
- if(verb==='status'){await api(`/api/findings/${id}`,{method:'PATCH',body:JSON.stringify({status:value})});closeModal();toast('Finding status updated');return refresh();}
- if(verb==='investigate'){toast('Running evidence-based investigation…');let result=await api(`/api/findings/${id}/investigate`,{method:'POST',body:'{}'});investigateModal(result);await refreshBackground();return;}
- if(verb==='investigation'){let x=state.investigations.find(x=>x.id===id);if(x)return investigateModal({model:x.model,summary:x.summary,...x.details});}
- if(verb==='propose')return proposeModal(id);
- if(verb==='decide'){await api(`/api/approvals/${id}/decide`,{method:'POST',body:JSON.stringify({decision:value})});toast('Decision recorded. No action executed.');return refresh();}
- }catch(e){toast(e.message,true);}}
-async function refreshBackground(){try{state.investigations=await api('/api/investigations')}catch{}}
-document.addEventListener('click',e=>{const a=e.target.closest('[data-action]');if(a){e.preventDefault();handleAction(a.dataset.action);}const nav=e.target.closest('[data-page], [data-page-go]');if(nav){e.preventDefault();navigate(nav.dataset.page||nav.dataset.pageGo);}});
-document.addEventListener('change',e=>{if(e.target.id==='findings-filter'){const value=e.target.value;render();const f=$('#findings-filter');if(f){f.value=value;const all=state.findings;let current=value==='active'?all.filter(x=>['open','investigating'].includes(x.status)):value==='all'?all:all.filter(x=>x.status===value);const tbody=$('#main .data-table tbody');if(tbody){tbody.innerHTML=current.map(x=>`<tr><td class="primary-cell truncate">${esc(x.title)}</td><td>${severity(x.severity)}</td><td>${esc(x.source)}</td><td>${tag(x.status)}</td><td>${ago(x.updated_at)}</td><td>${btn('Inspect',`finding:${x.id}`,'small')}</td></tr>`).join('')||`<tr><td colspan="6">${empty('No matching findings','Try a different status filter')}</td></tr>`;}}}});
-document.addEventListener('submit',async e=>{if(!['login-form','asset-form','scan-form','proposal-form'].includes(e.target.id))return;e.preventDefault();const form=e.target;const data=Object.fromEntries(new FormData(form));try{
- if(form.id==='login-form'){let r=await api('/api/login',{method:'POST',body:JSON.stringify(data)});state.csrf=r.csrf;$('#password').value='';closeLogin();await refresh();return;}
- if(form.id==='asset-form'){await api('/api/assets',{method:'POST',body:JSON.stringify(data)});toast('Asset registered. Authorization required before scanning.');}
- if(form.id==='scan-form'){await api('/api/scans',{method:'POST',body:JSON.stringify(data)});toast('Scan queued');}
- if(form.id==='proposal-form'){await api('/api/approvals',{method:'POST',body:JSON.stringify(data)});toast('Approval request recorded; execution is not enabled.');}
- closeModal();await refresh();
- }catch(err){if(form.id==='login-form')$('#login-error').textContent=err.message;else toast(err.message,true);}});
-$('#modal-close').addEventListener('click',closeModal);$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
-$('#refresh').addEventListener('click',()=>refresh().then(()=>toast('Data refreshed')));
-$('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'})}catch{}state.csrf=null;showLogin();});
-$('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('is-open'));
-(function(){const b=$('#theme-toggle');const root=document.documentElement;const sync=()=>{b.textContent=root.dataset.theme==='dark'?'Light':'Dark';};b.addEventListener('click',()=>{const dark=root.dataset.theme!=='dark';if(dark)root.dataset.theme='dark';else delete root.dataset.theme;try{localStorage.setItem('sentinel-theme',dark?'dark':'light');}catch{}sync();});sync();})();
-window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+/** Navigate and render even when the hash does not change. */
+function go(path) {
+  const hash = `#/${path.replace(/^#?\/?/, '')}`;
+  currentPath = '';
+  if (location.hash === hash) route(); else location.hash = hash;
+}
+
+async function route() {
+  if (!store.authenticated) return;
+  const { page, params, query, path } = parseHash();
+  if (path === currentPath && cleanup && cleanup.keep) return;
+  currentPath = path;
+  const nav = NAV.flatMap((g) => g.items).find((i) => i.id === page);
+  if (!nav) { navigate('overview', { replace: true }); return route(); }
+  if (!store.can(nav.perm)) {
+    $('#main').innerHTML = errorBox({ message: `Your role (${store.role}) cannot open ${nav.label}.`, code: 'forbidden' }, false);
+    return;
+  }
+  $$('.nav-item').forEach((node) => node.classList.toggle('active', node.dataset.page === page));
+  $('#breadcrumb').innerHTML = `Security / <strong>${esc(PAGE_LABELS[page] || nice(page))}</strong>`;
+  document.title = `${PAGE_LABELS[page] || nice(page)} — Sentinel`;
+  $('#sidebar').classList.remove('is-open');
+  closeDrawer();
+  closeModal();
+  if (typeof cleanup === 'function') { try { cleanup(); } catch { /* ignore */ } }
+  cleanup = null;
+  const main = $('#main');
+  main.innerHTML = loading();
+  try {
+    const module = await import(`./pages/${page}.js`);
+    const root = document.createElement('div');
+    root.className = 'page';
+    root.dataset.page = page;
+    main.replaceChildren(root);
+    const result = await module.default.render({ root, params, query, navigate, page });
+    if (typeof result === 'function') cleanup = result;
+  } catch (err) {
+    if (err?.status === 401) return;
+    console.error(err);
+    main.innerHTML = errorBox(err);
+    bind(main, { retry: () => route() });
+  }
+  refreshKillSwitch();
+}
+
+// ---------------------------------------------------------------- shell
+
+function renderNav() {
+  const nav = $('#navigation');
+  nav.innerHTML = NAV.map((group) => {
+    const items = group.items.filter((i) => store.can(i.perm));
+    if (!items.length) return '';
+    return `<div class="nav-group-title ${group.group === 'Workspace' ? '' : 'group-gap'}">${esc(group.group)}</div><nav>${items.map((i) => `<a class="nav-item" href="#/${i.id}" data-page="${i.id}">${esc(i.label)}</a>`).join('')}</nav>`;
+  }).join('');
+  const session = store.session;
+  $('#profile-name').textContent = session.user?.display_name || session.user?.email || 'User';
+  $('#profile-role').textContent = `${nice(session.role)} · ${session.tenant?.name || session.tenant?.slug || ''}`;
+  $('#tenant-pill').textContent = session.tenant?.name || 'Connected';
+  const switcher = $('#tenant-switch');
+  if ((session.tenants || []).length > 1) {
+    switcher.classList.remove('hidden');
+    switcher.innerHTML = `<label class="field-label" for="tenant-select">Tenant</label><select class="select" id="tenant-select">${session.tenants.map((t) => `<option value="${esc(t.slug)}" ${t.id === session.tenant?.id ? 'selected' : ''}>${esc(t.name)} (${esc(t.role)})</option>`).join('')}</select>`;
+    $('#tenant-select').addEventListener('change', async (event) => {
+      try {
+        const result = await post('/auth/switch-tenant', { tenant: event.target.value });
+        store.csrf = result.csrf;
+        await loadSession();
+        renderNav();
+        renderUserMenu();
+        toast(`Switched to ${store.tenant?.name || event.target.value}`);
+        go('overview');
+      } catch { /* toasted */ }
+    });
+  } else {
+    switcher.classList.add('hidden');
+    switcher.innerHTML = '';
+  }
+}
+
+function renderUserMenu() {
+  const menu = $('#user-menu');
+  const session = store.session;
+  menu.innerHTML = `<div class="menu-head"><strong>${esc(session.user?.email || '')}</strong><small>${esc(nice(session.role))} · ${esc(session.auth)}${session.user?.totp_enabled ? ' · TOTP on' : ''}</small></div>
+    ${session.user?.totp_enabled ? '' : '<button role="menuitem" data-act="enroll-totp">Enrol authenticator (TOTP)</button>'}
+    <button role="menuitem" data-act="session-info">Session details</button>
+    <button role="menuitem" data-act="logout">Sign out</button>`;
+}
+
+function toggleUserMenu(force) {
+  const menu = $('#user-menu');
+  const open = force !== undefined ? force : menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !open);
+  $('#user-menu-btn').setAttribute('aria-expanded', String(open));
+}
+
+async function enrolTotp() {
+  let data;
+  try { data = await post('/auth/totp/enroll'); } catch { return; }
+  const body = modal('Enrol authenticator', `<p class="info-line">Scan the QR code with an authenticator app, or enter the secret by hand, then confirm with a code.</p>${qrSvg(data.uri)}<div class="secret-box">${esc(data.secret)}</div><p class="form-hint wrap-text">${esc(data.uri)}</p><form class="form-stack">${fields([{ name: 'code', label: 'Six-digit code', type: 'text', required: true, minlength: 6, maxlength: 8, autocomplete: 'one-time-code', pattern: '[0-9]{6,8}' }])}${formActions('Confirm')}</form>`);
+  const form = $('form', body);
+  bind(body, { close: () => closeModal() });
+  onSubmit(form, async () => {
+    const { code } = readFields(form, [{ name: 'code', type: 'text', label: 'Code' }]);
+    const result = await post('/auth/totp/verify', { code: code.trim() }, { silent: true });
+    store.csrf = result.csrf || store.csrf;
+    closeModal();
+    toast('Authenticator enrolled');
+    await loadSession();
+    renderUserMenu();
+  });
+}
+
+function sessionInfo() {
+  const s = store.session;
+  modal('Session', `<dl class="kv stack"><div><dt>User</dt><dd>${esc(s.user?.email)} (${esc(s.user?.display_name || '')})</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>Tenant</dt><dd>${esc(s.tenant?.name)} <span class="mono">${esc(s.tenant?.slug)}</span></dd></div><div><dt>Actions enabled</dt><dd>${s.tenant?.actions_enabled ? 'yes' : 'no'}</dd></div><div><dt>Authentication</dt><dd>${esc(s.auth)}${s.user?.totp_enabled ? ', TOTP enrolled' : ''}</dd></div><div><dt>Memberships</dt><dd>${(s.tenants || []).map((t) => `${esc(t.name)} (${esc(t.role)})`).join(', ') || '—'}</dd></div></dl>`);
+}
+
+async function logout() {
+  try { await post('/auth/logout'); } catch { /* ignore */ }
+  store.setSession(null);
+  showLogin();
+}
+
+// ---------------------------------------------------------------- kill switch banner
+
+export async function refreshKillSwitch() {
+  if (!store.authenticated || !store.can('actions:read')) return;
+  try {
+    applyKillSwitch(await get('/actions/kill-switch', null, { silent: true }));
+  } catch { /* banner keeps its last state */ }
+}
+
+/** Update the app-wide banner from a kill-switch state payload (GET or POST /actions/kill-switch). */
+export function applyKillSwitch(state) {
+  store.killSwitch = state;
+  store.emit('killswitch', state);
+  const banner = $('#kill-banner');
+  if (state?.effective) {
+    const why = state.global ? 'the global ACTIONS_KILL_SWITCH is set' : `the tenant kill switch is engaged${state.detail?.reason ? `: ${state.detail.reason}` : ''}`;
+    banner.innerHTML = `<span><strong>Actions are halted</strong> — ${esc(why)}. Requests are recorded but nothing executes.</span><a href="#/actions">Open actions</a>`;
+    banner.classList.remove('hidden');
+    $('.topbar').classList.add('under-banner');
+  } else {
+    banner.classList.add('hidden');
+    $('.topbar').classList.remove('under-banner');
+  }
+}
+
+// ---------------------------------------------------------------- login
+
+function showLogin(step = 'password', context = {}) {
+  $('#shell').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+  closeDrawer();
+  closeModal();
+  const card = $('#login-card');
+  const foot = '<div class="login-foot"><span class="status-led"></span> Self-hosted · Restricted access</div>';
+  if (step === 'totp') {
+    card.innerHTML = `<h1>Sentinel</h1><p>Two-factor verification</p><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Verify</button><div class="login-error" id="login-error"></div></form><button class="ghost-link" data-act="restart">Start over</button>${foot}`;
+  } else if (step === 'enroll') {
+    card.innerHTML = `<h1>Sentinel</h1><p>Set up an authenticator to continue</p>${qrSvg(context.uri)}<div class="secret-box">${esc(context.secret)}</div><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Six-digit code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Confirm</button><div class="login-error" id="login-error"></div></form>${foot}`;
+  } else {
+    card.innerHTML = `<h1>Sentinel</h1><p>Security operations</p><form id="login-form" class="form-stack">${fields([
+      { name: 'email', label: 'Email', type: 'email', required: true, autocomplete: 'username', value: context.email || '' },
+      { name: 'password', label: 'Password', type: 'password', required: true, autocomplete: 'current-password' },
+      ...(context.needTotp ? [{ name: 'totp', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }] : []),
+      ...(context.tenant !== undefined ? [{ name: 'tenant', label: 'Tenant (optional)', type: 'text', value: context.tenant || '', hint: 'Leave empty for your default tenant.' }] : []),
+    ])}<button type="submit" class="btn primary full">Sign in</button><div class="login-error" id="login-error"></div></form>
+    ${context.oidc ? '<div class="or">or</div><a class="btn full" href="/api/v1/auth/oidc/start">Continue with SSO</a>' : ''}
+    ${context.tenant === undefined ? '<button class="ghost-link" data-act="tenant">Sign in to a specific tenant</button>' : ''}${foot}`;
+  }
+  const form = $('#login-form');
+  const errorLine = $('#login-error');
+  const first = $('input', form);
+  if (first) first.focus();
+  bind(card, {
+    restart: () => showLogin('password', { oidc: context.oidc }),
+    tenant: () => showLogin('password', { ...context, tenant: '' }),
+  });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorLine.textContent = '';
+    const data = Object.fromEntries(new FormData(form));
+    const button = $('button[type=submit]', form);
+    button.disabled = true;
+    try {
+      if (step === 'password') {
+        const result = await api('/auth/login', { method: 'POST', body: { email: data.email, password: data.password, totp: data.totp || '', tenant: data.tenant || '' }, silent: true });
+        store.csrf = result.csrf;
+        if (result.mfa_required) {
+          const enrol = await post('/auth/totp/enroll', {}, { silent: true }).catch(() => null);
+          if (enrol) showLogin('enroll', { ...enrol, oidc: context.oidc }); else showLogin('totp', { oidc: context.oidc });
+          return;
+        }
+        await enterApp();
+      } else {
+        const result = await post('/auth/totp/verify', { code: data.code.trim() }, { silent: true });
+        store.csrf = result.csrf || store.csrf;
+        await enterApp();
+      }
+    } catch (err) {
+      if (step === 'password' && err.status === 401 && /totp/i.test(err.message) && !context.needTotp) {
+        showLogin('password', { ...context, email: data.email, needTotp: true });
+        $('#login-error').textContent = 'This account uses an authenticator app. Enter the current code.';
+        return;
+      }
+      errorLine.textContent = err.message || 'Sign in failed';
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function loadSession() {
+  const session = await get('/auth/session', null, { silent: true });
+  store.setSession(session);
+  return session;
+}
+
+async function enterApp() {
+  const session = await loadSession();
+  if (!session.authenticated) { showLogin('password', { oidc: session.oidc_enabled }); return; }
+  $('#login').classList.add('hidden');
+  $('#shell').classList.remove('hidden');
+  renderNav();
+  renderUserMenu();
+  if (!location.hash) navigate('overview', { replace: true });
+  currentPath = '';
+  route();
+  pollHealth();
+}
+
+async function pollHealth() {
+  clearTimeout(healthTimer);
+  try {
+    const response = await fetch('/ready', { credentials: 'same-origin' });
+    const data = await response.json();
+    $('#side-health').textContent = response.ok ? `${data.queue} queue · ${data.provider}` : 'Degraded';
+    $('#side-led').style.background = response.ok ? 'var(--ok)' : 'var(--bad)';
+  } catch {
+    $('#side-health').textContent = 'Unreachable';
+    $('#side-led').style.background = 'var(--bad)';
+  }
+  healthTimer = setTimeout(pollHealth, 60000);
+}
+
+// ---------------------------------------------------------------- boot
+
+function initTheme() {
+  const button = $('#theme-toggle');
+  const root = document.documentElement;
+  const sync = () => { button.textContent = root.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+  button.addEventListener('click', () => {
+    const dark = root.dataset.theme !== 'dark';
+    if (dark) root.dataset.theme = 'dark'; else delete root.dataset.theme;
+    prefSet('theme', dark ? 'dark' : 'light');
+    sync();
+  });
+  sync();
+}
+
+function initShell() {
+  $('#display-date').textContent = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  initTheme();
+  $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('is-open'));
+  $('#refresh').addEventListener('click', () => { currentPath = ''; route().then(() => toast('Refreshed')); });
+  $('#user-menu-btn').addEventListener('click', (event) => { event.stopPropagation(); toggleUserMenu(); });
+  document.addEventListener('click', (event) => { if (!event.target.closest('#user-menu') && !event.target.closest('#user-menu-btn')) toggleUserMenu(false); });
+  bind($('#user-menu'), { 'enroll-totp': () => { toggleUserMenu(false); enrolTotp(); }, 'session-info': () => { toggleUserMenu(false); sessionInfo(); }, logout: () => { toggleUserMenu(false); logout(); } });
+  for (const id of ['drawer', 'modal']) {
+    const backdrop = $(`#${id}`);
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop || event.target.closest('[data-close]')) {
+        backdrop.dispatchEvent(new CustomEvent('overlay:dismiss'));
+        if (id === 'drawer') closeDrawer(); else closeModal();
+      }
+    });
+  }
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!$('#modal').classList.contains('hidden')) { $('#modal').dispatchEvent(new CustomEvent('overlay:dismiss')); closeModal(); } else if (!$('#drawer').classList.contains('hidden')) closeDrawer();
+  });
+  window.addEventListener('hashchange', route);
+  store.on('unauthorized', () => { if (store.authenticated) { store.setSession(null); showLogin(); toast('Session expired, please sign in again', 'error'); } });
+}
+
+async function boot() {
+  initShell();
+  try {
+    const session = await get('/auth/session', null, { silent: true });
+    if (session.authenticated) { store.setSession(session); await enterApp(); return; }
+    if (session.mfa_required) {
+      const enrol = await post('/auth/totp/enroll', {}, { silent: true }).catch(() => null);
+      if (enrol) showLogin('enroll', { ...enrol, oidc: session.oidc_enabled }); else showLogin('totp', { oidc: session.oidc_enabled });
+      return;
+    }
+    showLogin('password', { oidc: session.oidc_enabled });
+  } catch (err) {
+    showLogin('password', {});
+    toast(err.message || 'API unreachable', 'error');
+  }
+}
+
 boot();
