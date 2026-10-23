@@ -101,10 +101,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def index():
         return FileResponse(STATIC_DIR / 'index.html')
 
-    @app.get('/static/{file_name}', include_in_schema=False)
-    def static(file_name: str):
-        path = STATIC_DIR / file_name
-        if '/' in file_name or '\\' in file_name or not path.is_file() or path.suffix not in {'.js', '.css', '.svg', '.png', '.ico', '.woff2'}:
+    @app.get('/static/{file_path:path}', include_in_schema=False)
+    def static(file_path: str):
+        root = STATIC_DIR.resolve()
+        path = (root / file_path).resolve()
+        if root not in path.parents or not path.is_file() or path.suffix not in {'.js', '.css', '.svg', '.png', '.ico', '.woff2', '.map', '.json'}:
             raise HTTPException(404)
         return FileResponse(path)
 

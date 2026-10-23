@@ -1,0 +1,31 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "sentinel.fullname" . }}-api
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}
+{{- if and .Values.worker.enabled .Values.worker.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "sentinel.fullname" . }}-worker
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  minAvailable: {{ .Values.worker.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+{{- end }}

@@ -1,0 +1,36 @@
+{{- if .Values.api.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "sentinel.fullname" . }}-api
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "sentinel.fullname" . }}-api
+  minReplicas: {{ .Values.api.hpa.minReplicas }}
+  maxReplicas: {{ .Values.api.hpa.maxReplicas }}
+  metrics:
+    {{- with .Values.api.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with .Values.api.hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+{{- end }}

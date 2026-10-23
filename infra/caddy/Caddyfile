@@ -1,0 +1,44 @@
+# Caddy TLS termination for Sentinel (compose.prod.yaml).
+# Automatic HTTPS via ACME. The application sets most security headers itself
+# (app/core/telemetry.py RequestContextMiddleware); Caddy adds HSTS at the edge,
+# removes server identification and forwards the client IP.
+
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$SENTINEL_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+		-X-Powered-By
+	}
+
+	# Metrics stay internal: Prometheus scrapes the API on the compose network, not via Caddy.
+	@metrics path /metrics
+	respond @metrics 404
+
+	# Canary hit endpoints (/api/v1/canaries/{token}/hit) are intentionally unauthenticated
+	# and must stay reachable; everything else is protected by the application.
+	reverse_proxy api:8080 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			read_timeout 120s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

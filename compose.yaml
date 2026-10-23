@@ -1,30 +1,179 @@
+# Sentinel dev / pilot stack.
+#
+#   cp .env.example .env && python scripts/generate_secrets.py --write
+#   docker compose up --build -d                                # api + worker + postgres + redis
+#   docker compose --profile observability up -d                # + otel-collector, prometheus, grafana
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d   # + caddy TLS (see compose.prod.yaml)
+#
+# The API listens on 127.0.0.1:8080 only. Reach it through an SSH tunnel, or add the prod
+# overlay for TLS termination. No Docker socket or host paths are mounted into the API or
+# worker; ./targets is the only host directory and it is read-only.
+
+x-sentinel-env: &sentinel-env
+  DATABASE_URL: postgresql+psycopg://sentinel:${POSTGRES_PASSWORD:-sentinel-dev-password}@postgres:5432/sentinel
+  REDIS_URL: redis://redis:6379/0
+  SCAN_ROOT: /app/targets
+  AUDIT_JSONL_PATH: /app/data/audit.jsonl
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+x-sentinel-common: &sentinel-common
+  image: ${SENTINEL_IMAGE:-sentinel:local}
+  build:
+    context: .
+    args:
+      EXTRAS: ${SENTINEL_EXTRAS:-0}
+  env_file: .env
+  volumes:
+    - sentinel-data:/app/data
+    - ./targets:/app/targets:ro
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,noexec,nosuid
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 256
+  restart: unless-stopped
+  networks:
+    - sentinel
+
 services:
-  sentinel:
-    build: .
-    restart: unless-stopped
-    env_file: .env
+  api:
+    <<: *sentinel-common
+    command: ["api"]
+    environment:
+      <<: *sentinel-env
+      RUN_MIGRATIONS: "true"
+      WORKERS_INPROCESS: "false"   # the worker service owns job execution
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
-      # Restrict dashboard to local machine. Use SSH tunnel or HTTPS proxy with access controls.
       - "127.0.0.1:8080:8080"
-    volumes:
-      - sentinel-data:/app/data
-      # Enable ONLY when scanning local repositories. Mount code read-only:
-      # - ./targets:/app/targets:ro
-    read_only: true
-    tmpfs:
-      - /tmp:size=128m,noexec,nosuid
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    pids_limit: 128
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     mem_limit: 1g
     cpus: 2
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/ready"]
       interval: 30s
       timeout: 6s
       retries: 3
-      start_period: 15s
+      start_period: 20s
+
+  worker:
+    <<: *sentinel-common
+    command: ["worker"]
+    environment:
+      <<: *sentinel-env
+      RUN_MIGRATIONS: "false"
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      disable: true
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel-dev-password}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - sentinel
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - sentinel
+
+  # ---------------------------------------------------------------- observability (optional)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./infra/otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+    networks:
+      - sentinel
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    networks:
+      - sentinel
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    profiles: [observability]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/sentinel.json:/var/lib/grafana/dashboards/sentinel.json:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - sentinel
+
 volumes:
   sentinel-data:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  sentinel:
+    driver: bridge

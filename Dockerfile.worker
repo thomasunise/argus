@@ -1,0 +1,11 @@
+# Standalone queue worker image. It is the same build as the API image with a different
+# default command, so `docker build -f Dockerfile.worker .` produces an image that starts
+# `python -m app.worker` and has no HEALTHCHECK (the worker exposes no HTTP port; its
+# liveness is the Redis lease heartbeat, see docs/RUNBOOKS.md "Lost worker").
+#
+# compose.yaml and the Helm chart do not need this file: they run the shared image with
+# `command: ["worker"]`. Use it when your platform wants one image per workload.
+ARG BASE_IMAGE=sentinel:local
+FROM ${BASE_IMAGE}
+HEALTHCHECK NONE
+CMD ["worker"]

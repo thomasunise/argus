@@ -164,7 +164,8 @@ async def test_swarm_responder_fallback(app, settings, default_tenant_id, estate
     out = await run_fallback(app, settings, default_tenant_id, 'swarm_responder', {'detection_id': f.id})
     assert out['is_coordinated'] is True and set(out['actors']) == {'198.51.100.1', '198.51.100.2', '198.51.100.3'}
     assert any('user_agent=python-requests' in s for s in out['shared_indicators']) and out['escalation']['needed'] is True
-    assert out['containment_proposals'] == []  # no action broker installed in tests
+    # With the action broker installed, the fallback may list reversible containment candidates; it must never execute or file them.
+    assert all(p.get('action_type') for p in out['containment_proposals'])
     lone, _ = upsert_finding(db, default_tenant_id, source='detections', rule='lone', title='Single actor', description='x', severity_name='low',
                              evidence={'entity': 'okta', 'actor': 'mallory@test.local', 'action': 'user.session.failed'})
     db.commit()

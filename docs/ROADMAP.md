@@ -1,44 +1,112 @@
-# Roadmap from working MVP to enterprise autonomous defensive security
+# Roadmap
+
+Status as of this checkout. "Implemented" means code and tests exist in the repository;
+"next" means planned. Nothing here is a commitment of dates.
 
 ## Implemented
-- [x] Secure basic administrator login and CSRF session control
-- [x] Asset inventory with authorization attestation
-- [x] HTTPS baseline scanner, TLS validation, expiration checks
-- [x] Optional local Trivy repository scanning
-- [x] Wazuh / Falco event ingestion and Trivy report ingestion
-- [x] Wazuh indexer polling with configurable CA validation
-- [x] Findings correlation, lifecycle and exports
-- [x] Rules-based and optional Ollama / OpenAI / Anthropic investigations
-- [x] Read-only LLM boundary and recorded approval decisions
-- [x] Hash-linked event audit and a responsive UI
-- [x] Optional approved-web-only scan scheduler
 
-## Next: production foundation
-- [ ] OIDC/SAML SSO, MFA, RBAC, multi-tenant isolation
-- [ ] PostgreSQL + Alembic migrations + Redis/queue + distributed scanning workers
-- [ ] Native inventory collectors for AWS, Azure, GCP, Kubernetes, Linux and Windows
-- [ ] Event streaming, retention management, observability, delivery retries
-- [ ] Scanner sandbox with pinned DNS and egress enforcement
-- [ ] OpenTelemetry, Prometheus metrics, runbooks and error budgets
-- [ ] Durable job leases, cancellation, scheduling windows and rate limits
-- [ ] Independent model evaluation and anti-prompt-injection tests
-- [ ] Offline incident test datasets, quantitative false-positive measurements
+Platform core
 
-## Next: richer authorized assessments
-- [ ] Nuclei reviewed non-destructive template catalog, scope/rate enforcement
-- [ ] Prowler CLI JSON/SARIF adapter with read-only role credentials
-- [ ] Semgrep / Gitleaks / code scanning CI adapters
-- [ ] Authenticated OWASP ZAP API testing in staging
-- [ ] CALDERA adversary emulation in isolated lab environments only
-- [ ] Attack path graph combining identities, public exposure and asset/data relationships
-- [ ] Secrets and PII data lineage discovery with carefully scoped collectors
-- [ ] Knowledge base of CVEs/KEV/EPSS and changelog monitoring
-- [ ] Formal validation tests to compare model triage precision and latency
+- [x] Multi-tenant data model (`tenant_id` on every domain table, scoped query helpers)
+- [x] Local login, OIDC (PKCE), TOTP, API keys with roles and scopes, CSRF, login throttling
+- [x] RBAC with five cumulative roles and per-endpoint permissions
+- [x] Hash-chained, HMAC-signed audit log with JSONL, S3 Object Lock and Azure immutable sinks; `GET /audit/verify` and JSONL export
+- [x] Job queue with in-memory and Redis backends: leases, heartbeat, retries, cancellation, reaper, standalone worker
+- [x] Prometheus metrics, JSON logs with request/tenant/job/run ids, optional OpenTelemetry tracing
+- [x] Startup safety checks (`assert_safe_config`), bootstrap of tenant, owner and ingest key
+- [x] Event bus (`finding.created`, `event.created`, `graph.applied`, `action.*`, ...)
+- [x] Alembic migrations with an initial revision; `scripts/migrate.py` (upgrade, check, current, sql, stamp)
 
-## Finally: controlled response
-- [ ] Separate short-lived privileged action broker
-- [ ] Typed actions with independent policy engine and dual approval
-- [ ] Dry runs, blast-radius checks, rollback and validation
-- [ ] Guided patch PR creation with gated CI and signed deployment artifacts
-- [ ] Automatic reversible containment only for heavily validated cases
-- [ ] SOC 2 / NIST mapping using verifiable evidence (not a certification promise)
+Core API
+
+- [x] Admin (tenants, users, memberships, settings, overview), assets (CRUD, import, authorize, revoke, graph), findings (list, stats, CSV, patch, investigate), events, investigations, record-only approvals, audit, reports (summary, posture, compliance for SOC 2 / NIST 800-171 / ISO 27001, trends)
+
+Evidence graph
+
+- [x] Nodes, edges, natural keys, upsert, neighbors, stats, exposures, attack paths, exposure scoring, recompute job
+
+Detections
+
+- [x] Rule engine with fingerprint dedupe, per-tenant rule state and parameters, run history
+- [x] 12 rules: coordinated identity fan-out, novel action burst, synchronized multi-asset access, machine-speed sequence, impossible travel, privilege escalation chain, public exposure change, privileged workload, secret committed, canary tripwire, rate spike, automated client tool abuse
+- [x] Baselines (Welford, per dimension and window), canaries of eight kinds with hit recording and artifacts
+
+Collectors
+
+- [x] AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow collectors with fixture-based tests; cloud SDKs optional and lazily imported; schedules and run history
+
+Testing harness
+
+- [x] Scopes, plans, runs, results; scope re-check at execution; rate limits; shell-free tool runner
+- [x] Adapters: web baseline, Trivy, Nuclei, ZAP, Prowler, CALDERA, Semgrep, Gitleaks (binaries installed separately)
+
+Agents
+
+- [x] Runtime with budgets, traces, untrusted-data wrapping, structured results via `submit_result`
+- [x] Providers: Anthropic, OpenAI, Ollama, none (deterministic fallbacks)
+- [x] Read-only tools over assets, findings, events, graph, detections, tests, intel, memory; `propose_action`
+- [x] Specialists: triage, investigate, hunt, redteam_plan, remediate, posture_report, swarm_responder
+- [x] Eval harness with suites: prompt_injection, triage_precision, hunt_recall
+
+Action broker
+
+- [x] Catalog of 25 typed actions across AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare and Sentinel-internal operations, each with dry run and rollback or `reversible=False`
+- [x] Policy: global and tenant kill switch, deny-lists, maintenance window, auto-approval of low-risk reversible actions, two approvals for high risk, owner-level approval for critical, request TTL
+- [x] Queue jobs `actions.execute` and `actions.rollback`; audit entries for every transition
+
+Integrations
+
+- [x] Inbound parsers: AWS CloudTrail, GuardDuty, Azure Defender, CrowdStrike, Falco, GCP SCC, generic, GitHub webhook, Kubernetes audit, Okta logs, SentinelOne, Trivy, Wazuh; `POST /ingest/{source}` with API-key scope and signed-webhook verification where the source supports it
+- [x] Outbound channels: webhook, Slack, Jira, ServiceNow, PagerDuty, email; event-bus fan-out, delivery log, retries
+- [x] Wazuh indexer pull job
+
+Infrastructure and documentation
+
+- [x] Multi-stage image, entrypoint with migrations, compose dev/pilot stack, prod overlay with Caddy
+- [x] Helm chart with HPA, PDB, NetworkPolicy, ServiceMonitor
+- [x] Terraform skeletons for AWS (ECS, RDS, ElastiCache, S3 Object Lock, Secrets Manager, ALB, WAF, CloudWatch) and Azure (Container Apps, Flexible Postgres, Azure Cache, immutable blob, Key Vault, Front Door, WAF)
+- [x] CI (pytest 3.11/3.12, Postgres job, pip-audit, bandit, Docker build, infra lint), release (SBOM, cosign, provenance), Dependabot
+- [x] OpenTelemetry collector, Prometheus config and alert rules, Grafana dashboard
+- [x] Deployment, threat model, runbooks, compliance mapping, API summary, migrations, contributing guide
+- [x] Demo seed for the current models
+
+## Next
+
+Security hardening
+
+- [ ] Audit HMAC with key ids so signing-key rotation verifies each segment with its own key
+- [ ] PostgreSQL row-level security as defence in depth under the application scoping
+- [ ] Distributed rate limiting (Redis-backed) and per-tenant quotas
+- [ ] Identity-based Azure audit sink (replace the connection string)
+- [ ] Dedicated test-tool worker image with pinned binaries and an isolated egress path; DNS pinning in web adapters
+- [ ] Session revocation list and admin-forced logout
+- [ ] Per-tenant encryption keys for stored evidence
+
+Detection and response
+
+- [ ] More rules from the ATT&CK matrix for cloud and identity; versioned rule packs per tenant
+- [ ] Attack-path-aware prioritization of findings (graph score into severity)
+- [ ] Automatic reversible containment for narrow, heavily validated cases only, behind policy and canary-grade evidence
+- [ ] CVE / KEV / EPSS enrichment feeds with offline caching
+
+Agents
+
+- [ ] Larger eval datasets with measured precision, recall and latency per provider and model
+- [ ] Specialist-level tool allowlists per tenant; per-tenant provider and model selection exposed in admin settings UI
+- [ ] Cost reporting per tenant from `agent_runs`
+
+Testing
+
+- [ ] Test harness workers in their own network segment with per-scope egress rules
+- [ ] SARIF import/export for third-party scanners
+
+Frontend
+
+- [ ] UI parity with the full v1 API (actions, integrations, reports, admin)
+
+Operations
+
+- [ ] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
+- [ ] Retention and purge jobs for events, test results, agent steps and deliveries
+- [ ] Backup and restore automation; restore drill documentation
+- [ ] Evidence bundle export for assessors (zip of the items in `docs/COMPLIANCE.md`)

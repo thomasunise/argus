@@ -1,0 +1,73 @@
+# Production-shaped overlay: TLS termination with Caddy, restart policies, JSON logs, and
+# no host port on the API (Caddy reaches it on the internal network).
+#
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# Required in .env for this overlay (assert_safe_config enforces the first two):
+#   APP_ENV=production   COOKIE_SECURE=true   BASE_URL=https://<host>
+#   SENTINEL_DOMAIN=<host>   (Caddy obtains a certificate via ACME)
+#   ACME_EMAIL=<ops@example.com>
+# Pin SENTINEL_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).
+
+services:
+  api:
+    # The loopback bind 127.0.0.1:8080 from compose.yaml stays for host-local operations
+    # (SSH tunnel, scripts). Caddy is the only network-reachable ingress.
+    environment:
+      APP_ENV: production
+      COOKIE_SECURE: "true"
+      LOG_JSON: "true"
+      BASE_URL: https://${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+      FORWARDED_ALLOW_IPS: "*"   # only Caddy can reach the API on the internal network
+    restart: always
+    logging: &json-logging
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  worker:
+    environment:
+      APP_ENV: production
+      LOG_JSON: "true"
+    restart: always
+    logging: *json-logging
+
+  postgres:
+    restart: always
+    logging: *json-logging
+
+  redis:
+    restart: always
+    logging: *json-logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: always
+    environment:
+      SENTINEL_DOMAIN: ${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    logging: *json-logging
+    networks:
+      - sentinel
+
+volumes:
+  caddy-data:
+  caddy-config:

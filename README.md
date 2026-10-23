@@ -1,181 +1,205 @@
-# Sentinel — Agentic Security Operations
+# Sentinel
 
-**A runnable, self-hosted security operations MVP** combining an asset registry, authorized checks, external alert ingestion, AI-assisted findings analysis, approval records, audited workflows and a polished operations dashboard.
+Sentinel is a self-hosted, multi-tenant security operations platform in which AI agents
+analyze evidence but never act on the estate. Collectors inventory cloud, identity, code,
+endpoint, network and Kubernetes assets into an evidence graph; a detection engine evaluates
+events for swarm, identity, cloud, code and canary signals; a scope-gated test harness runs
+authorized security tools; governed agents triage, investigate and hunt with read-only tools;
+and a separate action broker (typed actions, policy, approvals, dry runs, rollback, kill
+switch) is the only component allowed to change anything.
 
-Sentinel is **not** a finished autonomous penetration-testing suite, enterprise SIEM, managed EDR, compliance certification platform or guaranteed intrusion prevention tool. Real built-in scanning in this version is limited to HTTPS baseline checks and optional local repository analysis with Trivy. Wazuh, Falco and Trivy event ingestion are implemented. Prowler, Nuclei, CALDERA and arbitrary remediation execution are future adapters, not included integrations.
+This README describes what is in the repository today. `docs/ARCHITECTURE.md` is the build
+contract; `docs/ROADMAP.md` lists what is implemented versus planned.
 
-## Quick start (Python)
+## Architecture
 
-Prerequisites: Python 3.11+ and a system where you can safely run services on loopback.
+```
+  Browser / SDK / sensors
+          |
+          v  HTTPS (Caddy, ALB, Front Door or your ingress)
+  +-------------------------------------------------------------+
+  |  API  (FastAPI)  auth: session / OIDC+PKCE / TOTP / API keys |
+  |  RBAC (viewer < analyst < operator < admin < owner), CSRF,   |
+  |  per-principal rate limits, request ids, security headers    |
+  +------+------------------+------------------+----------------+
+         |                  |                  |
+   PostgreSQL           Redis queue        Audit chain
+   (tenant_id on       (leases, retries,   (hash-linked per tenant,
+    every table)        python -m          HMAC, JSONL / S3 Object
+                        app.worker)        Lock / Azure immutable)
+         |                  |
+  +------+------------------+----------------------------------+
+  |  Worker processes run the same handlers as the API:        |
+  |   collectors.run   detections.run / baselines              |
+  |   graph.recompute  testing.run   agents.run                |
+  +------------------------------------------------------------+
+         |
+         v  agents call propose_action only -> ActionRequest(pending)
+  Action broker (separate policy, approvals, dry run, rollback, kill switch)
+```
+
+Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
+
+1. Agents cannot execute anything; their one write-capable tool creates a pending request.
+2. Everything an agent reads is wrapped as untrusted data and the prompt says so.
+3. Active testing runs only inside a recorded authorization and scope, re-checked at run time.
+4. Every domain table carries `tenant_id`; queries go through a scoped helper; tests assert it.
+5. The audit chain is hash-linked, optionally HMAC-signed, and mirrored to a WORM sink.
+
+## What is in this checkout
+
+| Area | Status | Where |
+|---|---|---|
+| App factory, settings, DB, RBAC, auth (local, OIDC, TOTP, API keys), CSRF, rate limits | implemented, tested | `app/core/`, `app/api/auth.py`, `app/api/deps.py` |
+| Audit chain with JSONL / S3 Object Lock / Azure immutable blob sinks | implemented | `app/core/audit.py` |
+| Job queue (in-memory and Redis, leases, retries, cancellation, reaper) and standalone worker | implemented | `app/core/queue.py`, `app/worker.py` |
+| Prometheus metrics, JSON logging, optional OpenTelemetry tracing | implemented | `app/core/telemetry.py` |
+| Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
+| Detections: 12 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic), baselines, canaries | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
+| Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented with fixtures; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
+| Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; tools must be installed separately | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
+| Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
+| Action broker: catalog of 25 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, Sentinel-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
+| Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
+| Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
+| Alembic migrations (initial revision) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | this workstream | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
+
+Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
+
+## Quick start (development, SQLite, no Docker)
+
+Requirements: Python 3.11 or 3.12.
 
 ```bash
-cp .env.example .env
-python scripts/generate_secrets.py
-# Replace the three REPLACE_ values in .env with three generated secrets.
-python -m venv .venv
-source .venv/bin/activate              # Windows: .venv\\Scripts\\activate
+python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
+python scripts/generate_secrets.py --write          # fills the three REPLACE_ values and AUDIT_SIGNING_KEY stays empty unless you set it
 uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
-Open **http://127.0.0.1:8080**. Sign in using the `ADMIN_PASSWORD` you configured.
+Open http://127.0.0.1:8080 and sign in as `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`.
+With `REDIS_URL` empty, jobs run inside the API process (`WORKERS_INPROCESS=true`). With
+`DB_AUTO_CREATE=true` (the default) tables are created at startup; for Alembic-managed
+schemas set it to `false` and run `python scripts/migrate.py` (see `docs/MIGRATIONS.md`).
 
-For an isolated demonstration with synthetic, explicitly labeled records:
+Synthetic demo data in an isolated tenant (never touches the network):
 
 ```bash
 python scripts/seed_demo.py
 ```
 
-`seed_demo.py` never scans an actual target and does not authorize its demo assets. To remove demo data, use a fresh database. Do **not** run it in a real production environment.
+It prints a `demo` tenant login and creates DEMO-labelled assets, authorizations, events that
+trip `cloud.public_exposure_change` and `swarm.machine_speed_sequence`, findings, a canary and
+an agent run record. Refuses to run when `APP_ENV=production`.
 
-## Docker quick start
+Tests:
 
 ```bash
-cp .env.example .env
-python scripts/generate_secrets.py
-# Put secrets in .env. Ensure DATABASE_URL=sqlite:///./data/sentinel.db
-# When using Docker keep SCAN_ROOT=/app/targets
-# With Docker, OLLAMA_URL must be reachable from inside the container, not localhost on host.
+python -m pytest -q
+```
+
+## Pilot (Docker Compose: API, worker, PostgreSQL, Redis)
+
+```bash
+cp .env.example .env && python scripts/generate_secrets.py --write
 docker compose up --build -d
+docker compose logs -f api
 ```
 
-Docker exposes Sentinel **only on 127.0.0.1:8080**. Access remotely using an SSH tunnel or HTTPS reverse proxy with access restrictions. The container runs as an unprivileged user, without root privileges, added capabilities, or host Docker socket access. Trivy is not bundled in the default image.
+`compose.yaml` binds the API to `127.0.0.1:8080` only, runs the API and worker from one image
+with a read-only root filesystem, no capabilities and no Docker socket, mounts `./targets`
+read-only, and applies the schema at API start (`RUN_MIGRATIONS=true`). Add
+`--profile observability` for an OpenTelemetry collector, Prometheus (scraping `/metrics`) and
+Grafana with the dashboard in `infra/grafana/sentinel.json`.
 
-### What actually works
-
-- Password-protected dashboard (signed HttpOnly session cookie + per-session CSRF token)
-- Asset inventory and auditable explicit scan-authorization attestation
-- Limited HTTPS scan for verified TLS, certificate expiry, HSTS, CSP, MIME-sniffing and referrer policy
-- Repo scanning via local `trivy fs` CLI when `ENABLE_TRIVY=true`, installed in the execution environment
-- Native Wazuh and Falco alert JSON ingestion with deduplication and severity mapping
-- Trivy JSON report ingestion with removal of secret contents
-- Optional pull of recent Wazuh alerts from the **Wazuh indexer** over TLS
-- Finding triage and status management; rule-based review without an AI provider
-- AI-assisted read-only investigations using Ollama, OpenAI, or Anthropic
-- Recorded high-impact approval decisions (approval **does not execute** remediation)
-- Findings CSV/JSON export, scan run history, local hash-chained audit records
-- Optional scheduling for **approved HTTPS assets only**, disabled by default
-- Synthetic demo fixture script and automated tests
-
-### Important limitations
-
-1. **Only scan systems you control or have explicit authorization to test.** The confirmation checkbox records a declaration; the system cannot independently verify ownership.
-2. The HTTPS scanner performs DNS/IP checks and disallows redirects, but DNS rebinding and network routing are not fully controlled at the Python application layer. **Use independent egress firewall policy** to prevent metadata endpoint, loopback, internal address, and unintended target access. Test this before production.
-3. Never expose the interface directly to the public internet. In production use HTTPS, network allowlists, identity-aware gateway/SSO, edge rate limiting, monitoring, backups, proper secret management, and a managed data store.
-4. The single administrator role and SQLite implementation are for a single-node pilot only. Introduce RBAC, multi-tenant isolation, migrations, a task queue and external WORM audit storage before commercial multi-customer operations.
-5. The LLM has **no tools**: it analyzes minimized finding metadata and returns advisory steps. Do not forward highly sensitive metadata to hosted providers without additional data governance.
-6. Trivy local execution requires a trusted binary, a warmed vulnerability DB (`trivy image --download-db-only` or equivalent), a sandboxed worker and read-only repository access. The default Docker image intentionally leaves this optional scanner disabled.
-7. No autonomous exploitation, DAST fuzzing, adversary emulation or privileged remediation is implemented in this version. These require separately reviewed tool adapters, sandboxing, change control and testing.
-8. For a persistent, high-volume deployment, offload event processing and scanning to independent workers rather than a FastAPI process and back event ingestion with a queue.
-
-## Asset workflow
-
-1. Select **Asset inventory → Register asset**.
-2. Specify an `https://` **origin** URL (no path, credentials or query parameters; only ports 443/8443) or a relative repo folder under `SCAN_ROOT`.
-3. Select **Authorize** and explicitly attest administrative control. The platform checks the target against the server-side address policy.
-4. Select **Scan** to enqueue the matching approved scanner.
-5. View detected items under **Findings**, generate a rules-based/AI investigation, and record resolution status.
-
-Host, cloud and database assets can be registered for inventory, but require external sensors; the built-in scanner does not directly inspect them.
-
-## External telemetry: POST ingestion
-
-**Use a distinct ingestion API key. Never put this key in frontend code or commit it.**
+TLS termination for a single host:
 
 ```bash
-curl -fsS 'http://127.0.0.1:8080/api/ingest/falco' \
-  -H "X-Ingest-Key: $INGEST_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data-binary @examples/falco-alert.json
-
-curl -fsS 'http://127.0.0.1:8080/api/ingest/wazuh' \
-  -H "X-Ingest-Key: $INGEST_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data-binary @examples/wazuh-alert.json
-
-curl -fsS 'http://127.0.0.1:8080/api/ingest/trivy' \
-  -H "X-Ingest-Key: $INGEST_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data-binary @examples/trivy-report.json
+# .env: APP_ENV=production COOKIE_SECURE=true BASE_URL=https://host SENTINEL_DOMAIN=host ACME_EMAIL=ops@example.com
+docker compose -f compose.yaml -f compose.prod.yaml up -d
 ```
 
-These sample event files are **synthetic**. In real setups configure your monitoring agents to securely forward actual JSON events to an ingress service. Ingestion must pass through an HTTPS endpoint or a private tunnel, not plaintext over the public internet. Falco's HTTP output can send JSON to `/api/ingest/falco` but does not natively add custom auth headers in all configurations; use an authenticated relay to insert `X-Ingest-Key` where needed.
+## Production
 
-### Wazuh indexer polling
+Kubernetes: `infra/helm/sentinel` (API + worker deployments, HPA, PDB, default-deny
+NetworkPolicy, ingress with TLS, optional ServiceMonitor). AWS: `infra/terraform` (ECS
+Fargate, RDS, ElastiCache, S3 Object Lock audit bucket, Secrets Manager, ALB + WAF).
+Azure: `infra/terraform-azure` (Container Apps, Flexible Postgres, Azure Cache, immutable
+blob container, Key Vault, Front Door + WAF).
 
-Set `WAZUH_INDEXER_URL=https://your-indexer:9200`, the read-only `WAZUH_INDEXER_USER` / `WAZUH_INDEXER_PASSWORD` and optionally `WAZUH_CA_BUNDLE=/path/to/trusted/ca.pem`. Click **Integrations → Sync Wazuh alerts**. The connector reads up to 200 recent records from `wazuh-alerts-*` within a rolling 30-minute window. It does not use the Wazuh manager API. The indexer user should have access to read only the intended alert indices.
+The production checklist is in `docs/DEPLOYMENT.md`. The short version, enforced partly by
+`assert_safe_config()` at startup:
 
-### Trivy integration
+- `APP_ENV=production` requires PostgreSQL, `REDIS_URL` and `COOKIE_SECURE=true`.
+- Dedicated workers (`WORKERS_INPROCESS=false`, `python -m app.worker`).
+- `AUDIT_SIGNING_KEY` set and an object-lock audit sink configured.
+- OIDC configured, `TOTP_REQUIRED=true` for local accounts.
+- `/metrics` blocked at the edge; egress filtering for workers; secrets in a secret manager.
+- Images pinned by digest and verified with cosign (`.github/workflows/release.yml`).
 
-For external CI jobs, ingest a JSON Trivy report using `/api/ingest/trivy`. Add `X-Asset-ID` if you want to associate the findings with an inventory asset. Only the identifier, affected package, fix version and safe metadata are imported; no raw secret matches are retained.
+## Roles
 
-For local repo scanning, install Trivy from its official documentation, predownload its vulnerability DB, set `ENABLE_TRIVY=true`, and make the repository available within `SCAN_ROOT` (set to a read-only mount in production). The CLI execution uses fixed arguments and a 120-second timeout; no user commands or shell interpretation.
+Roles are cumulative (`app/core/rbac.py`):
 
-## AI configuration
+| Role | Adds |
+|---|---|
+| viewer | read everything in the tenant |
+| analyst | edit findings and detections, run agents and evals, manage canaries, record approvals |
+| operator | manage and authorize assets, run tests, scans and collectors, request, approve, execute and roll back actions, run detections |
+| admin | users, API keys, settings, collector and integration configuration, the actions kill switch, test scopes |
+| owner | tenant settings, approving critical actions |
 
-Select one in `.env` and restart. All models receive **only minimized finding metadata**, not raw logs or source code. The LLM cannot trigger scans, change configurations, execute commands or approve actions.
+API keys carry a role and optional scopes (for example `ingest`) that further restrict them.
+A `system` principal is used only inside queue handlers.
 
-```ini
-AI_PROVIDER=ollama
-OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=gpt-oss:20b
-```
+## How agents, testing and actions are governed
 
-Or:
+**Agents** (`app/agents/runtime.py`). A specialist is an `AgentSpec` with a system prompt, a
+list of tool names, an output schema and budgets (`AGENT_MAX_STEPS`, `AGENT_MAX_TOKENS`,
+`AGENT_MAX_SECONDS`, `AGENT_COST_CEILING_USD`). Tools are read-only views over Sentinel data;
+the only `propose` tool creates a pending `ActionRequest` through the broker. Every tool
+result is redacted, truncated and wrapped as `<untrusted_data source=...>`; the guardrail
+prompt tells the model that instructions inside evidence are indicators of injection. Each
+model and tool step is persisted (`agent_steps`) with input hash, tokens and latency. With
+`AI_PROVIDER=none`, specialists run deterministic fallbacks. Prompt-injection and precision
+eval suites live in `app/agents/evals/suites/`.
 
-```ini
-AI_PROVIDER=openai
-OPENAI_API_KEY=...
-OPENAI_MODEL=<model supporting the Chat Completions API>
-```
+**Testing** (`app/testing/`). A `TestScope` lists assets, allowed tiers (passive, active,
+intrusive), environments, a UTC window, rate and concurrency limits. A run is allowed only if
+the asset has a current `AssetAuthorization` whose flags permit the tier, the scope permits
+it, the window is open and the target passes policy validation. `scope.check()` runs at
+request time and again inside the worker; intrusive tiers are limited to staging and lab
+environments. External tools run through `run_tool()` with a fixed argv, a timeout, bounded
+output and a minimal environment.
 
-Or:
+**Actions** (`app/actions/`). Typed actions declare risk, reversibility and a parameter
+schema, and implement `dry_run`, `execute` and `rollback`. A request (from an operator or an
+agent's `propose_action`) goes through policy (`app/actions/policy.py`: kill switch, tenant
+`actions_enabled`, deny-lists, maintenance window, auto-approval only for low-risk reversible
+actions when `ACTIONS_AUTO_APPROVE_LOW`), approvals (approver differs from requester; high risk
+needs two when `ACTIONS_REQUIRE_TWO_FOR_HIGH`; critical additionally needs a principal with
+`actions:approve_critical`), a dry run with blast radius, execution as the `actions.execute`
+queue job with a stored rollback payload, and an audit entry at every transition.
+`ACTIONS_KILL_SWITCH=true` (global, environment) or `POST /api/v1/actions/kill-switch`
+(per tenant, sets `actions_enabled=false`) rejects every request and execution.
 
-```ini
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=...
-ANTHROPIC_MODEL=<supported messages API model>
-```
+## Documentation
 
-The `.env.example` model names are illustrative and can become outdated; choose a model actually supported by your account/provider. No vendor API calls are made until you select a hosted provider and request an investigation.
+| Document | Content |
+|---|---|
+| `docs/ARCHITECTURE.md` | build contract: packages, interfaces, data model, API table |
+| `docs/API.md` | v1 route summary with status |
+| `docs/DEPLOYMENT.md` | dev, compose, Kubernetes, AWS, Azure; production checklist |
+| `docs/SECURITY.md` | security model as implemented, reporting |
+| `docs/THREAT-MODEL.md` | STRIDE per trust boundary, prompt injection, SSRF, tenancy, credentials, broker abuse, supply chain |
+| `docs/RUNBOOKS.md` | incident procedures |
+| `docs/COMPLIANCE.md` | SOC 2 / NIST 800-171 / ISO 27001 control mapping (evidence support, not certification) |
+| `docs/ROADMAP.md` | implemented versus next |
+| `CONTRIBUTING.md` | workstream conventions |
 
-Ollama can run on a separate inference host behind a private network; configure URL access from inside the container. Set `AI_PROVIDER=none` to use deterministic, offline-only investigations.
+## License
 
-## Automated scans
-
-`AUTOSCAN_ENABLED=false` by default. Setting it to true enables HTTPS baseline checks on approved web assets roughly every `AUTOSCAN_MINUTES` (default 360). It does **not** enable repository scanning, intrusive testing or incident response. Run exactly **one** API worker for this initial scheduler; multi-worker scheduling requires a distributed queue and leases.
-
-## Internal assets
-
-Private ranges are denied by default, including RFC1918. For an approved internal staging network, set `ALLOW_PRIVATE_TARGETS=true` and an explicit narrow value such as `PRIVATE_TARGET_CIDRS=10.23.45.0/24`. Loopback, link-local and multicast targets are always denied. Pair this with a dedicated scanner worker network and egress ACLs; config changes alone do not provide complete SSRF protection.
-
-## Project layout
-
-```text
-app/
-  main.py           FastAPI, auth, asset/scan/event/finding APIs
-  models.py         Database models
-  policy.py         Enforcement of scan scope and allowed targets
-  scanners.py       Limited HTTPS and repository checks
-  findings.py       Event normalization, deduplication, correlation
-  intelligence.py   Read-only model analysis (Ollama/OpenAI/Claude)
-  audit.py          Local hash-chained audit events
-  static/           Responsive security dashboard
-examples/           Explicitly synthetic telemetry payloads
-scripts/            Secret generator and optional demo loader
-tests/              Auth, policy, ingestion and scanner integration tests
-docs/               Security and architectural details
-```
-
-## Validate locally
-
-```bash
-pip install pytest
-pytest -q
-```
-
-## Architecture and roadmap
-
-See `docs/ARCHITECTURE.md`, `docs/SECURITY.md` and `docs/ROADMAP.md`.
-
-**License:** MIT, for this generated Sentinel source code. Third-party integrations and models are governed by their own licenses.
+MIT for this repository. Third-party tools (nuclei, ZAP, Prowler, CALDERA, Semgrep, Gitleaks,
+Trivy), cloud SDKs and model providers are governed by their own licenses and terms.

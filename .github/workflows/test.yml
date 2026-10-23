@@ -1,14 +1,144 @@
-name: Test Sentinel
+name: Test
+
 on:
   push:
+    branches: ["**"]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SENTINEL_LAZY_APP: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
-  test:
+  unit:
+    name: pytest (sqlite, py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q --maxfail=20
+
+  postgres:
+    name: pytest (postgres, py3.12)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sentinel
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel
+      DB_AUTO_CREATE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Apply schema
+        run: python scripts/migrate.py
+      - run: python -m pytest -q --maxfail=20
+
+  security:
+    name: pip-audit + bandit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - run: pip install -r requirements.txt pytest
-      - run: pytest -q
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt pip-audit bandit
+      - name: pip-audit (known vulnerabilities in resolved dependencies)
+        run: pip-audit --strict --progress-spinner off
+      - name: bandit (medium+ severity, medium+ confidence)
+        run: bandit -r app -ll -ii -q
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: sentinel:ci
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the image
+        run: |
+          docker run --rm -d --name sentinel-ci -p 127.0.0.1:8080:8080 \
+            -e SESSION_SECRET=ci-session-secret-that-is-long-enough-0123456789 \
+            -e ADMIN_PASSWORD=ci-admin-password-long-123 \
+            -e INGEST_API_KEY=ci-ingest-key-long-enough-0123456789 \
+            sentinel:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ready; then echo; break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/health
+          docker logs sentinel-ci | tail -n 20
+          docker rm -f sentinel-ci
+
+  infra-lint:
+    name: yaml + terraform fmt + helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: YAML parses
+        run: |
+          pip install pyyaml
+          python - <<'PY'
+          import pathlib, sys, yaml
+          bad = []
+          for path in list(pathlib.Path('.').rglob('*.yml')) + list(pathlib.Path('.').rglob('*.yaml')):
+              if 'templates' in path.parts or '.git' in path.parts:
+                  continue
+              try:
+                  yaml.safe_load(path.read_text(encoding='utf-8'))
+              except Exception as exc:
+                  bad.append(f'{path}: {exc}')
+          print('\n'.join(bad) or 'all yaml ok')
+          sys.exit(1 if bad else 0)
+          PY
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive -diff infra/terraform infra/terraform-azure
+      - uses: azure/setup-helm@v4
+      - run: helm lint infra/helm/sentinel
+      - run: helm template sentinel infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x >/dev/null

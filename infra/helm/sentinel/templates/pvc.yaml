@@ -1,0 +1,18 @@
+{{- if and .Values.auditVolume.enabled (not .Values.auditVolume.existingClaim) }}
+# ReadWriteMany is required when api.replicas > 1 and the JSONL sink is enabled; otherwise
+# leave auditVolume disabled and rely on the DB chain plus an object-lock sink.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sentinel.fullname" . }}-audit
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteMany]
+  {{- with .Values.auditVolume.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.auditVolume.size }}
+{{- end }}

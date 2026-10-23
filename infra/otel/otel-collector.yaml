@@ -1,0 +1,77 @@
+# OpenTelemetry Collector for Sentinel.
+# The API exports traces over OTLP/HTTP when OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+# (app/core/telemetry.py configure_tracing). The collector also scrapes /metrics so one
+# pipeline can forward both to your backend. Replace the `debug` / `otlphttp` exporters with
+# your vendor exporter; keep the processors.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: sentinel-api
+          scrape_interval: 30s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["api:8080"]
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+  # Sentinel never puts secrets in spans, but defence in depth: drop common credential attributes.
+  attributes/scrub:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: http.request.header.x_api_key
+        action: delete
+      - key: http.request.header.x-api-key
+        action: delete
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:APP_ENV:-development}
+        action: upsert
+
+exporters:
+  debug:
+    verbosity: basic
+  # Example forward to a vendor or a central collector. Set OTLP_UPSTREAM to enable.
+  otlphttp:
+    endpoint: ${env:OTLP_UPSTREAM:-http://127.0.0.1:4318}
+    tls:
+      insecure: false
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: ""
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, resource, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [prometheus, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]

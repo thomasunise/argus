@@ -1,0 +1,26 @@
+name        = "sentinel"
+environment = "production"
+location    = "eastus2"
+
+# Pin a digest from a signed release (see .github/workflows/release.yml).
+image = "ghcr.io/eekosystems/sentinel@sha256:REPLACE_WITH_RELEASE_DIGEST"
+
+domain_name = "sentinel.example.com"
+
+api_min_replicas = 2
+api_max_replicas = 6
+worker_replicas  = 2
+
+postgres_sku = "GP_Standard_D2ds_v5"
+redis_sku    = "Standard"
+
+# Immutability period for audit blobs. Set lock_audit_policy = true once confirmed (irreversible).
+audit_retention_days = 365
+lock_audit_policy    = false
+
+extra_environment = {
+  AI_PROVIDER    = "none"
+  TOTP_REQUIRED  = "true"
+  OIDC_ISSUER    = ""
+  OIDC_CLIENT_ID = ""
+}

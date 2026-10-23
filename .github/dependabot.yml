@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      runtime:
+        patterns: ["fastapi", "uvicorn", "sqlalchemy", "alembic", "psycopg", "pydantic*", "httpx", "redis", "PyJWT", "prometheus-client", "PyYAML", "itsdangerous", "python-dotenv"]
+      model-providers:
+        patterns: ["anthropic", "openai"]
+      test:
+        patterns: ["pytest*", "respx"]
+      cloud-sdks:
+        patterns: ["boto3", "azure-*", "google-*", "kubernetes"]
+      opentelemetry:
+        patterns: ["opentelemetry-*"]
+    labels: ["dependencies", "python"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: terraform
+    directory: "/infra/terraform"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "terraform"]
+
+  - package-ecosystem: terraform
+    directory: "/infra/terraform-azure"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "terraform"]

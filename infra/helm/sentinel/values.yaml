@@ -1,0 +1,229 @@
+# Default values for the Sentinel chart. Every key under `config` becomes an environment
+# variable (upper-cased) in a ConfigMap; every key under `secrets` becomes a Secret entry,
+# unless `existingSecret` names a Secret you manage outside Helm (recommended).
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/eekosystems/sentinel
+  tag: ""            # defaults to .Chart.AppVersion; pin a digest in production
+  digest: ""         # e.g. sha256:...; when set it overrides tag
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}    # e.g. eks.amazonaws.com/role-arn for the S3 audit sink, azure.workload.identity/client-id
+  automountToken: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# ---------------------------------------------------------------- API deployment
+api:
+  replicas: 2
+  runMigrations: true          # entrypoint runs scripts/migrate.py before uvicorn (one replica wins; migrations are idempotent)
+  uvicornWorkers: 1
+  forwardedAllowIps: "*"       # the ingress controller is the only client inside the cluster network policy
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 1Gi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 30
+  extraEnv: []                 # [{name: FOO, value: bar}]
+  extraVolumes: []
+  extraVolumeMounts: []
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# ---------------------------------------------------------------- worker deployment
+worker:
+  enabled: true
+  replicas: 2
+  concurrency: 4
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  terminationGracePeriodSeconds: 120   # lease_seconds default is 600; jobs are requeued by the reaper if cut short
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  pdb:
+    enabled: true
+    minAvailable: 1
+  # Optional read-only volume for repo-type assets (SCAN_ROOT=/app/targets).
+  targets:
+    enabled: false
+    existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  host: sentinel.example.com
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: sentinel-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    # /metrics must not be reachable through the ingress. nginx: deny the location.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = /metrics { return 404; }
+
+networkPolicy:
+  enabled: true
+  # Namespace selector (labels) of the ingress controller allowed to reach the API.
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+  # Namespace selector for Prometheus scraping /metrics.
+  monitoringNamespaceSelector:
+    kubernetes.io/metadata.name: monitoring
+  # Egress allowlist. DNS is always allowed. Add your Postgres/Redis/IdP/model-provider CIDRs.
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 6379}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+
+serviceMonitor:
+  enabled: false
+  namespace: ""          # defaults to release namespace
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}             # e.g. release: kube-prometheus-stack
+
+# Writable scratch for the read-only root filesystem.
+tmpVolumeSizeLimit: 256Mi
+
+# Persistent audit JSONL mirror (optional; the DB chain plus an object-lock sink is the durable path).
+auditVolume:
+  enabled: false
+  existingClaim: ""
+  size: 5Gi
+  storageClass: ""
+
+# ---------------------------------------------------------------- application config (ConfigMap)
+# Keys map to app/core/config.py settings. Values are strings.
+config:
+  APP_ENV: production
+  APP_NAME: Sentinel
+  BASE_URL: https://sentinel.example.com
+  COOKIE_SECURE: "true"
+  DB_AUTO_CREATE: "false"
+  SESSION_MAX_AGE: "3600"
+  WORKERS_INPROCESS: "false"
+  WORKER_CONCURRENCY: "4"
+  QUEUE_MAX_ATTEMPTS: "3"
+  ADMIN_EMAIL: admin@sentinel.local
+  DEFAULT_TENANT_SLUG: default
+  DEFAULT_TENANT_NAME: Default
+  TOTP_REQUIRED: "false"
+  OIDC_ISSUER: ""
+  OIDC_CLIENT_ID: ""
+  OIDC_DEFAULT_ROLE: viewer
+  OIDC_ALLOWED_DOMAINS: ""
+  OIDC_AUTO_PROVISION: "true"
+  AUDIT_JSONL_PATH: ""
+  AUDIT_S3_BUCKET: ""
+  AUDIT_S3_PREFIX: sentinel-audit/
+  AUDIT_AZURE_CONTAINER: ""
+  LOG_JSON: "true"
+  LOG_LEVEL: INFO
+  METRICS_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SERVICE_NAME: sentinel
+  AI_PROVIDER: none
+  ANTHROPIC_MODEL: claude-opus-5-5
+  ANTHROPIC_EFFORT: high
+  OPENAI_MODEL: gpt-4.1
+  OLLAMA_URL: ""
+  OLLAMA_MODEL: gpt-oss:20b
+  AGENT_MAX_STEPS: "12"
+  AGENT_MAX_TOKENS: "150000"
+  AGENT_MAX_SECONDS: "300"
+  AGENT_COST_CEILING_USD: "5.0"
+  SCAN_ROOT: /app/targets
+  ENABLE_TRIVY: "false"
+  TEST_RATE_LIMIT_RPS: "5.0"
+  TEST_TOOL_TIMEOUT_SECONDS: "900"
+  ALLOW_PRIVATE_TARGETS: "false"
+  PRIVATE_TARGET_CIDRS: ""
+  AUTOSCAN_ENABLED: "false"
+  AUTOSCAN_MINUTES: "360"
+  ACTIONS_KILL_SWITCH: "false"
+  ACTIONS_AUTO_APPROVE_LOW: "false"
+  ACTIONS_REQUIRE_TWO_FOR_HIGH: "true"
+  ACTIONS_MAINTENANCE_WINDOW: ""
+  SECRETS_BACKEND: env
+  INGEST_RATE_LIMIT_PER_MINUTE: "1200"
+  API_RATE_LIMIT_PER_MINUTE: "600"
+
+# ---------------------------------------------------------------- secrets
+# Prefer existingSecret (created by External Secrets, Sealed Secrets, or kubectl). When set,
+# the chart does not render a Secret and expects these keys in it:
+#   SESSION_SECRET ADMIN_PASSWORD INGEST_API_KEY AUDIT_SIGNING_KEY DATABASE_URL REDIS_URL
+#   (optional) OIDC_CLIENT_SECRET ANTHROPIC_API_KEY OPENAI_API_KEY ZAP_API_KEY CALDERA_API_KEY
+#              AUDIT_AZURE_CONNECTION_STRING WAZUH_INDEXER_PASSWORD
+existingSecret: ""
+secrets:
+  sessionSecret: ""
+  adminPassword: ""
+  ingestApiKey: ""
+  auditSigningKey: ""
+  databaseUrl: ""          # postgresql+psycopg://user:pass@host:5432/sentinel
+  redisUrl: ""             # redis://:pass@host:6379/0  or rediss://
+  oidcClientSecret: ""
+  anthropicApiKey: ""
+  openaiApiKey: ""
+  zapApiKey: ""
+  calderaApiKey: ""
+  auditAzureConnectionString: ""
+  wazuhIndexerPassword: ""

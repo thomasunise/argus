@@ -1,0 +1,25 @@
+name        = "sentinel"
+environment = "production"
+region      = "us-east-1"
+
+# Pin a digest from a signed release (see .github/workflows/release.yml).
+image = "ghcr.io/eekosystems/sentinel@sha256:REPLACE_WITH_RELEASE_DIGEST"
+
+domain_name    = "sentinel.example.com"
+hosted_zone_id = "Z0000000000000000000"
+
+api_desired_count    = 2
+worker_desired_count = 2
+
+db_instance_class = "db.t4g.medium"
+redis_node_type   = "cache.t4g.small"
+
+# Object Lock compliance retention for audit records. Cannot be shortened later.
+audit_retention_days = 365
+
+extra_environment = {
+  AI_PROVIDER     = "none"
+  TOTP_REQUIRED   = "true"
+  OIDC_ISSUER     = ""
+  OIDC_CLIENT_ID  = ""
+}

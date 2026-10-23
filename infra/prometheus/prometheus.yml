@@ -1,0 +1,40 @@
+# Prometheus scrape config for the compose observability profile.
+# Metric names come from app/core/telemetry.py:
+#   sentinel_http_requests_total{method,route,status}
+#   sentinel_http_request_seconds_bucket{method,route}
+#   sentinel_jobs_total{kind,status}
+#   sentinel_agent_tokens_total{provider,direction}
+#   sentinel_agent_runs_total{spec,status}
+#   sentinel_findings_open{tenant,severity}
+#   sentinel_actions_total{action,status}
+#   sentinel_detections_total{rule,severity}
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    service: sentinel
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: sentinel-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8080"]
+        labels:
+          component: api
+
+  # The standalone worker exposes no HTTP port; its job metrics are visible through
+  # sentinel_jobs_total on the API when WORKERS_INPROCESS=true, or via the OTel collector
+  # exporter below when the worker runs separately.
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          component: otel
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

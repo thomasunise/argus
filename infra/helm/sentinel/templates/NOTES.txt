@@ -1,0 +1,19 @@
+Sentinel {{ .Chart.AppVersion }} installed as release {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+URL:            https://{{ .Values.ingress.host }}
+{{- else }}
+Port-forward:   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "sentinel.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+Login:          {{ .Values.config.ADMIN_EMAIL }} with ADMIN_PASSWORD from secret {{ include "sentinel.secretName" . }}
+Health:         GET /health   Readiness: GET /ready   Metrics: GET /metrics (cluster-internal only)
+
+Workers:        {{ if .Values.worker.enabled }}{{ .Values.worker.replicas }} x python -m app.worker (REDIS_URL required){{ else }}in-process (WORKERS_INPROCESS=true){{ end }}
+Kill switch:    kubectl -n {{ .Release.Namespace }} set env deploy/{{ include "sentinel.fullname" . }}-api ACTIONS_KILL_SWITCH=true
+                (also stops execution in workers: set it on deploy/{{ include "sentinel.fullname" . }}-worker)
+
+Next steps:
+  1. Verify the audit chain:  GET /api/v1/audit/verify
+  2. Configure OIDC (config.OIDC_ISSUER, OIDC_CLIENT_ID, secrets.oidcClientSecret) and set TOTP_REQUIRED.
+  3. Point AUDIT_S3_BUCKET or AUDIT_AZURE_CONTAINER at an object-lock bucket for the WORM mirror.
+  4. Read docs/DEPLOYMENT.md (production checklist) and docs/RUNBOOKS.md.
