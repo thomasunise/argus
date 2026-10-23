@@ -1,0 +1,5 @@
+{"version": 3, "etag": "BwX123", "bindings": [
+  {"role": "roles/owner", "members": ["user:alice@example.com", "user:bob@example.com"]},
+  {"role": "roles/editor", "members": ["serviceAccount:ci@proj.iam.gserviceaccount.com", "user:mallory@example.com"]},
+  {"role": "roles/viewer", "members": ["user:mallory@example.com"], "condition": {"title": "temp", "expression": "request.time < timestamp('2030-01-01T00:00:00Z')"}}
+]}

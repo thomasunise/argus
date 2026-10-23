@@ -1,0 +1,3 @@
+{"name": "allow-ssh-any", "id": "/subscriptions/x/resourceGroups/rg/providers/Microsoft.Network/networkSecurityGroups/web-nsg/securityRules/allow-ssh-any",
+ "etag": "W/\"abc\"", "properties": {"provisioningState": "Succeeded", "protocol": "Tcp", "sourcePortRange": "*", "destinationPortRange": "22",
+ "sourceAddressPrefix": "*", "destinationAddressPrefix": "*", "access": "Allow", "priority": 100, "direction": "Inbound"}}

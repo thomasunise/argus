@@ -1,0 +1,5 @@
+{"url": "https://api.github.com/repos/acme/app/branches/main/protection",
+ "required_status_checks": {"strict": false, "contexts": ["ci/build"]},
+ "enforce_admins": {"enabled": false},
+ "required_pull_request_reviews": {"dismiss_stale_reviews": false, "require_code_owner_reviews": true, "required_approving_review_count": 2},
+ "allow_force_pushes": {"enabled": false}, "allow_deletions": {"enabled": false}}

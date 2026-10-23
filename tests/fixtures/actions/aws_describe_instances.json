@@ -1,0 +1,5 @@
+{"Reservations": [{"Instances": [{"InstanceId": "i-0abc123def4567890", "VpcId": "vpc-11111111", "State": {"Name": "running"},
+  "NetworkInterfaces": [
+    {"NetworkInterfaceId": "eni-0aaa111", "Groups": [{"GroupId": "sg-0web00000000001"}, {"GroupId": "sg-0ssh00000000002"}]},
+    {"NetworkInterfaceId": "eni-0bbb222", "Groups": [{"GroupId": "sg-0db000000000003"}]}
+  ]}]}]}

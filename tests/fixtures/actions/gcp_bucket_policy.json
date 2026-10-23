@@ -1,0 +1,5 @@
+{"kind": "storage#policy", "version": 3, "etag": "CAE=", "bindings": [
+  {"role": "roles/storage.objectViewer", "members": ["allUsers", "user:alice@example.com"]},
+  {"role": "roles/storage.legacyBucketReader", "members": ["allAuthenticatedUsers"]},
+  {"role": "roles/storage.admin", "members": ["user:alice@example.com"]}
+]}

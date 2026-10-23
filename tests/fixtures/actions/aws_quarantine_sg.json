@@ -1,0 +1,2 @@
+{"SecurityGroups": [{"GroupId": "sg-0quarantine00009", "VpcId": "vpc-11111111", "IpPermissions": [],
+  "IpPermissionsEgress": [{"IpProtocol": "-1", "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}]}]}

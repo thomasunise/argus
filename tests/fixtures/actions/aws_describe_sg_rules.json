@@ -1,0 +1,4 @@
+{"SecurityGroups": [{"GroupId": "sg-0web00000000001", "VpcId": "vpc-11111111", "IpPermissions": [
+  {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "oops"}], "Ipv6Ranges": [], "UserIdGroupPairs": []},
+  {"IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": [], "UserIdGroupPairs": []}
+]}]}
