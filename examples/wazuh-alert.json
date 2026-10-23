@@ -1,0 +1,14 @@
+{
+  "id": "demo-wazuh-0001",
+  "timestamp": "2026-10-23T12:45:00.000+0000",
+  "rule": {
+    "id": "100001",
+    "level": 10,
+    "description": "Illustrative high-severity security alert",
+    "groups": ["syscheck"]
+  },
+  "agent": {
+    "id": "001",
+    "name": "demo-linux-host"
+  }
+}

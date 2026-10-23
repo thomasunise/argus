@@ -1,0 +1,9 @@
+{
+  "time": "2026-10-23T12:45:00.000000Z",
+  "rule": "Unexpected privileged process in container",
+  "priority": "WARNING",
+  "output": "Sample event: replace with actual Falco output",
+  "hostname": "demo-container-host",
+  "tags": ["container", "process"],
+  "output_fields": {}
+}

@@ -1,0 +1,30 @@
+services:
+  sentinel:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Restrict dashboard to local machine. Use SSH tunnel or HTTPS proxy with access controls.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - sentinel-data:/app/data
+      # Enable ONLY when scanning local repositories. Mount code read-only:
+      # - ./targets:/app/targets:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 15s
+volumes:
+  sentinel-data:

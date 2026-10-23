@@ -1,0 +1,19 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "illustrative-example",
+  "Results": [
+    {
+      "Target": "example-app/requirements.txt",
+      "Class": "lang-pkgs",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "EXAMPLE-ONLY-0001",
+          "PkgName": "fictional-package",
+          "InstalledVersion": "1.0",
+          "FixedVersion": "1.1",
+          "Severity": "HIGH"
+        }
+      ]
+    }
+  ]
+}
