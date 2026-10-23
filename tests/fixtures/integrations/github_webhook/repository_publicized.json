@@ -1,0 +1,11 @@
+{
+  "action": "publicized",
+  "repository": {
+    "id": 667788990, "node_id": "R_kgDOJ3", "name": "internal-tooling", "full_name": "example-org/internal-tooling", "private": false,
+    "owner": {"login": "example-org", "id": 1122334, "type": "Organization"}, "html_url": "https://github.com/example-org/internal-tooling",
+    "description": "Internal deployment helpers", "fork": false, "created_at": "2024-06-01T10:00:00Z", "updated_at": "2026-10-23T12:36:00Z", "pushed_at": "2026-10-22T18:04:11Z",
+    "default_branch": "main", "visibility": "public", "archived": false, "disabled": false
+  },
+  "organization": {"login": "example-org", "id": 1122334},
+  "sender": {"login": "contractor-dev", "id": 7788990, "type": "User"}
+}

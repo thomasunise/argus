@@ -1,0 +1,82 @@
+[
+  {
+    "id": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/resourceGroups/rg-payments-prod/providers/Microsoft.Security/locations/westeurope/alerts/2517987654321098765_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    "name": "2517987654321098765_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    "type": "Microsoft.Security/Locations/alerts",
+    "location": "westeurope",
+    "properties": {
+      "version": "2022-01-01.0",
+      "alertType": "VM_SuspiciousAccountCreation",
+      "systemAlertId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "productComponentName": "Servers",
+      "alertDisplayName": "Suspicious account creation detected",
+      "description": "Analysis of host data on vm-payments-app-01 detected creation of a local account with a name resembling a system account.",
+      "severity": "High",
+      "intent": "Persistence",
+      "startTimeUtc": "2026-10-23T11:55:12.000Z",
+      "endTimeUtc": "2026-10-23T11:55:12.000Z",
+      "timeGeneratedUtc": "2026-10-23T11:58:40.123Z",
+      "processingEndTimeUtc": "2026-10-23T11:58:41.000Z",
+      "status": "Active",
+      "remediationSteps": ["Review the newly created account and remove it if it is not expected.", "Escalate to the incident response team."],
+      "vendorName": "Microsoft",
+      "productName": "Microsoft Defender for Cloud",
+      "compromisedEntity": "vm-payments-app-01",
+      "techniques": ["T1136.001"],
+      "entities": [
+        {"$id": "1", "hostName": "vm-payments-app-01", "azureID": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/resourceGroups/rg-payments-prod/providers/Microsoft.Compute/virtualMachines/vm-payments-app-01", "type": "host"},
+        {"$id": "2", "name": "svc-backup2", "ntDomain": "VM-PAYMENTS-APP-01", "host": {"$ref": "1"}, "type": "account"},
+        {"$id": "3", "address": "203.0.113.77", "type": "ip"}
+      ],
+      "resourceIdentifiers": [
+        {"$id": "4", "azureResourceId": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/resourceGroups/rg-payments-prod/providers/Microsoft.Compute/virtualMachines/vm-payments-app-01",
+         "azureResourceSubscriptionId": "3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b", "azureResourceTenantId": "72f988bf-86f1-41af-91ab-2d7cd011db47", "type": "AzureResource"}
+      ],
+      "extendedProperties": {"resourceType": "Virtual Machine", "account name": "svc-backup2", "process name": "net.exe", "command line": "net user svc-backup2 P@ssw0rd!2026 /add", "user name": "NT AUTHORITY\\SYSTEM"},
+      "alertUri": "https://portal.azure.com/#blade/Microsoft_Azure_Security_AzureDefenderForData/AlertBlade/alertId/2517987654321098765_a1b2c3d4"
+    }
+  },
+  {
+    "time": "2026-10-23T12:02:17.514Z",
+    "resourceId": "/SUBSCRIPTIONS/3B1F8C2E-4D5A-4E6F-9A7B-8C9D0E1F2A3B/RESOURCEGROUPS/RG-PAYMENTS-PROD/PROVIDERS/MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/NSG-PAYMENTS-WEB/SECURITYRULES/ALLOW-RDP-ANY",
+    "operationName": "MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE",
+    "category": "Administrative",
+    "resultType": "Success",
+    "resultSignature": "Succeeded.Created",
+    "durationMs": 1534,
+    "callerIpAddress": "203.0.113.90",
+    "correlationId": "b8c7d6e5-f4a3-4b2c-9d1e-0f9a8b7c6d5e",
+    "identity": {"authorization": {"scope": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/resourceGroups/rg-payments-prod/providers/Microsoft.Network/networkSecurityGroups/nsg-payments-web/securityRules/allow-rdp-any", "action": "Microsoft.Network/networkSecurityGroups/securityRules/write", "evidence": {"role": "Network Contributor", "roleAssignmentScope": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b"}},
+                 "claims": {"name": "Bob Ops", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn": "bob.ops@contoso.example", "ipaddr": "203.0.113.90"}},
+    "caller": "bob.ops@contoso.example",
+    "level": "Information",
+    "location": "westeurope",
+    "eventDataId": "c9d8e7f6-a5b4-4c3d-8e2f-1a0b9c8d7e6f",
+    "subscriptionId": "3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b",
+    "resourceGroupName": "rg-payments-prod",
+    "resourceLocation": "westeurope",
+    "properties": {
+      "statusCode": "Created", "serviceRequestId": "d0e9f8a7-example", "eventCategory": "Administrative", "entity": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/resourceGroups/rg-payments-prod/providers/Microsoft.Network/networkSecurityGroups/nsg-payments-web/securityRules/allow-rdp-any",
+      "message": "Microsoft.Network/networkSecurityGroups/securityRules/write", "hierarchy": "72f988bf-86f1-41af-91ab-2d7cd011db47/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b",
+      "requestbody": "{\"properties\":{\"protocol\":\"Tcp\",\"sourcePortRange\":\"*\",\"destinationPortRange\":\"3389\",\"sourceAddressPrefix\":\"Internet\",\"destinationAddressPrefix\":\"*\",\"access\":\"Allow\",\"priority\":100,\"direction\":\"Inbound\"}}"
+    }
+  },
+  {
+    "time": "2026-10-23T12:04:02.000Z",
+    "resourceId": "/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/providers/Microsoft.Authorization/roleAssignments/5e4d3c2b-1a09-4f8e-9d7c-6b5a4f3e2d1c",
+    "operationName": "Microsoft.Authorization/roleAssignments/write",
+    "category": "Administrative",
+    "resultType": "Success",
+    "callerIpAddress": "203.0.113.90",
+    "correlationId": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
+    "caller": "bob.ops@contoso.example",
+    "level": "Information",
+    "eventDataId": "f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c",
+    "subscriptionId": "3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b",
+    "properties": {
+      "statusCode": "Created", "eventCategory": "Administrative",
+      "requestbody": "{\"Id\":\"5e4d3c2b-1a09-4f8e-9d7c-6b5a4f3e2d1c\",\"Properties\":{\"PrincipalId\":\"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d\",\"PrincipalType\":\"ServicePrincipal\",\"RoleDefinitionId\":\"/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635\",\"Scope\":\"/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b\"}}",
+      "responseBody": "{\"properties\":{\"roleDefinitionId\":\"/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635\",\"principalId\":\"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d\",\"principalType\":\"ServicePrincipal\",\"scope\":\"/subscriptions/3b1f8c2e-4d5a-4e6f-9a7b-8c9d0e1f2a3b\"}}"
+    }
+  }
+]

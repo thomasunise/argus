@@ -24,13 +24,14 @@ def make_engine(settings: Settings) -> Engine:
         path = url.replace('sqlite:///', '')
         if path and path != ':memory:':
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        engine = create_engine(url, connect_args={'check_same_thread': False}, future=True)
+        engine = create_engine(url, connect_args={'check_same_thread': False, 'timeout': 30}, future=True)
 
         @event.listens_for(engine, 'connect')
         def _pragmas(dbapi_connection, _):
             cursor = dbapi_connection.cursor()
             cursor.execute('PRAGMA foreign_keys=ON')
             cursor.execute('PRAGMA journal_mode=WAL')
+            cursor.execute('PRAGMA busy_timeout=30000')
             cursor.close()
 
         return engine

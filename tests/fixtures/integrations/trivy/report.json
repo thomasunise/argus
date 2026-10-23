@@ -1,0 +1,67 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-10-23T12:30:00.000000Z",
+  "ArtifactName": "registry.internal/payments/checkout-api:1.42.0",
+  "ArtifactType": "container_image",
+  "Metadata": {"OS": {"Family": "debian", "Name": "12.7"}, "ImageID": "sha256:4c2f1e9b7a6d5c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7", "RepoTags": ["registry.internal/payments/checkout-api:1.42.0"]},
+  "Results": [
+    {
+      "Target": "registry.internal/payments/checkout-api:1.42.0 (debian 12.7)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-6387", "PkgName": "openssh-server", "InstalledVersion": "1:9.2p1-2+deb12u2", "FixedVersion": "1:9.2p1-2+deb12u3",
+          "Status": "fixed", "Severity": "HIGH", "Title": "openssh: regreSSHion - race condition in SSH allows RCE/DoS",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-6387",
+          "CVSS": {"nvd": {"V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H", "V3Score": 8.1}, "redhat": {"V3Score": 8.1}}
+        },
+        {
+          "VulnerabilityID": "CVE-2023-4911", "PkgName": "libc6", "InstalledVersion": "2.36-9+deb12u3", "FixedVersion": "2.36-9+deb12u4",
+          "Status": "fixed", "Severity": "CRITICAL", "Title": "glibc: buffer overflow in ld.so leading to privilege escalation (Looney Tunables)",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-4911",
+          "CVSS": {"nvd": {"V3Score": 7.8}, "redhat": {"V3Score": 7.8}}
+        }
+      ]
+    },
+    {
+      "Target": "app/requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-35195", "PkgName": "requests", "InstalledVersion": "2.31.0", "FixedVersion": "2.32.0", "Status": "fixed",
+          "Severity": "MEDIUM", "Title": "requests: subsequent requests to the same host ignore cert verification", "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-35195",
+          "CVSS": {"nvd": {"V3Score": 5.6}}
+        }
+      ]
+    },
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "MisconfSummary": {"Successes": 24, "Failures": 1},
+      "Misconfigurations": [
+        {
+          "Type": "Dockerfile Security Check", "ID": "DS002", "AVDID": "AVD-DS-0002", "Title": "Image user should not be 'root'",
+          "Description": "Running containers with 'root' user can lead to a container escape situation.",
+          "Message": "Specify at least 1 USER command in Dockerfile with non-root user as argument",
+          "Resolution": "Add 'USER <non root user name>' line to the Dockerfile", "Severity": "HIGH", "PrimaryURL": "https://avd.aquasec.com/misconfig/ds002",
+          "Status": "FAIL", "CauseMetadata": {"Provider": "Dockerfile", "Service": "general", "StartLine": 1, "EndLine": 1}
+        }
+      ]
+    },
+    {
+      "Target": "app/config/settings.py",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "aws-access-key-id", "Category": "AWS", "Severity": "CRITICAL", "Title": "AWS Access Key ID", "StartLine": 14, "EndLine": 14,
+          "Match": "AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE'",
+          "Code": {"Lines": [{"Number": 14, "Content": "AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE'", "IsCause": true, "Highlighted": "AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE'"}]},
+          "Layer": {"Digest": "sha256:aaaa", "DiffID": "sha256:bbbb"}
+        }
+      ]
+    }
+  ]
+}

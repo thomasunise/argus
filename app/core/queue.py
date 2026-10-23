@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import random
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -75,6 +76,18 @@ class JobQueue:
         self._backend: _MemoryBackend | _RedisBackend = _RedisBackend(settings.redis_url) if settings.redis_url else _MemoryBackend()
         self._workers: list[asyncio.Task] = []
         self._running = False
+        # Workers run on a dedicated thread with their own event loop so a handler's blocking
+        # database work never stalls the HTTP loop (and vice versa). Every backend call is
+        # marshalled onto that loop with _call().
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+
+    async def _call(self, fn, *args, **kwargs):
+        """Run an async backend operation on the worker loop from any thread or loop."""
+        if self._loop is None or not self._loop.is_running():
+            return await fn(*args, **kwargs)
+        future = asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self._loop)
+        return await asyncio.wrap_future(future)
 
     # ---- registration
     def handler(self, kind: str):
@@ -99,7 +112,7 @@ class JobQueue:
         if kind not in self._handlers:
             raise KeyError(f'no handler registered for job kind {kind!r}')
         if idempotency_key:
-            existing = await self._backend.find_by_idempotency(idempotency_key)
+            existing = await self._call(self._backend.find_by_idempotency, idempotency_key)
             if existing and existing.status in {'queued', 'running'}:
                 return existing
         from ..models import uid
@@ -108,55 +121,101 @@ class JobQueue:
                   priority=max(0, min(9, priority)), idempotency_key=idempotency_key,
                   max_attempts=max_attempts or self.settings.queue_max_attempts,
                   not_before=time.time() + delay_seconds if delay_seconds else 0.0)
-        await self._backend.put(job)
+        await self._call(self._backend.put, job)
         return job
 
     async def cancel(self, job_id: str) -> bool:
-        return await self._backend.cancel(job_id)
+        return await self._call(self._backend.cancel, job_id)
 
     async def status(self, job_id: str) -> Job | None:
-        return await self._backend.get(job_id)
+        return await self._call(self._backend.get, job_id)
 
     async def list(self, tenant_id: str | None = None, limit: int = 100, status: str | None = None) -> list[Job]:
-        return await self._backend.list(tenant_id, limit, status)
+        return await self._call(self._backend.list, tenant_id, limit, status)
 
     async def wait(self, job_id: str, timeout: float = 30) -> Job | None:
         """Test helper: poll until the job is terminal."""
         deadline = time.time() + timeout
         while time.time() < deadline:
-            job = await self._backend.get(job_id)
+            job = await self._call(self._backend.get, job_id)
             if job and job.status in {'completed', 'failed', 'cancelled'}:
                 return job
             await asyncio.sleep(0.05)
-        return await self._backend.get(job_id)
+        return await self._call(self._backend.get, job_id)
 
     # ---- worker lifecycle
     async def start(self, concurrency: int | None = None) -> None:
         if self._running:
             return
         self._running = True
-        await self._backend.connect()
         n = concurrency or self.settings.worker_concurrency
-        self._workers = [asyncio.create_task(self._worker_loop(i), name=f'sentinel-worker-{i}') for i in range(n)]
-        self._workers.append(asyncio.create_task(self._reaper_loop(), name='sentinel-reaper'))
+        ready = threading.Event()
+        failure: list[BaseException] = []
+
+        def thread_main() -> None:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._loop = loop
+
+            async def bootstrap():
+                try:
+                    await self._backend.connect()
+                    self._workers = [asyncio.create_task(self._worker_loop(i), name=f'sentinel-worker-{i}') for i in range(n)]
+                    self._workers.append(asyncio.create_task(self._reaper_loop(), name='sentinel-reaper'))
+                except BaseException as exc:  # surfaced to start()
+                    failure.append(exc)
+                finally:
+                    ready.set()
+
+            loop.create_task(bootstrap())
+            try:
+                loop.run_forever()
+            finally:
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.close()
+
+        self._thread = threading.Thread(target=thread_main, name='sentinel-queue', daemon=True)
+        self._thread.start()
+        await asyncio.to_thread(ready.wait, 30)
+        if failure:
+            self._running = False
+            raise failure[0]
 
     async def stop(self) -> None:
+        if not self._running:
+            return
         self._running = False
-        for task in self._workers:
-            task.cancel()
-        for task in self._workers:
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
-        self._workers = []
-        await self._backend.close()
+        loop, thread = self._loop, self._thread
+
+        async def shutdown():
+            for task in self._workers:
+                task.cancel()
+            for task in self._workers:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            self._workers = []
+            await self._backend.close()
+
+        if loop is not None and loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(shutdown(), loop)
+            await asyncio.to_thread(future.result, 30)
+            loop.call_soon_threadsafe(loop.stop)
+        if thread is not None:
+            await asyncio.to_thread(thread.join, 30)
+        self._loop, self._thread = None, None
 
     async def drain(self, timeout: float = 30) -> None:
         """Test helper: wait until no queued or running jobs remain."""
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if not await self._backend.has_pending():
+            if not await self._call(self._backend.has_pending):
                 return
             await asyncio.sleep(0.05)
 
@@ -223,10 +282,10 @@ class JobQueue:
             await asyncio.sleep(5)
 
     async def _extend_lease(self, job: Job) -> None:
-        await self._backend.extend(job)
+        await self._call(self._backend.extend, job)
 
     async def _is_cancelled(self, job_id: str) -> bool:
-        job = await self._backend.get(job_id)
+        job = await self._call(self._backend.get, job_id)
         return bool(job and job.status == 'cancelled')
 
 

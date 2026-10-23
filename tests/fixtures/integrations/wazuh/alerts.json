@@ -1,0 +1,43 @@
+[
+  {
+    "id": "1729687200.183726",
+    "timestamp": "2026-10-23T12:40:00.512+0000",
+    "rule": {"id": "5760", "level": 5, "description": "sshd: authentication failed.", "groups": ["syslog", "sshd", "authentication_failed"],
+             "mitre": {"id": ["T1110.001"], "tactic": ["Credential Access"], "technique": ["Password Guessing"]}, "firedtimes": 3},
+    "agent": {"id": "012", "name": "web-prod-01", "ip": "10.20.4.11"},
+    "manager": {"name": "wazuh-manager"},
+    "decoder": {"name": "sshd", "parent": "sshd"},
+    "data": {"srcip": "203.0.113.45", "srcport": "51022", "srcuser": "deploy", "dstuser": "deploy"},
+    "location": "/var/log/auth.log",
+    "full_log": "Oct 23 12:40:00 web-prod-01 sshd[22114]: Failed password for deploy from 203.0.113.45 port 51022 ssh2",
+    "GeoLocation": {"country_name": "Netherlands", "country_code2": "NL", "city_name": "Amsterdam", "location": {"lat": 52.3824, "lon": 4.8995}}
+  },
+  {
+    "id": "1729687260.183901",
+    "timestamp": "2026-10-23T12:41:00.004+0000",
+    "rule": {"id": "550", "level": 7, "description": "Integrity checksum changed.", "groups": ["ossec", "syscheck", "syscheck_entry_modified", "syscheck_file"]},
+    "agent": {"id": "012", "name": "web-prod-01", "ip": "10.20.4.11"},
+    "decoder": {"name": "syscheck_integrity_changed"},
+    "syscheck": {"path": "/etc/sudoers.d/90-cloud-init-users", "event": "modified", "mode": "realtime", "uname_after": "root",
+                 "sha256_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "changed_attributes": ["size", "mtime", "sha256"]},
+    "location": "syscheck"
+  },
+  {
+    "id": "1729687320.184100",
+    "timestamp": "2026-10-23T12:42:00.000+0000",
+    "rule": {"id": "5402", "level": 3, "description": "Successful sudo to ROOT executed.", "groups": ["syslog", "sudo"]},
+    "agent": {"id": "012", "name": "web-prod-01", "ip": "10.20.4.11"},
+    "data": {"srcuser": "deploy", "dstuser": "root", "command": "/usr/bin/cat /etc/shadow", "tty": "pts/0", "pwd": "/home/deploy"},
+    "location": "/var/log/auth.log"
+  },
+  {
+    "id": "1729687380.184300",
+    "timestamp": "2026-10-23T12:43:00.000+0000",
+    "rule": {"id": "5712", "level": 10, "description": "sshd: brute force trying to get access to the system. Authentication failed.",
+             "groups": ["syslog", "sshd", "authentication_failures"], "frequency": 8, "mitre": {"id": ["T1110"], "tactic": ["Credential Access"]}},
+    "agent": {"id": "012", "name": "web-prod-01", "ip": "10.20.4.11"},
+    "data": {"srcip": "203.0.113.45", "srcuser": "deploy"},
+    "location": "/var/log/auth.log",
+    "previous_output": "Oct 23 12:42:58 web-prod-01 sshd[22140]: Failed password for deploy from 203.0.113.45 port 51030 ssh2"
+  }
+]

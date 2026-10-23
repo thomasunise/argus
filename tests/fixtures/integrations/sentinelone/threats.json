@@ -1,0 +1,54 @@
+{
+  "pagination": {"totalItems": 2, "nextCursor": null},
+  "data": [
+    {
+      "id": "2157203419586210873",
+      "agentDetectionInfo": {
+        "accountId": "1234567890123456789", "accountName": "Example Corp", "agentDetectionState": "full_mode", "agentDomain": "CORP", "agentIpV4": "10.40.2.88",
+        "agentIpV6": "fe80::1", "agentLastLoggedInUpn": "mike.r@example.com", "agentLastLoggedInUserName": "mike.r", "agentMitigationMode": "protect",
+        "agentOsName": "Windows 11 Pro", "agentOsRevision": "22631", "agentRegisteredAt": "2025-03-02T08:11:00.000000Z", "agentUuid": "6c0b1f2a3d4e5f6a7b8c9d0e1f2a3b4c",
+        "agentVersion": "24.2.3.471", "externalIp": "203.0.113.150", "groupId": "1234567890123456790", "groupName": "Workstations", "siteId": "1234567890123456791", "siteName": "HQ"
+      },
+      "agentRealtimeInfo": {
+        "accountId": "1234567890123456789", "accountName": "Example Corp", "activeThreats": 1, "agentComputerName": "MKT-WS-0088", "agentDecommissionedAt": null, "agentDomain": "CORP",
+        "agentId": "1234567890123456792", "agentInfected": true, "agentIsActive": true, "agentIsDecommissioned": false, "agentMachineType": "laptop", "agentMitigationMode": "protect",
+        "agentNetworkStatus": "connected", "agentOsName": "Windows 11 Pro", "agentOsType": "windows", "agentUuid": "6c0b1f2a3d4e5f6a7b8c9d0e1f2a3b4c", "agentVersion": "24.2.3.471",
+        "groupName": "Workstations", "siteName": "HQ", "networkInterfaces": [{"id": "1", "inet": ["10.40.2.88"], "name": "Ethernet", "physical": "00:15:5d:aa:bb:cc"}]
+      },
+      "indicators": [
+        {"category": "Malware", "description": "This file is a known malicious file (LummaStealer family).", "ids": [1], "tactics": [{"name": "Credential Access", "source": "MITRE", "techniques": [{"link": "https://attack.mitre.org/techniques/T1555/", "name": "T1555"}]}]},
+        {"category": "Exploitation", "description": "The process attempted to inject code into another process.", "ids": [12], "tactics": [{"name": "Defense Evasion", "source": "MITRE", "techniques": [{"name": "T1055"}]}]}
+      ],
+      "kubernetesInfo": {"cluster": null, "namespace": null, "pod": null},
+      "mitigationStatus": [
+        {"action": "kill", "status": "success", "actionsCounters": {"total": 1, "success": 1, "failed": 0, "notFound": 0, "pendingReboot": 0}, "lastUpdate": "2026-10-23T12:31:02.000000Z", "mitigationStartedAt": "2026-10-23T12:31:01.000000Z", "mitigationEndedAt": "2026-10-23T12:31:02.000000Z"},
+        {"action": "quarantine", "status": "failed", "actionsCounters": {"total": 1, "success": 0, "failed": 1, "notFound": 0, "pendingReboot": 0}, "lastUpdate": "2026-10-23T12:31:05.000000Z"}
+      ],
+      "threatInfo": {
+        "analystVerdict": "undefined", "analystVerdictDescription": "Undefined", "automaticallyResolved": false, "classification": "Malware", "classificationSource": "Cloud",
+        "cloudFilesHashVerdict": "black", "collectionId": "1234567890123456793", "confidenceLevel": "malicious", "createdAt": "2026-10-23T12:31:00.482000Z", "detectionEngines": [{"key": "pre_execution", "title": "On-Write Static AI"}],
+        "detectionType": "static", "engines": ["On-Write Static AI", "Behavioral AI"], "externalTicketExists": false, "failedActions": true, "fileExtension": "EXE", "fileExtensionType": "Executable",
+        "filePath": "\\Device\\HarddiskVolume3\\Users\\mike.r\\Downloads\\Adobe_Reader_Update_2026.exe", "fileSize": 3291648, "fileVerificationType": "NotSigned", "identifiedAt": "2026-10-23T12:30:59.998000Z",
+        "incidentStatus": "unresolved", "incidentStatusDescription": "Unresolved", "initiatedBy": "agent_policy", "initiatedByDescription": "Agent Policy", "initiatingUserId": null, "initiatingUsername": null,
+        "isFileless": false, "isValidCertificate": false, "maliciousProcessArguments": "\"C:\\Users\\mike.r\\Downloads\\Adobe_Reader_Update_2026.exe\" /silent", "md5": null, "mitigatedPreemptively": false,
+        "mitigationStatus": "not_mitigated", "mitigationStatusDescription": "Not mitigated", "originatorProcess": "chrome.exe", "pendingActions": false, "processUser": "CORP\\mike.r", "publisherName": "",
+        "reachedEventsLimit": false, "rebootRequired": false, "sha1": "b5c7a6d9e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4", "sha256": "f6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5", "storyline": "C4D3E2F1-A0B9-4C8D-7E6F-5A4B3C2D1E0F",
+        "threatId": "2157203419586210873", "threatName": "Adobe_Reader_Update_2026.exe", "updatedAt": "2026-10-23T12:31:05.000000Z"
+      },
+      "whiteningOptions": ["hash", "path"]
+    },
+    {
+      "id": "2157203419586210999",
+      "agentDetectionInfo": {"accountName": "Example Corp", "agentDomain": "CORP", "agentIpV4": "10.41.7.12", "agentLastLoggedInUserName": "build-agent", "agentOsName": "Ubuntu 22.04", "agentUuid": "7d1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f", "externalIp": "203.0.113.151", "groupName": "Build Servers", "siteName": "DC1"},
+      "agentRealtimeInfo": {"agentComputerName": "ci-runner-12", "agentIsActive": true, "agentOsType": "linux", "agentOsName": "Ubuntu 22.04", "agentUuid": "7d1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f", "siteName": "DC1"},
+      "indicators": [{"category": "Reconnaissance", "description": "Process enumerated running processes and network configuration.", "ids": [33], "tactics": [{"name": "Discovery", "source": "MITRE", "techniques": [{"name": "T1057"}]}]}],
+      "mitigationStatus": [{"action": "kill", "status": "success", "lastUpdate": "2026-10-23T12:40:11.000000Z"}],
+      "threatInfo": {
+        "analystVerdict": "undefined", "classification": "PUA", "classificationSource": "Engine", "confidenceLevel": "suspicious", "createdAt": "2026-10-23T12:40:10.000000Z",
+        "detectionType": "dynamic", "engines": ["Behavioral AI"], "filePath": "/tmp/.x/nmap", "identifiedAt": "2026-10-23T12:40:09.500000Z", "incidentStatus": "unresolved", "initiatedBy": "agent_policy",
+        "mitigationStatus": "mitigated", "mitigationStatusDescription": "Mitigated", "originatorProcess": "bash", "processUser": "build-agent", "sha1": "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b", "storyline": "1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D",
+        "threatId": "2157203419586210999", "threatName": "nmap", "updatedAt": "2026-10-23T12:40:11.000000Z"
+      }
+    }
+  ]
+}

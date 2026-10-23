@@ -1,0 +1,62 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:00:05Z", "eventSource": "sts.amazonaws.com", "eventName": "AssumeRole", "awsRegion": "eu-west-1",
+      "sourceIPAddress": "198.51.100.23", "userAgent": "python-requests/2.32.3", "eventID": "ct-0001-assume-role", "eventType": "AwsApiCall", "readOnly": true,
+      "recipientAccountId": "123456789012", "managementEvent": true, "eventCategory": "Management",
+      "userIdentity": {"type": "IAMUser", "principalId": "AIDAEXAMPLEUSER", "arn": "arn:aws:iam::123456789012:user/ci-deployer", "accountId": "123456789012", "userName": "ci-deployer",
+                       "accessKeyId": "AKIAIOSFODNN7EXAMPLE"},
+      "requestParameters": {"roleArn": "arn:aws:iam::123456789012:role/PaymentsAdmin", "roleSessionName": "ci-deployer-session", "durationSeconds": 3600},
+      "responseElements": {"credentials": {"accessKeyId": "ASIAEXAMPLE", "sessionToken": "FwoGZXIvYXdzEExampleSessionTokenValue1234567890", "expiration": "Oct 23, 2026, 1:00:05 PM"},
+                           "assumedRoleUser": {"assumedRoleId": "AROAEXAMPLE:ci-deployer-session", "arn": "arn:aws:sts::123456789012:assumed-role/PaymentsAdmin/ci-deployer-session"}},
+      "resources": [{"accountId": "123456789012", "type": "AWS::IAM::Role", "ARN": "arn:aws:iam::123456789012:role/PaymentsAdmin"}],
+      "tlsDetails": {"tlsVersion": "TLSv1.3", "cipherSuite": "TLS_AES_128_GCM_SHA256", "clientProvidedHostHeader": "sts.eu-west-1.amazonaws.com"}
+    },
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:03:40Z", "eventSource": "iam.amazonaws.com", "eventName": "AttachUserPolicy", "awsRegion": "us-east-1",
+      "sourceIPAddress": "198.51.100.23", "userAgent": "python-requests/2.32.3", "eventID": "ct-0002-attach-policy", "eventType": "AwsApiCall", "readOnly": false,
+      "recipientAccountId": "123456789012", "managementEvent": true,
+      "userIdentity": {"type": "AssumedRole", "principalId": "AROAEXAMPLE:ci-deployer-session", "arn": "arn:aws:sts::123456789012:assumed-role/PaymentsAdmin/ci-deployer-session",
+                       "accountId": "123456789012", "accessKeyId": "ASIAEXAMPLE",
+                       "sessionContext": {"sessionIssuer": {"type": "Role", "principalId": "AROAEXAMPLE", "arn": "arn:aws:iam::123456789012:role/PaymentsAdmin", "accountId": "123456789012", "userName": "PaymentsAdmin"},
+                                          "attributes": {"creationDate": "2026-10-23T12:00:05Z", "mfaAuthenticated": "false"}}},
+      "requestParameters": {"userName": "ci-deployer", "policyArn": "arn:aws:iam::aws:policy/AdministratorAccess"},
+      "responseElements": null
+    },
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:06:12Z", "eventSource": "s3.amazonaws.com", "eventName": "GetObject", "awsRegion": "eu-west-1",
+      "sourceIPAddress": "198.51.100.23", "userAgent": "[python-requests/2.32.3]", "eventID": "ct-0003-get-object", "eventType": "AwsApiCall", "readOnly": true,
+      "recipientAccountId": "123456789012", "managementEvent": false, "eventCategory": "Data",
+      "userIdentity": {"type": "AssumedRole", "principalId": "AROAEXAMPLE:ci-deployer-session", "arn": "arn:aws:sts::123456789012:assumed-role/PaymentsAdmin/ci-deployer-session",
+                       "accountId": "123456789012", "sessionContext": {"sessionIssuer": {"arn": "arn:aws:iam::123456789012:role/PaymentsAdmin"}}},
+      "requestParameters": {"bucketName": "payments-card-exports", "Host": "payments-card-exports.s3.eu-west-1.amazonaws.com", "key": "2026/10/settlements-full.csv"},
+      "additionalEventData": {"SignatureVersion": "SigV4", "CipherSuite": "TLS_AES_128_GCM_SHA256", "bytesTransferredOut": 48213984, "AuthenticationMethod": "AuthHeader"},
+      "resources": [{"type": "AWS::S3::Object", "ARN": "arn:aws:s3:::payments-card-exports/2026/10/settlements-full.csv"}, {"accountId": "123456789012", "type": "AWS::S3::Bucket", "ARN": "arn:aws:s3:::payments-card-exports"}]
+    },
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:08:00Z", "eventSource": "s3.amazonaws.com", "eventName": "PutBucketPolicy", "awsRegion": "eu-west-1",
+      "sourceIPAddress": "203.0.113.8", "userAgent": "[Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AWS Console]", "eventID": "ct-0004-put-bucket-policy", "eventType": "AwsApiCall",
+      "readOnly": false, "recipientAccountId": "123456789012", "managementEvent": true,
+      "userIdentity": {"type": "IAMUser", "principalId": "AIDAEXAMPLEUSER2", "arn": "arn:aws:iam::123456789012:user/alice.ops", "accountId": "123456789012", "userName": "alice.ops",
+                       "sessionContext": {"attributes": {"mfaAuthenticated": "true", "creationDate": "2026-10-23T11:30:00Z"}}},
+      "requestParameters": {"bucketName": "marketing-assets-public", "bucketPolicy": {"Version": "2012-10-17", "Statement": [{"Sid": "PublicRead", "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::marketing-assets-public/*"}]}},
+      "responseElements": null
+    },
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:09:30Z", "eventSource": "ec2.amazonaws.com", "eventName": "AuthorizeSecurityGroupIngress", "awsRegion": "eu-west-1",
+      "sourceIPAddress": "203.0.113.8", "userAgent": "aws-cli/2.17.0 Python/3.11.9", "eventID": "ct-0005-authorize-sg", "eventType": "AwsApiCall", "readOnly": false,
+      "recipientAccountId": "123456789012", "managementEvent": true,
+      "userIdentity": {"type": "IAMUser", "principalId": "AIDAEXAMPLEUSER2", "arn": "arn:aws:iam::123456789012:user/alice.ops", "accountId": "123456789012", "userName": "alice.ops"},
+      "requestParameters": {"groupId": "sg-0123456789abcdef0", "ipPermissions": {"items": [{"ipProtocol": "tcp", "fromPort": 22, "toPort": 22, "ipRanges": {"items": [{"cidrIp": "0.0.0.0/0", "description": "temp debug"}]}}]}},
+      "responseElements": {"requestId": "6c0d2b1e-example", "_return": true, "securityGroupRuleSet": {"items": [{"securityGroupRuleId": "sgr-0abc", "groupId": "sg-0123456789abcdef0", "isEgress": false, "ipProtocol": "tcp", "fromPort": 22, "toPort": 22, "cidrIpv4": "0.0.0.0/0"}]}}
+    },
+    {
+      "eventVersion": "1.09", "eventTime": "2026-10-23T12:10:00Z", "eventSource": "ec2.amazonaws.com", "eventName": "DescribeInstances", "awsRegion": "eu-west-1",
+      "sourceIPAddress": "10.20.4.11", "userAgent": "Boto3/1.34.0 md/Botocore#1.34.0 ua/2.0 os/linux", "eventID": "ct-0006-describe", "eventType": "AwsApiCall", "readOnly": true,
+      "recipientAccountId": "123456789012", "managementEvent": true,
+      "userIdentity": {"type": "AssumedRole", "principalId": "AROAEXAMPLE2:i-0abc123def456789a", "arn": "arn:aws:sts::123456789012:assumed-role/payments-api-instance-role/i-0abc123def456789a", "accountId": "123456789012"},
+      "requestParameters": {"instancesSet": {}, "filterSet": {"items": [{"name": "tag:Service", "valueSet": {"items": [{"value": "payments"}]}}]}},
+      "responseElements": null
+    }
+  ]
+}

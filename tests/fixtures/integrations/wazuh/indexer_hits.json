@@ -1,0 +1,33 @@
+{
+  "took": 12,
+  "timed_out": false,
+  "hits": {
+    "total": {"value": 2, "relation": "eq"},
+    "hits": [
+      {
+        "_index": "wazuh-alerts-4.x-2026.10.23",
+        "_id": "kQ7xZ5IBz1q-indexer-0001",
+        "_source": {
+          "timestamp": "2026-10-23T12:50:00.000+0000",
+          "rule": {"id": "510", "level": 7, "description": "Host-based anomaly detection event (rootcheck).", "groups": ["ossec", "rootcheck"]},
+          "agent": {"id": "020", "name": "db-prod-02", "ip": "10.20.5.31"},
+          "data": {"title": "Trojaned version of file detected.", "file": "/usr/bin/ps"},
+          "location": "rootcheck"
+        }
+      },
+      {
+        "_index": "wazuh-alerts-4.x-2026.10.23",
+        "_id": "kQ7xZ5IBz1q-indexer-0002",
+        "_source": {
+          "id": "1729687900.200001",
+          "timestamp": "2026-10-23T12:51:40.000+0000",
+          "rule": {"id": "100210", "level": 13, "description": "Windows: Mimikatz credential dumping tool detected.", "groups": ["windows", "sysmon", "malware"],
+                   "mitre": {"id": ["T1003.001"], "tactic": ["Credential Access"]}},
+          "agent": {"id": "031", "name": "FIN-WS-114", "ip": "10.30.1.114"},
+          "data": {"win": {"eventdata": {"image": "C:\\\\Users\\\\Public\\\\mimikatz.exe", "targetUserName": "svc_backup", "commandLine": "mimikatz.exe privilege::debug sekurlsa::logonpasswords"}}},
+          "location": "EventChannel"
+        }
+      }
+    ]
+  }
+}

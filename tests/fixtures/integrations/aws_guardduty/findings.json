@@ -1,0 +1,75 @@
+[
+  {
+    "AccountId": "123456789012",
+    "Arn": "arn:aws:guardduty:eu-west-1:123456789012:detector/12abc34d567e8fa901bc2d34e56789f0/finding/6ab1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+    "CreatedAt": "2026-10-23T12:20:11.000Z",
+    "Description": "Credentials that were created exclusively for an EC2 instance through an instance launch role are being used from an external IP address.",
+    "Id": "6ab1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+    "Partition": "aws",
+    "Region": "eu-west-1",
+    "Resource": {
+      "AccessKeyDetails": {"AccessKeyId": "ASIAEXAMPLEKEY12345", "PrincipalId": "AROAEXAMPLEROLEID:i-0abc123def456789a", "UserName": "payments-api-instance-role", "UserType": "AssumedRole"},
+      "InstanceDetails": {"InstanceId": "i-0abc123def456789a", "InstanceType": "m6i.large", "AvailabilityZone": "eu-west-1a", "Tags": [{"Key": "Name", "Value": "payments-api"}]},
+      "ResourceType": "AccessKey"
+    },
+    "SchemaVersion": "2.0",
+    "Service": {
+      "Action": {
+        "ActionType": "AWS_API_CALL",
+        "AwsApiCallAction": {
+          "Api": "GetCallerIdentity", "CallerType": "Remote IP", "ServiceName": "sts.amazonaws.com", "UserAgent": "aws-cli/2.17.0 Python/3.11.9 Linux/6.5.0 exe/x86_64.ubuntu.22",
+          "RemoteIpDetails": {
+            "IpAddressV4": "198.51.100.23",
+            "City": {"CityName": "Lagos"}, "Country": {"CountryName": "Nigeria", "CountryCode": "NG"},
+            "GeoLocation": {"Lat": 6.4541, "Lon": 3.3947}, "Organization": {"Asn": "64496", "AsnOrg": "EXAMPLE-ISP", "Isp": "Example ISP", "Org": "Example ISP"}
+          }
+        }
+      },
+      "Archived": false, "Count": 3, "DetectorId": "12abc34d567e8fa901bc2d34e56789f0", "EventFirstSeen": "2026-10-23T12:18:02.000Z", "EventLastSeen": "2026-10-23T12:20:09.000Z",
+      "ResourceRole": "TARGET", "ServiceName": "guardduty"
+    },
+    "Severity": 8,
+    "Title": "Credentials for the EC2 instance role payments-api-instance-role were used from an external IP address.",
+    "Type": "UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS",
+    "UpdatedAt": "2026-10-23T12:20:11.000Z"
+  },
+  {
+    "version": "0",
+    "id": "cd2d702e-ab31-411b-9344-793ce56b1bc7",
+    "detail-type": "GuardDuty Finding",
+    "source": "aws.guardduty",
+    "account": "123456789012",
+    "time": "2026-10-23T12:25:00Z",
+    "region": "eu-west-1",
+    "resources": [],
+    "detail": {
+      "schemaVersion": "2.0",
+      "accountId": "123456789012",
+      "region": "eu-west-1",
+      "partition": "aws",
+      "id": "8cb2d1e0f9a8b7c6d5e4f3a2b1c0d9e8",
+      "arn": "arn:aws:guardduty:eu-west-1:123456789012:detector/12abc34d567e8fa901bc2d34e56789f0/finding/8cb2d1e0f9a8b7c6d5e4f3a2b1c0d9e8",
+      "type": "Recon:EC2/PortProbeUnprotectedPort",
+      "resource": {
+        "resourceType": "Instance",
+        "instanceDetails": {"instanceId": "i-0fedcba9876543210", "instanceType": "t3.medium", "availabilityZone": "eu-west-1b", "tags": [{"key": "Name", "value": "bastion"}],
+                            "networkInterfaces": [{"publicIp": "203.0.113.10", "privateIpAddress": "10.20.1.10", "securityGroups": [{"groupName": "bastion-sg", "groupId": "sg-0123456789abcdef0"}]}]}
+      },
+      "service": {
+        "serviceName": "guardduty", "detectorId": "12abc34d567e8fa901bc2d34e56789f0",
+        "action": {
+          "actionType": "PORT_PROBE",
+          "portProbeAction": {"blocked": false, "portProbeDetails": [{"localPortDetails": {"port": 22, "portName": "SSH"},
+                              "remoteIpDetails": {"ipAddressV4": "192.0.2.77", "country": {"countryName": "Romania"}, "geoLocation": {"lat": 44.4323, "lon": 26.1063}, "organization": {"org": "EXAMPLE-NET"}}}]}
+        },
+        "resourceRole": "TARGET", "additionalInfo": {"threatName": "Scanner", "threatListName": "ProofPoint"}, "eventFirstSeen": "2026-10-23T12:10:00Z",
+        "eventLastSeen": "2026-10-23T12:24:30Z", "archived": false, "count": 41
+      },
+      "severity": 2,
+      "createdAt": "2026-10-23T12:10:05.000Z",
+      "updatedAt": "2026-10-23T12:24:35.000Z",
+      "title": "Unprotected port on EC2 instance i-0fedcba9876543210 is being probed.",
+      "description": "EC2 instance has an unprotected port which is being probed by a known malicious host."
+    }
+  }
+]

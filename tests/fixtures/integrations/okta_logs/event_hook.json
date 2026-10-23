@@ -1,0 +1,27 @@
+{
+  "eventType": "com.okta.event_hook",
+  "eventTypeVersion": "1.0",
+  "cloudEventsVersion": "0.1",
+  "source": "https://example.okta.com/api/v1/eventHooks/who1abcd2efgh3ijk4l5",
+  "eventId": "7f0c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+  "eventTime": "2026-10-23T12:20:00.000Z",
+  "data": {
+    "events": [
+      {
+        "uuid": "0f6b8f2e-0a1b-4c2d-9e3f-okta00000011",
+        "published": "2026-10-23T12:19:58.000Z",
+        "eventType": "user.mfa.factor.deactivate",
+        "version": "0",
+        "severity": "INFO",
+        "displayMessage": "Reset factor for user",
+        "actor": {"id": "00u1abcd2efgh3ijk4l5", "type": "User", "alternateId": "dana.k@example.com", "displayName": "Dana K"},
+        "client": {"userAgent": {"rawUserAgent": "python-requests/2.32.3"}, "ipAddress": "203.0.113.60", "geographicalContext": {"city": "London", "country": "United Kingdom", "geolocation": {"lat": 51.5237, "lon": -0.0824}}},
+        "outcome": {"result": "SUCCESS"},
+        "target": [{"id": "00u9zyxw8vuts7rqp6on", "type": "User", "alternateId": "svc-automation@example.com", "displayName": "svc automation"},
+                   {"id": "ost1abcd2efgh3ijk4l5", "type": "Factor", "alternateId": "unknown", "displayName": "Okta Verify Push"}],
+        "transaction": {"type": "WEB", "id": "ZxQ6abcd2efgh3ijk4l5"},
+        "debugContext": {"debugData": {"requestId": "ZxQ6abcd2efgh3ijk4l5"}}
+      }
+    ]
+  }
+}

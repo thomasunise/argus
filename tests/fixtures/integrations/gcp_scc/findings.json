@@ -1,0 +1,67 @@
+[
+  {
+    "finding": {
+      "name": "organizations/987654321098/sources/5678901234567890123/findings/4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c",
+      "parent": "organizations/987654321098/sources/5678901234567890123",
+      "resourceName": "//storage.googleapis.com/payments-exports-eu",
+      "state": "ACTIVE",
+      "category": "PUBLIC_BUCKET_ACL",
+      "externalUri": "https://console.cloud.google.com/storage/browser/payments-exports-eu",
+      "sourceProperties": {
+        "ReactivationCount": 0, "ExceptionInstructions": "Add the security mark \"allow_public_bucket_acl\" to the asset with a value of \"true\" to prevent this finding from being activated again.",
+        "SeverityLevel": "High", "Recommendation": "Go to https://console.cloud.google.com/storage/browser/payments-exports-eu and remove entries for allUsers and allAuthenticatedUsers from the permissions.",
+        "ProjectId": "payments-prod-412905", "AssetCreationTime": "2024-02-11T09:12:41.188Z", "ScannerName": "STORAGE_SCANNER",
+        "ScanRunId": "2026-10-23T12:00:00.000-07:00", "Explanation": "This bucket is publicly accessible: the binding roles/storage.objectViewer is granted to allUsers."
+      },
+      "securityMarks": {"name": "organizations/987654321098/sources/5678901234567890123/findings/4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c/securityMarks"},
+      "eventTime": "2026-10-23T12:05:00.000Z",
+      "createTime": "2026-10-23T12:05:03.000Z",
+      "severity": "HIGH",
+      "findingClass": "MISCONFIGURATION",
+      "mute": "UNDEFINED",
+      "description": "Cloud Storage bucket payments-exports-eu is publicly accessible.",
+      "nextSteps": "Remove allUsers and allAuthenticatedUsers from the bucket IAM policy.",
+      "mitreAttack": {"primaryTactic": "INITIAL_ACCESS", "primaryTechniques": ["EXPLOIT_PUBLIC_FACING_APPLICATION"]}
+    },
+    "resource": {"name": "//storage.googleapis.com/payments-exports-eu", "projectName": "//cloudresourcemanager.googleapis.com/projects/412905000000", "projectDisplayName": "payments-prod-412905",
+                 "parentName": "//cloudresourcemanager.googleapis.com/projects/412905000000", "parentDisplayName": "payments-prod-412905", "type": "google.cloud.storage.Bucket"}
+  },
+  {
+    "insertId": "-5q2zb1e3m8f9",
+    "logName": "projects/payments-prod-412905/logs/cloudaudit.googleapis.com%2Factivity",
+    "severity": "NOTICE",
+    "timestamp": "2026-10-23T12:03:55.182763Z",
+    "receiveTimestamp": "2026-10-23T12:03:56.001Z",
+    "resource": {"type": "gcs_bucket", "labels": {"bucket_name": "payments-exports-eu", "location": "europe-west1", "project_id": "payments-prod-412905"}},
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "serviceName": "storage.googleapis.com",
+      "methodName": "storage.setIamPermissions",
+      "resourceName": "projects/_/buckets/payments-exports-eu",
+      "authenticationInfo": {"principalEmail": "carol.data@example.com"},
+      "authorizationInfo": [{"resource": "projects/_/buckets/payments-exports-eu", "permission": "storage.buckets.setIamPolicy", "granted": true, "resourceAttributes": {}}],
+      "requestMetadata": {"callerIp": "203.0.113.120", "callerSuppliedUserAgent": "google-cloud-sdk gcloud/492.0.0 command/gcloud.storage.buckets.add-iam-policy-binding", "requestAttributes": {"time": "2026-10-23T12:03:55.100Z", "auth": {}}, "destinationAttributes": {}},
+      "request": {"policy": {"bindings": [{"role": "roles/storage.objectViewer", "members": ["allUsers"]}, {"role": "roles/storage.admin", "members": ["group:data-eng@example.com"]}], "etag": "CAM="}, "resource": "projects/_/buckets/payments-exports-eu"},
+      "response": {"etag": "CAQ=", "bindings": [{"role": "roles/storage.objectViewer", "members": ["allUsers"]}]},
+      "status": {}
+    }
+  },
+  {
+    "insertId": "9x1k2m3n4p5q",
+    "logName": "projects/payments-prod-412905/logs/cloudaudit.googleapis.com%2Fdata_access",
+    "severity": "INFO",
+    "timestamp": "2026-10-23T12:07:10.000Z",
+    "resource": {"type": "service_account", "labels": {"email_id": "payments-deployer@payments-prod-412905.iam.gserviceaccount.com", "project_id": "payments-prod-412905", "unique_id": "101234567890123456789"}},
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "serviceName": "iamcredentials.googleapis.com",
+      "methodName": "GenerateAccessToken",
+      "resourceName": "projects/-/serviceAccounts/101234567890123456789",
+      "authenticationInfo": {"principalEmail": "carol.data@example.com", "serviceAccountDelegationInfo": [{"firstPartyPrincipal": {"principalEmail": "carol.data@example.com"}}]},
+      "authorizationInfo": [{"permission": "iam.serviceAccounts.getAccessToken", "granted": true, "resourceAttributes": {}}],
+      "requestMetadata": {"callerIp": "203.0.113.120", "callerSuppliedUserAgent": "google-api-python-client/2.140.0 (gzip)"},
+      "request": {"@type": "type.googleapis.com/google.iam.credentials.v1.GenerateAccessTokenRequest", "name": "projects/-/serviceAccounts/payments-deployer@payments-prod-412905.iam.gserviceaccount.com", "scope": ["https://www.googleapis.com/auth/cloud-platform"]},
+      "status": {}
+    }
+  }
+]

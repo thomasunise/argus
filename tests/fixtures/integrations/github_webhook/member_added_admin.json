@@ -1,0 +1,11 @@
+{
+  "action": "added",
+  "member": {"login": "contractor-dev", "id": 7788990, "node_id": "MDQ6VXNlcjc3ODg5OTA=", "type": "User", "html_url": "https://github.com/contractor-dev", "site_admin": false},
+  "changes": {"permission": {"to": "admin"}, "role_name": {"to": "admin"}},
+  "repository": {
+    "id": 554433221, "name": "payments-api", "full_name": "example-org/payments-api", "private": true, "owner": {"login": "example-org", "id": 1122334, "type": "Organization"},
+    "html_url": "https://github.com/example-org/payments-api", "default_branch": "main", "visibility": "private", "updated_at": "2026-10-23T12:38:00Z"
+  },
+  "organization": {"login": "example-org", "id": 1122334},
+  "sender": {"login": "dana-k", "id": 4455667, "type": "User"}
+}

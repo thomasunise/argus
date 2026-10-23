@@ -1,0 +1,75 @@
+{
+  "kind": "EventList",
+  "apiVersion": "audit.k8s.io/v1",
+  "metadata": {},
+  "items": [
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "RequestResponse", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000001", "stage": "RequestReceived",
+      "requestURI": "/api/v1/namespaces/payments/pods", "verb": "create",
+      "user": {"username": "ci-deployer@example.com", "uid": "oidc:ci-deployer", "groups": ["system:authenticated", "deployers"]},
+      "sourceIPs": ["10.20.9.14"], "userAgent": "kubectl/v1.31.1 (linux/amd64) kubernetes/948afe5",
+      "objectRef": {"resource": "pods", "namespace": "payments", "name": "node-debugger-x7k2p", "apiVersion": "v1"},
+      "requestReceivedTimestamp": "2026-10-23T12:22:00.100000Z", "stageTimestamp": "2026-10-23T12:22:00.100000Z"
+    },
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "RequestResponse", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000001", "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/payments/pods", "verb": "create",
+      "user": {"username": "ci-deployer@example.com", "uid": "oidc:ci-deployer", "groups": ["system:authenticated", "deployers"]},
+      "sourceIPs": ["10.20.9.14"], "userAgent": "kubectl/v1.31.1 (linux/amd64) kubernetes/948afe5",
+      "objectRef": {"resource": "pods", "namespace": "payments", "name": "node-debugger-x7k2p", "apiVersion": "v1"},
+      "responseStatus": {"metadata": {}, "code": 201},
+      "requestObject": {
+        "kind": "Pod", "apiVersion": "v1", "metadata": {"name": "node-debugger-x7k2p", "namespace": "payments", "labels": {"app": "node-debugger"}},
+        "spec": {"hostPID": true, "hostNetwork": true, "serviceAccountName": "default", "nodeName": "ip-10-20-7-41.eu-west-1.compute.internal",
+                 "containers": [{"name": "debugger", "image": "docker.io/library/ubuntu:24.04", "command": ["sleep", "infinity"], "securityContext": {"privileged": true},
+                                 "volumeMounts": [{"name": "host-root", "mountPath": "/host"}]}],
+                 "volumes": [{"name": "host-root", "hostPath": {"path": "/"}}]}
+      },
+      "responseObject": {"kind": "Pod", "apiVersion": "v1", "metadata": {"name": "node-debugger-x7k2p", "namespace": "payments", "uid": "3f4e5d6c-7b8a-4f9e-8d7c-6b5a4f3e2d1c"}},
+      "requestReceivedTimestamp": "2026-10-23T12:22:00.100000Z", "stageTimestamp": "2026-10-23T12:22:00.412000Z",
+      "annotations": {"authorization.k8s.io/decision": "allow", "authorization.k8s.io/reason": "RBAC: allowed by ClusterRoleBinding \"deployers-admin\" of ClusterRole \"cluster-admin\" to Group \"deployers\"",
+                      "pod-security.kubernetes.io/audit-violations": "would violate PodSecurity \"restricted:latest\": host namespaces (hostNetwork=true, hostPID=true), privileged (container \"debugger\" must not set securityContext.privileged=true)"}
+    },
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "Metadata", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000002", "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/payments/secrets/stripe-api-key", "verb": "get",
+      "user": {"username": "ci-deployer@example.com", "uid": "oidc:ci-deployer", "groups": ["system:authenticated", "deployers"]},
+      "sourceIPs": ["10.20.9.14"], "userAgent": "kubectl/v1.31.1 (linux/amd64) kubernetes/948afe5",
+      "objectRef": {"resource": "secrets", "namespace": "payments", "name": "stripe-api-key", "apiVersion": "v1"},
+      "responseStatus": {"metadata": {}, "code": 200},
+      "requestReceivedTimestamp": "2026-10-23T12:23:10.000000Z", "stageTimestamp": "2026-10-23T12:23:10.021000Z",
+      "annotations": {"authorization.k8s.io/decision": "allow", "authorization.k8s.io/reason": "RBAC: allowed by ClusterRoleBinding \"deployers-admin\""}
+    },
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "RequestResponse", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000003", "stage": "ResponseComplete",
+      "requestURI": "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings", "verb": "create",
+      "user": {"username": "system:serviceaccount:payments:default", "uid": "a1b2c3d4-sa", "groups": ["system:serviceaccounts", "system:serviceaccounts:payments", "system:authenticated"]},
+      "sourceIPs": ["10.244.3.17"], "userAgent": "python-requests/2.32.3",
+      "objectRef": {"resource": "clusterrolebindings", "name": "payments-default-admin", "apiGroup": "rbac.authorization.k8s.io", "apiVersion": "v1"},
+      "responseStatus": {"metadata": {}, "code": 201},
+      "requestObject": {"kind": "ClusterRoleBinding", "apiVersion": "rbac.authorization.k8s.io/v1", "metadata": {"name": "payments-default-admin"},
+                        "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "cluster-admin"},
+                        "subjects": [{"kind": "ServiceAccount", "name": "default", "namespace": "payments"}]},
+      "requestReceivedTimestamp": "2026-10-23T12:24:00.000000Z", "stageTimestamp": "2026-10-23T12:24:00.055000Z",
+      "annotations": {"authorization.k8s.io/decision": "allow", "authorization.k8s.io/reason": "RBAC: allowed by ClusterRoleBinding \"payments-default-edit\""}
+    },
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "Metadata", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000004", "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/payments/pods/checkout-api-7d9f8c6b5-x2k4q/exec?command=sh&container=checkout-api&stdin=true&tty=true", "verb": "create",
+      "user": {"username": "ci-deployer@example.com", "groups": ["system:authenticated", "deployers"]},
+      "sourceIPs": ["10.20.9.14"], "userAgent": "kubectl/v1.31.1 (linux/amd64) kubernetes/948afe5",
+      "objectRef": {"resource": "pods", "namespace": "payments", "name": "checkout-api-7d9f8c6b5-x2k4q", "apiVersion": "v1", "subresource": "exec"},
+      "responseStatus": {"metadata": {}, "code": 101},
+      "requestReceivedTimestamp": "2026-10-23T12:25:00.000000Z", "stageTimestamp": "2026-10-23T12:25:00.090000Z"
+    },
+    {
+      "kind": "Event", "apiVersion": "audit.k8s.io/v1", "level": "Metadata", "auditID": "8d0e1f2a-3b4c-4d5e-9f6a-k8s000000005", "stage": "ResponseComplete",
+      "requestURI": "/api/v1/namespaces/kube-system/configmaps?limit=500", "verb": "list",
+      "user": {"username": "system:kube-controller-manager", "groups": ["system:authenticated"]},
+      "sourceIPs": ["10.20.0.5"], "userAgent": "kube-controller-manager/v1.31.1 (linux/amd64) kubernetes/948afe5/system:serviceaccount:kube-system:generic-garbage-collector",
+      "objectRef": {"resource": "configmaps", "namespace": "kube-system", "apiVersion": "v1"},
+      "responseStatus": {"metadata": {}, "code": 200},
+      "requestReceivedTimestamp": "2026-10-23T12:25:30.000000Z", "stageTimestamp": "2026-10-23T12:25:30.004000Z"
+    }
+  ]
+}

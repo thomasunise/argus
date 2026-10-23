@@ -1,0 +1,45 @@
+[
+  {
+    "uuid": "2f6c1b0a-6f21-4d4e-9b0f-falco-000001",
+    "output": "12:45:01.812345678: Notice A shell was spawned in a container with an attached terminal (user=root user_loginuid=-1 k8s.ns=payments k8s.pod=checkout-api-7d9f8c6b5-x2k4q container=checkout-api shell=bash parent=runc cmdline=bash -i terminal=34816)",
+    "priority": "Notice",
+    "rule": "Terminal shell in container",
+    "time": "2026-10-23T12:45:01.812345678Z",
+    "source": "syscall",
+    "hostname": "ip-10-20-7-41.eu-west-1.compute.internal",
+    "tags": ["container", "shell", "mitre_execution", "T1059"],
+    "output_fields": {
+      "container.id": "9c3f2a1b4d5e", "container.image.repository": "registry.internal/payments/checkout-api", "container.name": "checkout-api",
+      "evt.time": 1761223501812345678, "evt.type": "execve", "k8s.ns.name": "payments", "k8s.pod.name": "checkout-api-7d9f8c6b5-x2k4q",
+      "proc.cmdline": "bash -i", "proc.name": "bash", "proc.pname": "runc", "proc.tty": 34816, "user.loginuid": -1, "user.name": "root"
+    }
+  },
+  {
+    "uuid": "2f6c1b0a-6f21-4d4e-9b0f-falco-000002",
+    "output": "12:46:10.000000000: Warning Privileged container started (user=root k8s.ns=default k8s.pod=debug-tools container=debug image=docker.io/library/alpine:3.20)",
+    "priority": "Warning",
+    "rule": "Launch Privileged Container",
+    "time": "2026-10-23T12:46:10.000000000Z",
+    "source": "syscall",
+    "hostname": "ip-10-20-7-42.eu-west-1.compute.internal",
+    "tags": ["container", "cis", "mitre_privilege_escalation", "T1611"],
+    "output_fields": {
+      "container.id": "1a2b3c4d5e6f", "container.image.repository": "docker.io/library/alpine", "container.image.tag": "3.20", "container.name": "debug",
+      "container.privileged": true, "k8s.ns.name": "default", "k8s.pod.name": "debug-tools", "proc.cmdline": "sh", "user.name": "root"
+    }
+  },
+  {
+    "uuid": "2f6c1b0a-6f21-4d4e-9b0f-falco-000003",
+    "output": "12:47:33.000000000: Error Sensitive file opened for reading by non-trusted program (user=www-data program=curl command=curl -s file:///etc/shadow file=/etc/shadow parent=sh container_id=host image=<NA>)",
+    "priority": "Error",
+    "rule": "Read sensitive file untrusted",
+    "time": "2026-10-23T12:47:33.000000000Z",
+    "source": "syscall",
+    "hostname": "web-prod-01",
+    "tags": ["filesystem", "mitre_credential_access", "T1555"],
+    "output_fields": {
+      "container.id": "host", "evt.type": "openat", "fd.name": "/etc/shadow", "proc.cmdline": "curl -s file:///etc/shadow", "proc.name": "curl",
+      "proc.pname": "sh", "user.name": "www-data"
+    }
+  }
+]
