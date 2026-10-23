@@ -8,7 +8,7 @@ This file summarizes what a change must satisfy to be merged.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env && python scripts/generate_secrets.py --write
 python -m pytest -q
 ```

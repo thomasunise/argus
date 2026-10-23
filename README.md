@@ -73,7 +73,7 @@ Requirements: Python 3.11 or 3.12.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 python scripts/generate_secrets.py --write          # fills the three REPLACE_ values and AUDIT_SIGNING_KEY stays empty unless you set it
 uvicorn app.main:app --host 127.0.0.1 --port 8080

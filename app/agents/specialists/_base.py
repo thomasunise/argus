@@ -158,9 +158,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [(name, re.compile(pattern, 
     ('urgent_directive', r'\b(important|urgent|attention|note to)\b.{0,20}\b(ai|assistant|agent|analyst|sentinel)\b'),
 ]]
 
-_ZERO_WIDTH = re.compile(r'[​‌‍⁠﻿­]')
-_BIDI = re.compile(r'[‪-‮⁦-⁩]')
-_FULLWIDTH = re.compile(r'[！-～]{4,}')
+_ZERO_WIDTH = re.compile('[\u200b\u200c\u200d\u2060\ufeff\u00ad]')
+_BIDI = re.compile('[\u202a-\u202e\u2066-\u2069]')
+_FULLWIDTH = re.compile('[\uff01-\uff5e]{4,}')
 _MIXED_SCRIPT_WORD = re.compile(r'\b(?=\w*[A-Za-z])(?=\w*[Ѐ-ӿͰ-Ͽ])\w+\b')
 _BASE64_RUN = re.compile(r'(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])')
 _TAG_RE = re.compile(r'<[^>]{1,80}>')
@@ -225,7 +225,7 @@ def classify(text: str) -> str:
         return 'secret'
     if any(w in lower for w in ('login', 'brute', 'mfa', 'authentication', 'auth ', 'failed sign', 'password spray', 'impossible travel', 'session')):
         return 'identity'
-    if any(w in lower for w in ('public', 'exposed', 'open to', '0.0.0.0', 'anonymous', 'world-readable', 'misconfig', 'permissive', 'wildcard', 'security group', 'bucket')):
+    if any(w in lower for w in ('public', 'exposed', 'open to', '0.0.0.0', 'anonymous', 'world-readable', 'misconfig', 'permissive', 'wildcard', 'security group', 'bucket')):  # nosec B104
         return 'exposure'
     if any(w in lower for w in ('privilege', 'escalat', 'iam', 'role assumption', 'assume', 'admin')):
         return 'privilege'

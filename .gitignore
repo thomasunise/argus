@@ -9,3 +9,10 @@ targets/
 *.sqlite
 *.sqlite3
 *.log
+
+# Terraform working directories (providers are cached in TF_PLUGIN_CACHE_DIR); keep .terraform.lock.hcl
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.tfstate.lock.info

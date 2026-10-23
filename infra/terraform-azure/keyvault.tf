@@ -18,6 +18,12 @@ resource "random_password" "audit_signing_key" {
   special = false
 }
 
+# Encryption at rest for stored secrets (TOTP seeds, integration credentials); required in production.
+resource "random_password" "data_encryption_key" {
+  length  = 64
+  special = false
+}
+
 resource "azurerm_key_vault" "this" {
   name                          = "${local.short}kv"
   location                      = azurerm_resource_group.this.location
@@ -57,6 +63,7 @@ locals {
     admin-password                = random_password.admin_password.result
     ingest-api-key                = random_password.ingest_api_key.result
     audit-signing-key             = random_password.audit_signing_key.result
+    data-encryption-key           = random_password.data_encryption_key.result
     database-url                  = "postgresql+psycopg://sentinel:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/sentinel?sslmode=require"
     redis-url                     = "rediss://:${azurerm_redis_cache.this.primary_access_key}@${azurerm_redis_cache.this.hostname}:${azurerm_redis_cache.this.ssl_port}/0"
     audit-azure-connection-string = azurerm_storage_account.audit.primary_connection_string
@@ -67,6 +74,7 @@ locals {
     admin-password                = "ADMIN_PASSWORD"
     ingest-api-key                = "INGEST_API_KEY"
     audit-signing-key             = "AUDIT_SIGNING_KEY"
+    data-encryption-key           = "DATA_ENCRYPTION_KEY"
     database-url                  = "DATABASE_URL"
     redis-url                     = "REDIS_URL"
     audit-azure-connection-string = "AUDIT_AZURE_CONNECTION_STRING"

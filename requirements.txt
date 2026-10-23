@@ -18,7 +18,4 @@ PyYAML>=6,<7
 anthropic>=0.60
 openai>=1.40,<3
 
-# Testing
-pytest>=8,<9
-pytest-asyncio>=0.23,<1
-respx>=0.21,<1
+# Test-only dependencies live in requirements-dev.txt (not shipped in the image).

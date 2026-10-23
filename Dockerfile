@@ -19,10 +19,14 @@ RUN apt-get update \
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 WORKDIR /build
-COPY requirements.txt requirements-optional.txt ./
-RUN pip install --upgrade pip wheel \
- && pip install -r requirements.txt \
- && if [ "$EXTRAS" = "1" ]; then pip install -r requirements-optional.txt; fi
+COPY requirements.txt requirements.lock.txt requirements-optional.txt ./
+# requirements.lock.txt pins every transitive runtime dependency (generated on linux/py3.12, see
+# its header). Installing requirements.txt under that constraint makes every build resolve to the
+# same audited set (pip-audit runs against the lock in CI). Test tooling lives in
+# requirements-dev.txt and is never installed in the image.
+RUN pip install --upgrade "pip==$(sed -n 's/^pip==//p' requirements.lock.txt)" wheel \
+ && pip install -r requirements.txt -c requirements.lock.txt \
+ && if [ "$EXTRAS" = "1" ]; then pip install -r requirements-optional.txt -c requirements.lock.txt; fi
 
 # ---------------------------------------------------------------- runtime stage
 FROM python:${PYTHON_VERSION}-slim AS runtime

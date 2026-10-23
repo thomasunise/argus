@@ -1,7 +1,7 @@
 """Print fresh random values for the secrets Sentinel requires.
 
     python scripts/generate_secrets.py            # print KEY=value lines
-    python scripts/generate_secrets.py --write    # fill the REPLACE_ placeholders (and an empty AUDIT_SIGNING_KEY) in .env in place
+    python scripts/generate_secrets.py --write    # fill the REPLACE_ placeholders (and empty AUDIT_SIGNING_KEY / DATA_ENCRYPTION_KEY) in .env in place
 
 Never commit the output. Rotation procedures are in docs/RUNBOOKS.md.
 """
@@ -17,6 +17,7 @@ SECRETS = {
     'SESSION_SECRET': lambda: secrets.token_urlsafe(48),      # >= 32 chars required
     'INGEST_API_KEY': lambda: secrets.token_urlsafe(40),      # >= 24 chars required when set
     'AUDIT_SIGNING_KEY': lambda: secrets.token_hex(32),       # HMAC key for the audit chain
+    'DATA_ENCRYPTION_KEY': lambda: secrets.token_urlsafe(32),  # encryption at rest (required in production)
 }
 
 
@@ -30,8 +31,8 @@ def main(argv: list[str]) -> int:
         text = env_path.read_text(encoding='utf-8')
         replaced = []
         for name, value in values.items():
-            # Replace REPLACE_ placeholders; AUDIT_SIGNING_KEY is also filled when it is empty.
-            optional = '?' if name == 'AUDIT_SIGNING_KEY' else ''
+            # Replace REPLACE_ placeholders; AUDIT_SIGNING_KEY and DATA_ENCRYPTION_KEY are also filled when empty.
+            optional = '?' if name in {'AUDIT_SIGNING_KEY', 'DATA_ENCRYPTION_KEY'} else ''
             pattern = re.compile(rf'^{name}=(REPLACE_[^\n]*){optional}$', re.MULTILINE)
             if pattern.search(text):
                 text = pattern.sub(f'{name}={value}', text, count=1)

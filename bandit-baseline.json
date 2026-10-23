@@ -1,0 +1,85 @@
+{
+ "results": [
+  {
+   "code": "161 _ZERO_WIDTH = re.compile(r'[\u200b\u200c\u200d\u2060\ufeff\u00ad]')\n162 _BIDI = re.compile(r'[\u202a-\u202e\u2066-\u2069]')\n163 _FULLWIDTH = re.compile(r'[\uff01-\uff5e]{4,}')\n",
+   "col_offset": 23,
+   "end_col_offset": 0,
+   "filename": "app/agents/specialists/_base.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 838,
+    "link": "https://cwe.mitre.org/data/definitions/838.html"
+   },
+   "issue_severity": "HIGH",
+   "issue_text": "A Python source file contains bidirectional control characters ('\\u202a').",
+   "line_number": 162,
+   "line_range": [
+    162
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html",
+   "test_id": "B613",
+   "test_name": "trojansource"
+  },
+  {
+   "code": "227         return 'identity'\n228     if any(w in lower for w in ('public', 'exposed', 'open to', '0.0.0.0', 'anonymous', 'world-readable', 'misconfig', 'permissive', 'wildcard', 'security group', 'bucket')):\n229         return 'exposure'\n",
+   "col_offset": 64,
+   "end_col_offset": 73,
+   "filename": "app/agents/specialists/_base.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 605,
+    "link": "https://cwe.mitre.org/data/definitions/605.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible binding to all interfaces.",
+   "line_number": 228,
+   "line_range": [
+    228
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html",
+   "test_id": "B104",
+   "test_name": "hardcoded_bind_all_interfaces"
+  },
+  {
+   "code": "28 PRIVILEGED_ROLES = {'Owner', 'Contributor', 'User Access Administrator', 'Role Based Access Control Administrator'}\n29 INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}\n30 SENSITIVE_PORTS = {22, 3389, 1433, 3306, 5432, 6379, 27017, 445, 5985, 5986, 23, 21}\n",
+   "col_offset": 50,
+   "end_col_offset": 59,
+   "filename": "app/collectors/azure.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 605,
+    "link": "https://cwe.mitre.org/data/definitions/605.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible binding to all interfaces.",
+   "line_number": 29,
+   "line_range": [
+    29
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html",
+   "test_id": "B104",
+   "test_name": "hardcoded_bind_all_interfaces"
+  },
+  {
+   "code": "97                     continue\n98                 address = str(port.get('address') or '0.0.0.0')\n99                 proto = str(port.get('protocol') or '6')\n",
+   "col_offset": 53,
+   "end_col_offset": 62,
+   "filename": "app/collectors/osquery.py",
+   "issue_confidence": "MEDIUM",
+   "issue_cwe": {
+    "id": 605,
+    "link": "https://cwe.mitre.org/data/definitions/605.html"
+   },
+   "issue_severity": "MEDIUM",
+   "issue_text": "Possible binding to all interfaces.",
+   "line_number": 98,
+   "line_range": [
+    98
+   ],
+   "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html",
+   "test_id": "B104",
+   "test_name": "hardcoded_bind_all_interfaces"
+  }
+ ],
+ "errors": []
+}

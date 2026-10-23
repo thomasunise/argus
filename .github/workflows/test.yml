@@ -30,8 +30,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements.txt
-      - run: pip install -r requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q --maxfail=20
 
   postgres:
@@ -59,14 +61,19 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
-      - run: pip install -r requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Apply schema
         run: python scripts/migrate.py
       - run: python -m pytest -q --maxfail=20
 
   security:
-    name: pip-audit + bandit
+    # Fails the build on: any bandit finding of medium+ severity and medium+ confidence that is
+    # not in bandit-baseline.json (reviewed false positives; remove entries as they are fixed),
+    # and any known vulnerability in the locked runtime set or the resolved dev environment.
+    name: bandit + pip-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,15 +81,26 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
-      - run: pip install -r requirements.txt pip-audit bandit
-      - name: pip-audit (known vulnerabilities in resolved dependencies)
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lock file is consistent with requirements.txt
+        run: |
+          # Every pin in the lock must still satisfy requirements.txt; a drift means someone edited
+          # requirements.txt without regenerating requirements.lock.txt (command in its header).
+          python -m venv /tmp/lockcheck
+          /tmp/lockcheck/bin/pip install -q --dry-run --no-deps --ignore-installed -r requirements.lock.txt >/dev/null
+          /tmp/lockcheck/bin/pip install -q --dry-run --ignore-installed -r requirements.txt -c requirements.lock.txt >/dev/null
+      - name: bandit (medium+ severity, medium+ confidence, baseline of reviewed findings)
+        run: bandit -r app -ll -ii -q -b bandit-baseline.json
+      - name: pip-audit (locked runtime set shipped in the image)
+        run: pip-audit -r requirements.lock.txt --strict --disable-pip --no-deps --progress-spinner off
+      - name: pip-audit (resolved dev environment)
         run: pip-audit --strict --progress-spinner off
-      - name: bandit (medium+ severity, medium+ confidence)
-        run: bandit -r app -ll -ii -q
 
   docker:
-    name: docker build
+    name: docker build + image smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,9 +116,11 @@ jobs:
             APP_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test the image
+      - name: Image runs as non-root with migrations applied
         run: |
           docker run --rm -d --name sentinel-ci -p 127.0.0.1:8080:8080 \
+            --read-only --tmpfs /tmp --tmpfs /app/data:uid=10001,gid=10001 \
+            -e RUN_MIGRATIONS=true -e DB_AUTO_CREATE=false \
             -e SESSION_SECRET=ci-session-secret-that-is-long-enough-0123456789 \
             -e ADMIN_PASSWORD=ci-admin-password-long-123 \
             -e INGEST_API_KEY=ci-ingest-key-long-enough-0123456789 \
@@ -109,12 +129,85 @@ jobs:
             if curl -fsS http://127.0.0.1:8080/ready; then echo; break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:8080/health
-          docker logs sentinel-ci | tail -n 20
-          docker rm -f sentinel-ci
+          curl -fsS http://127.0.0.1:8080/health; echo
+          test "$(docker exec sentinel-ci id -u)" = "10001"
+          docker exec sentinel-ci python scripts/migrate.py --current | grep -q 'Rev' || { echo "no alembic revision applied"; exit 1; }
+          docker exec sentinel-ci sh -c 'pip show pytest >/dev/null 2>&1' && { echo "test tooling must not ship in the image"; exit 1; } || true
+      - name: Day-1 smoke test against the single container (SQLite, in-process queue)
+        env:
+          SENTINEL_URL: http://127.0.0.1:8080
+          SENTINEL_PASSWORD: ci-admin-password-long-123
+        run: python3 scripts/smoke_test.py
+      - if: always()
+        run: |
+          docker logs sentinel-ci 2>&1 | tail -n 50 || true
+          docker rm -f sentinel-ci || true
+      - name: Worker image builds from the API image
+        run: docker build -q -f Dockerfile.worker --build-arg BASE_IMAGE=sentinel:ci -t sentinel:ci-worker .
+      - name: Save image for the compose job
+        run: docker save sentinel:ci | gzip > /tmp/sentinel-ci.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-ci-image
+          path: /tmp/sentinel-ci.tar.gz
+          retention-days: 1
+
+  compose:
+    # The production-shaped stack (postgres + redis + api + dedicated worker) with a generated
+    # .env, demo seed, and the day-1 smoke test exercising the Redis queue end to end.
+    name: compose stack + smoke test
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sentinel-ci-image
+          path: /tmp
+      - run: docker load < /tmp/sentinel-ci.tar.gz
+      - name: Generate .env
+        run: |
+          {
+            python3 scripts/generate_secrets.py
+            echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
+            echo "SENTINEL_IMAGE=sentinel:ci"
+            echo "DB_AUTO_CREATE=false"
+            echo "LOG_JSON=true"
+            echo "ACTIONS_KILL_SWITCH=true"
+          } > .env
+          mkdir -p targets
+      - name: Compose config validates (dev and prod overlay)
+        run: |
+          docker compose -f compose.yaml config --quiet
+          SENTINEL_DOMAIN=sentinel.example.com docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+      - name: Start the stack
+        run: |
+          docker compose -f compose.yaml up -d --no-build postgres redis api worker
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8080/ready; then echo; break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/ready | grep -q '"queue":"redis"'
+          docker compose -f compose.yaml ps
+      - name: Demo seed inside the api container
+        run: docker compose -f compose.yaml exec -T api python scripts/seed_demo.py --password ci-demo-owner-password-123 | tee /tmp/seed.txt
+      - name: Seed detections fired
+        run: grep -q 'cloud.public_exposure_change' /tmp/seed.txt && grep -q 'swarm.machine_speed_sequence' /tmp/seed.txt
+      - name: Demo owner can log in
+        run: |
+          curl -fsS -c /tmp/jar -X POST http://127.0.0.1:8080/api/v1/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"demo-owner@sentinel.local","password":"ci-demo-owner-password-123","tenant":"demo"}' | grep -q '"authenticated":true'
+      - name: Day-1 smoke test through the Redis queue and the worker
+        env:
+          SENTINEL_URL: http://127.0.0.1:8080
+        run: SENTINEL_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' .env)" python3 scripts/smoke_test.py
+      - if: failure()
+        run: docker compose -f compose.yaml logs --tail=200
+      - if: always()
+        run: docker compose -f compose.yaml down -v --remove-orphans
 
   infra-lint:
-    name: yaml + terraform fmt + helm lint
+    name: yaml + terraform + helm
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +232,21 @@ jobs:
           PY
       - uses: hashicorp/setup-terraform@v3
       - run: terraform fmt -check -recursive -diff infra/terraform infra/terraform-azure
+      - name: terraform validate (aws)
+        working-directory: infra/terraform
+        run: terraform init -backend=false -input=false && terraform validate
+      - name: terraform validate (azure)
+        working-directory: infra/terraform-azure
+        run: terraform init -backend=false -input=false && terraform validate
+      - uses: terraform-linters/setup-tflint@v4
+      - run: tflint --chdir=infra/terraform && tflint --chdir=infra/terraform-azure
       - uses: azure/setup-helm@v4
-      - run: helm lint infra/helm/sentinel
-      - run: helm template sentinel infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x >/dev/null
+      - run: helm lint --strict infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x
+      - name: helm template + kubeconform
+        run: |
+          helm template sentinel infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x \
+            --set serviceMonitor.enabled=true --set auditVolume.enabled=true > /tmp/rendered.yaml
+          docker run --rm -i ghcr.io/yannh/kubeconform:latest -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            < /tmp/rendered.yaml

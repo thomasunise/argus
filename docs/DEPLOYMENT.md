@@ -41,7 +41,7 @@ Endpoints used by infrastructure:
 ## 2. Development (SQLite, in-process queue)
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env && python scripts/generate_secrets.py --write
 uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 ```
@@ -93,7 +93,7 @@ kubectl -n sentinel create secret generic sentinel-secrets \
   --from-literal=SESSION_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
   --from-literal=ADMIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(24))')" \
   --from-literal=INGEST_API_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(40))')" \
-  --from-literal=AUDIT_SIGNING_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')" \
+  --from-literal=AUDIT_SIGNING_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')"   --from-literal=DATA_ENCRYPTION_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')" \
   --from-literal=DATABASE_URL='postgresql+psycopg://sentinel:...@postgres:5432/sentinel?sslmode=require' \
   --from-literal=REDIS_URL='rediss://:...@redis:6379/0'
 helm upgrade --install sentinel infra/helm/sentinel -n sentinel \
@@ -144,7 +144,7 @@ Startup fails (`assert_safe_config`) when:
 - `SESSION_SECRET` is shorter than 32 characters or still a `REPLACE_` placeholder;
 - `ADMIN_PASSWORD` is shorter than 14 characters or a placeholder;
 - `INGEST_API_KEY` is set but shorter than 24 characters;
-- `APP_ENV=production` with SQLite, without `REDIS_URL`, or without `COOKIE_SECURE=true`;
+- `APP_ENV=production` with SQLite, without `REDIS_URL`, without `COOKIE_SECURE=true`, with a non-`https://` `BASE_URL`, without `DATA_ENCRYPTION_KEY` (or `DATA_ENCRYPTION_KEYS`), without `AUDIT_SIGNING_KEY` (or `AUDIT_SIGNING_KEYS`), without an audit sink (`AUDIT_JSONL_PATH`, `AUDIT_S3_BUCKET` or `AUDIT_AZURE_CONTAINER`), or without `TOTP_REQUIRED=true` / `OIDC_ISSUER`;
 - `AI_PROVIDER=anthropic` without `ANTHROPIC_API_KEY` (or an Anthropic auth profile), or `AI_PROVIDER=openai` without `OPENAI_API_KEY`.
 
 Reverse proxies: the API trusts `X-Forwarded-*` only from `FORWARDED_ALLOW_IPS`. Set it to
@@ -172,6 +172,8 @@ source of truth and `GET /api/v1/audit/verify` recomputes it.
 
 ## 9. Production checklist
 
+The ordered, command-level version of this list for a monitoring-only rollout is `docs/GO-LIVE.md`.
+
 Identity and access
 
 - [ ] OIDC configured (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`), `OIDC_ALLOWED_DOMAINS` set, `OIDC_DEFAULT_ROLE=viewer`.
@@ -192,6 +194,7 @@ Platform
 Audit and evidence
 
 - [ ] `AUDIT_SIGNING_KEY` set and stored with the other secrets; rotation procedure read (`docs/RUNBOOKS.md`).
+- [ ] `DATA_ENCRYPTION_KEY` set and stored with the other secrets (rotation: `DATA_ENCRYPTION_KEYS=k2=<new>,k1=<old>`).
 - [ ] Object-lock sink configured (S3 Object Lock compliance or Azure immutable container) with a deliberate retention period.
 - [ ] `GET /api/v1/audit/verify` returns `valid: true` after deployment and is checked on a schedule.
 

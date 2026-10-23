@@ -26,7 +26,7 @@ from .base import Collector, CollectorContext, CollectorResult, jsonable, module
 log = logging.getLogger('sentinel.collectors.azure')
 
 PRIVILEGED_ROLES = {'Owner', 'Contributor', 'User Access Administrator', 'Role Based Access Control Administrator'}
-INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}
+INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}  # nosec B104
 SENSITIVE_PORTS = {22, 3389, 1433, 3306, 5432, 6379, 27017, 445, 5985, 5986, 23, 21}
 
 

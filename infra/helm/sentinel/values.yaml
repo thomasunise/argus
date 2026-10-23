@@ -209,7 +209,7 @@ config:
 # ---------------------------------------------------------------- secrets
 # Prefer existingSecret (created by External Secrets, Sealed Secrets, or kubectl). When set,
 # the chart does not render a Secret and expects these keys in it:
-#   SESSION_SECRET ADMIN_PASSWORD INGEST_API_KEY AUDIT_SIGNING_KEY DATABASE_URL REDIS_URL
+#   SESSION_SECRET ADMIN_PASSWORD INGEST_API_KEY AUDIT_SIGNING_KEY DATA_ENCRYPTION_KEY DATABASE_URL REDIS_URL
 #   (optional) OIDC_CLIENT_SECRET ANTHROPIC_API_KEY OPENAI_API_KEY ZAP_API_KEY CALDERA_API_KEY
 #              AUDIT_AZURE_CONNECTION_STRING WAZUH_INDEXER_PASSWORD
 existingSecret: ""
@@ -218,6 +218,7 @@ secrets:
   adminPassword: ""
   ingestApiKey: ""
   auditSigningKey: ""
+  dataEncryptionKey: ""   # encryption at rest for stored secrets; required when config.APP_ENV=production
   databaseUrl: ""          # postgresql+psycopg://user:pass@host:5432/sentinel
   redisUrl: ""             # redis://:pass@host:6379/0  or rediss://
   oidcClientSecret: ""

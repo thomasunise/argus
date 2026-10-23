@@ -95,7 +95,7 @@ class OsqueryCollector(Collector):
                     continue
                 if pnum <= 0:
                     continue
-                address = str(port.get('address') or '0.0.0.0')
+                address = str(port.get('address') or '0.0.0.0')  # nosec B104
                 proto = str(port.get('protocol') or '6')
                 proto_name = {'6': 'tcp', '17': 'udp'}.get(proto, proto)
                 if address in ('127.0.0.1', '::1', 'localhost') or proto_name == 'udp' and pnum > 10000:

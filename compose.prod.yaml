@@ -3,8 +3,10 @@
 #
 #   docker compose -f compose.yaml -f compose.prod.yaml up -d
 #
-# Required in .env for this overlay (assert_safe_config enforces the first two):
-#   APP_ENV=production   COOKIE_SECURE=true   BASE_URL=https://<host>
+# Required in .env for this overlay (assert_safe_config enforces them in production):
+#   APP_ENV=production   COOKIE_SECURE=true   BASE_URL=https://<host>   TOTP_REQUIRED=true (or OIDC_ISSUER)
+#   DATA_ENCRYPTION_KEY=<random>   AUDIT_SIGNING_KEY=<random>   (python scripts/generate_secrets.py)
+#   AUDIT_JSONL_PATH is set by compose.yaml; add AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER for an object-lock mirror.
 #   SENTINEL_DOMAIN=<host>   (Caddy obtains a certificate via ACME)
 #   ACME_EMAIL=<ops@example.com>
 # Pin SENTINEL_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).

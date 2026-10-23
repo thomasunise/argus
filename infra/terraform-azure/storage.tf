@@ -42,7 +42,7 @@ resource "azurerm_storage_container" "audit" {
 }
 
 resource "azurerm_storage_container_immutability_policy" "audit" {
-  storage_container_resource_manager_id = azurerm_storage_container.audit.resource_manager_id
+  storage_container_resource_manager_id = azurerm_storage_container.audit.id
   immutability_period_in_days           = var.audit_retention_days
   protected_append_writes_all_enabled   = false
   locked                                = var.lock_audit_policy

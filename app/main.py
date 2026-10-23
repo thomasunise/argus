@@ -124,7 +124,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 conn.exec_driver_sql('SELECT 1')
         except Exception as exc:
             raise HTTPException(503, detail=f'database unavailable: {type(exc).__name__}')
-        return {'status': 'ready', 'queue': 'redis' if settings.redis_url else 'memory', 'provider': settings.ai_provider}
+        if settings.redis_url:
+            try:
+                import redis as _redis
+
+                _redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2).ping()
+            except Exception as exc:
+                raise HTTPException(503, detail=f'redis unavailable: {type(exc).__name__}')
+        return {'status': 'ready', 'queue': 'redis' if settings.redis_url else 'memory', 'provider': settings.ai_provider,
+                'encryption': crypto.configured()}
 
     return app
 

@@ -21,14 +21,21 @@ resource "random_password" "audit_signing_key" {
   special = false
 }
 
+# Encryption at rest for stored secrets (TOTP seeds, integration credentials); required in production.
+resource "random_password" "data_encryption_key" {
+  length  = 64
+  special = false
+}
+
 locals {
   secret_values = {
-    SESSION_SECRET    = random_password.session_secret.result
-    ADMIN_PASSWORD    = random_password.admin_password.result
-    INGEST_API_KEY    = random_password.ingest_api_key.result
-    AUDIT_SIGNING_KEY = random_password.audit_signing_key.result
-    DATABASE_URL      = "postgresql+psycopg://sentinel:${random_password.db.result}@${aws_db_instance.this.address}:5432/sentinel?sslmode=require"
-    REDIS_URL         = "rediss://:${random_password.redis.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379/0"
+    SESSION_SECRET      = random_password.session_secret.result
+    ADMIN_PASSWORD      = random_password.admin_password.result
+    INGEST_API_KEY      = random_password.ingest_api_key.result
+    AUDIT_SIGNING_KEY   = random_password.audit_signing_key.result
+    DATA_ENCRYPTION_KEY = random_password.data_encryption_key.result
+    DATABASE_URL        = "postgresql+psycopg://sentinel:${random_password.db.result}@${aws_db_instance.this.address}:5432/sentinel?sslmode=require"
+    REDIS_URL           = "rediss://:${random_password.redis.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379/0"
   }
 }
 
