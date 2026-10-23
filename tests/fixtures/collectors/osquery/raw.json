@@ -1,0 +1,43 @@
+{
+  "warnings": [],
+  "hosts": [
+    {
+      "identifier": "web-01", "hostname": "web-01.acme.internal", "platform": "ubuntu", "os_version": "Ubuntu 22.04.4 LTS", "primary_ip": "10.0.1.20", "ips": ["10.0.1.20"],
+      "osquery_version": "5.12.1", "last_seen": "2026-10-23T11:58:00Z",
+      "listening_ports": [
+        {"pid": "812", "port": "22", "protocol": "6", "address": "0.0.0.0", "name": "sshd", "path": "/usr/sbin/sshd"},
+        {"pid": "1203", "port": "443", "protocol": "6", "address": "0.0.0.0", "name": "nginx", "path": "/usr/sbin/nginx"},
+        {"pid": "1377", "port": "6379", "protocol": "6", "address": "0.0.0.0", "name": "redis-server"},
+        {"pid": "600", "port": "5432", "protocol": "6", "address": "127.0.0.1", "name": "postgres"}
+      ],
+      "users": [
+        {"username": "root", "uid": "0", "gid": "0", "shell": "/bin/bash", "groups": ["root"]},
+        {"username": "ubuntu", "uid": "1000", "gid": "1000", "shell": "/bin/bash", "groups": ["ubuntu", "sudo"]},
+        {"username": "www-data", "uid": "33", "gid": "33", "shell": "/usr/sbin/nologin", "groups": ["www-data"]},
+        {"username": "deploy", "uid": "1001", "gid": "1001", "shell": "/bin/bash", "groups": ["deploy"]}
+      ],
+      "sudoers": [{"header": "deploy", "rule_details": "ALL=(ALL) NOPASSWD: ALL"}],
+      "packages": [{"name": "openssl", "version": "3.0.2-0ubuntu1.15", "source": "deb"}, {"name": "nginx", "version": "1.18.0-6ubuntu14.4", "source": "deb"}],
+      "processes": [
+        {"pid": "4242", "name": "bash", "parent": "1203", "parent_name": "nginx", "cmdline": "bash -i", "username": "www-data", "path": "/usr/bin/bash", "start_time": "1761220000"},
+        {"pid": "1203", "name": "nginx", "parent": "1", "parent_name": "systemd", "cmdline": "nginx: master process", "username": "root"}
+      ]
+    },
+    {
+      "identifier": "WIN-DC01", "hostname": "WIN-DC01", "platform": "windows", "os_version": "Microsoft Windows Server 2022 Datacenter", "primary_ip": "10.0.5.10", "ips": ["10.0.5.10", "203.0.113.200"],
+      "listening_ports": [
+        {"pid": "4", "port": "445", "protocol": "6", "address": "0.0.0.0", "name": "System"},
+        {"pid": "912", "port": "3389", "protocol": "6", "address": "0.0.0.0", "name": "svchost.exe"}
+      ],
+      "users": [
+        {"username": "Administrator", "uid": "500", "shell": "C:\\Windows\\system32\\cmd.exe", "groups": ["Administrators"]},
+        {"username": "svc_backup", "uid": "1105", "shell": "", "groups": ["Backup Operators"]}
+      ],
+      "sudoers": [],
+      "packages": [{"name": "Microsoft Edge", "version": "129.0.2792.79", "source": "programs"}],
+      "processes": [
+        {"pid": "5120", "name": "powershell.exe", "parent": "3310", "parent_name": "w3wp.exe", "cmdline": "powershell.exe -enc SQBFAFgA", "username": "IIS APPPOOL\\DefaultAppPool", "start_time": "1761220100"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "tenant_id": "11111111-2222-3333-4444-555555555555",
+  "warnings": [],
+  "subscriptions": [
+    {
+      "subscription_id": "sub-0001", "display_name": "Production", "state": "Enabled",
+      "resource_groups": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web", "name": "rg-web", "location": "eastus", "tags": {"env": "prod"}},
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-data", "name": "rg-data", "location": "eastus", "tags": {}}
+      ],
+      "public_ips": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Network/publicIPAddresses/web-pip", "ip_address": "20.1.2.3"}
+      ],
+      "nsgs": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Network/networkSecurityGroups/web-nsg", "name": "web-nsg", "location": "eastus",
+         "security_rules": [
+           {"name": "allow-https", "direction": "Inbound", "access": "Allow", "protocol": "Tcp", "priority": 100, "source_address_prefix": "Internet", "destination_port_range": "443"},
+           {"name": "allow-rdp", "direction": "Inbound", "access": "Allow", "protocol": "Tcp", "priority": 110, "source_address_prefix": "*", "destination_port_range": "3389"},
+           {"name": "allow-vnet", "direction": "Inbound", "access": "Allow", "protocol": "*", "priority": 200, "source_address_prefix": "VirtualNetwork", "destination_port_range": "*"},
+           {"name": "deny-all", "direction": "Inbound", "access": "Deny", "protocol": "*", "priority": 4096, "source_address_prefix": "*", "destination_port_range": "*"}
+         ]}
+      ],
+      "vms": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Compute/virtualMachines/web-vm", "name": "web-vm", "location": "eastus",
+         "hardware_profile": {"vm_size": "Standard_B2s"}, "storage_profile": {"os_disk": {"os_type": "Linux"}},
+         "identity": {"type": "SystemAssigned", "principal_id": "mi-00000001"},
+         "network_profile": {"network_interfaces": [{"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Network/networkInterfaces/web-nic",
+           "detail": {"network_security_group": {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Network/networkSecurityGroups/web-nsg"},
+                      "ip_configurations": [{"public_ip_address": {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Network/publicIPAddresses/web-pip"}}]}}]},
+         "tags": {"role": "web"}}
+      ],
+      "storage_accounts": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Storage/storageAccounts/acmepublic", "name": "acmepublic", "location": "eastus",
+         "allow_blob_public_access": true, "enable_https_traffic_only": true, "minimum_tls_version": "TLS1_2", "network_rule_set": {"default_action": "Allow"}, "public_network_access": "Enabled"},
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-data/providers/Microsoft.Storage/storageAccounts/acmeprivate", "name": "acmeprivate", "location": "eastus",
+         "allow_blob_public_access": false, "enable_https_traffic_only": false, "minimum_tls_version": "TLS1_0", "network_rule_set": {"default_action": "Deny"}, "public_network_access": "Disabled"}
+      ],
+      "role_assignments": [
+        {"id": "/subscriptions/sub-0001/providers/Microsoft.Authorization/roleAssignments/ra-1", "principal_id": "user-0001", "principal_type": "User", "principal_name": "cto@acme.com",
+         "role_definition_id": "/subscriptions/sub-0001/providers/Microsoft.Authorization/roleDefinitions/8e3af657-a8ff-443c-a75c-2fe8c4bcb635", "role_name": "Owner", "scope": "/subscriptions/sub-0001"},
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.Authorization/roleAssignments/ra-2", "principal_id": "sp-0002", "principal_type": "ServicePrincipal", "principal_name": "ci-pipeline",
+         "role_definition_id": "/subscriptions/sub-0001/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c", "role_name": "Contributor", "scope": "/subscriptions/sub-0001/resourceGroups/rg-web"},
+        {"id": "/subscriptions/sub-0001/providers/Microsoft.Authorization/roleAssignments/ra-3", "principal_id": "grp-0003", "principal_type": "Group", "principal_name": "Readers",
+         "role_definition_id": "/subscriptions/sub-0001/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7", "role_name": "Reader", "scope": "/subscriptions/sub-0001"}
+      ],
+      "aks": [
+        {"id": "/subscriptions/sub-0001/resourceGroups/rg-web/providers/Microsoft.ContainerService/managedClusters/prod-aks", "name": "prod-aks", "location": "eastus",
+         "kubernetes_version": "1.30.3", "enable_rbac": true, "disable_local_accounts": false, "api_server_access_profile": {"enable_private_cluster": false, "authorized_ip_ranges": []}}
+      ]
+    }
+  ]
+}

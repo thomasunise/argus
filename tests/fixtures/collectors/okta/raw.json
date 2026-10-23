@@ -1,0 +1,44 @@
+{
+  "domain": "acme.okta.com",
+  "warnings": [],
+  "users": [
+    {"id": "00u1alice", "status": "ACTIVE", "created": "2023-02-01T00:00:00.000Z", "lastLogin": "2026-10-22T07:12:00.000Z",
+     "profile": {"login": "alice@acme.com", "email": "alice@acme.com", "firstName": "Alice", "department": "Security"},
+     "factors": [{"id": "f1", "factorType": "push", "provider": "OKTA", "status": "ACTIVE"}, {"id": "f2", "factorType": "webauthn", "provider": "FIDO", "status": "ACTIVE"}]},
+    {"id": "00u2bob", "status": "ACTIVE", "created": "2024-06-01T00:00:00.000Z", "lastLogin": "2026-10-21T16:40:00.000Z",
+     "profile": {"login": "bob@acme.com", "email": "bob@acme.com", "department": "Sales"}, "factors": []},
+    {"id": "00u3carol", "status": "ACTIVE", "created": "2022-09-01T00:00:00.000Z", "lastLogin": "2026-10-23T08:01:00.000Z",
+     "profile": {"login": "carol@acme.com", "email": "carol@acme.com", "department": "IT"},
+     "factors": [{"id": "f3", "factorType": "sms", "provider": "OKTA", "status": "ACTIVE"}]},
+    {"id": "00u4dave", "status": "SUSPENDED", "created": "2021-01-01T00:00:00.000Z", "lastLogin": null,
+     "profile": {"login": "dave@acme.com", "email": "dave@acme.com"}, "factors": []}
+  ],
+  "groups": [
+    {"id": "00g1", "type": "OKTA_GROUP", "profile": {"name": "Engineering", "description": "All engineers"}},
+    {"id": "00g2", "type": "BUILT_IN", "profile": {"name": "Everyone", "description": "All users in your organization"}}
+  ],
+  "apps": [
+    {"id": "0oa1", "name": "salesforce", "label": "Salesforce", "status": "ACTIVE", "signOnMode": "SAML_2_0", "created": "2023-01-01T00:00:00.000Z"},
+    {"id": "0oa2", "name": "oidc_client", "label": "Internal Admin Console", "status": "ACTIVE", "signOnMode": "OPENID_CONNECT", "created": "2024-01-01T00:00:00.000Z"}
+  ],
+  "admin_roles": {
+    "00u1alice": [{"id": "r1", "type": "SUPER_ADMIN", "label": "Super Organization Administrator", "assignmentType": "USER"}],
+    "00u3carol": [{"id": "r2", "type": "ORG_ADMIN", "label": "Organization Administrator", "assignmentType": "GROUP"}]
+  },
+  "logs": [
+    {"uuid": "e1-0001", "eventType": "user.session.start", "published": "2026-10-23T06:00:00.000Z", "severity": "WARN", "displayMessage": "User login to Okta",
+     "outcome": {"result": "FAILURE", "reason": "INVALID_CREDENTIALS"}, "actor": {"id": "00u2bob", "type": "User", "alternateId": "bob@acme.com", "displayName": "Bob"},
+     "client": {"ipAddress": "203.0.113.45", "userAgent": {"rawUserAgent": "Mozilla/5.0"}, "geographicalContext": {"country": "Romania", "city": "Bucharest"}},
+     "target": [{"id": "00u2bob", "type": "User", "alternateId": "bob@acme.com"}]},
+    {"uuid": "e1-0002", "eventType": "user.session.start", "published": "2026-10-23T06:05:00.000Z", "severity": "INFO", "displayMessage": "User login to Okta",
+     "outcome": {"result": "SUCCESS"}, "actor": {"id": "00u1alice", "type": "User", "alternateId": "alice@acme.com"}, "client": {"ipAddress": "198.51.100.10"}, "target": []},
+    {"uuid": "e1-0003", "eventType": "user.mfa.factor.reset_all", "published": "2026-10-23T06:10:00.000Z", "severity": "INFO", "displayMessage": "Reset all factors for user",
+     "outcome": {"result": "SUCCESS"}, "actor": {"id": "00u3carol", "type": "User", "alternateId": "carol@acme.com"}, "client": {"ipAddress": "198.51.100.11"},
+     "target": [{"id": "00u2bob", "type": "User", "alternateId": "bob@acme.com"}]},
+    {"uuid": "e1-0004", "eventType": "user.account.privilege.grant", "published": "2026-10-23T06:15:00.000Z", "severity": "INFO", "displayMessage": "Grant user privilege",
+     "outcome": {"result": "SUCCESS"}, "actor": {"id": "00u1alice", "type": "User", "alternateId": "alice@acme.com"}, "client": {"ipAddress": "198.51.100.10"},
+     "target": [{"id": "00u3carol", "type": "User", "alternateId": "carol@acme.com"}, {"id": "r9", "type": "ROLE", "displayName": "Super Organization Administrator"}]},
+    {"uuid": "e1-0005", "eventType": "app.oauth2.token.grant", "published": "2026-10-23T06:20:00.000Z", "severity": "INFO", "displayMessage": "OAuth2 token grant",
+     "outcome": {"result": "SUCCESS"}, "actor": {"id": "0oa2", "type": "PublicClientApp"}, "client": {}, "target": []}
+  ]
+}

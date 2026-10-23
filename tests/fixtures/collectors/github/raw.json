@@ -1,0 +1,40 @@
+{
+  "org_login": "acme",
+  "org": {"login": "acme", "id": 1001, "two_factor_requirement_enabled": false, "members_can_create_public_repositories": true, "plan": {"name": "team"}},
+  "warnings": [],
+  "repos": [
+    {
+      "name": "web", "full_name": "acme/web", "private": false, "visibility": "public", "default_branch": "main", "archived": false, "language": "TypeScript",
+      "pushed_at": "2026-10-20T11:00:00Z", "security_and_analysis": {"secret_scanning": {"status": "disabled"}},
+      "branch_protection": {},
+      "dependabot_alerts": [], "secret_scanning_alerts": [], "code_scanning_alerts": [],
+      "collaborators": [{"login": "alice", "permissions": {"admin": true, "push": true, "pull": true}, "role_name": "admin"}]
+    },
+    {
+      "name": "api", "full_name": "acme/api", "private": true, "visibility": "private", "default_branch": "main", "archived": false, "language": "Python",
+      "pushed_at": "2026-10-22T09:30:00Z", "security_and_analysis": {"secret_scanning": {"status": "enabled"}},
+      "branch_protection": {"required_pull_request_reviews": {"required_approving_review_count": 2}, "enforce_admins": {"enabled": true}, "allow_force_pushes": {"enabled": false}},
+      "dependabot_alerts": [
+        {"number": 17, "state": "open", "created_at": "2026-10-15T08:00:00Z", "html_url": "https://github.com/acme/api/security/dependabot/17",
+         "dependency": {"package": {"ecosystem": "pip", "name": "requests"}, "manifest_path": "requirements.txt"},
+         "security_advisory": {"ghsa_id": "GHSA-9wx4-h78v-vm56", "summary": "Requests Session object does not verify requests after making first request with verify=False",
+                               "severity": "medium", "identifiers": [{"type": "GHSA", "value": "GHSA-9wx4-h78v-vm56"}, {"type": "CVE", "value": "CVE-2024-35195"}], "cvss": {"score": 5.6}},
+         "security_vulnerability": {"package": {"ecosystem": "pip", "name": "requests"}, "severity": "high", "vulnerable_version_range": "< 2.32.0", "first_patched_version": {"identifier": "2.32.0"}}}
+      ],
+      "secret_scanning_alerts": [
+        {"number": 3, "state": "open", "created_at": "2026-10-21T14:05:00Z", "html_url": "https://github.com/acme/api/security/secret-scanning/3",
+         "secret_type": "github_personal_access_token", "secret_type_display_name": "GitHub Personal Access Token", "secret": "ghp_FAKEFIXTURESECRET1234567890abcdefghij",
+         "validity": "active", "push_protection_bypassed": true, "push_protection_bypassed_by": {"login": "bob"}}
+      ],
+      "code_scanning_alerts": [
+        {"number": 42, "state": "open", "created_at": "2026-10-18T10:00:00Z", "html_url": "https://github.com/acme/api/security/code-scanning/42",
+         "rule": {"id": "py/sql-injection", "severity": "error", "security_severity_level": "high", "description": "SQL query built from user-controlled sources"},
+         "tool": {"name": "CodeQL"}, "most_recent_instance": {"location": {"path": "app/db.py", "start_line": 88}}}
+      ],
+      "collaborators": [
+        {"login": "alice", "permissions": {"admin": true, "push": true, "pull": true}, "role_name": "admin"},
+        {"login": "bob", "permissions": {"admin": false, "push": true, "pull": true}, "role_name": "write"}
+      ]
+    }
+  ]
+}

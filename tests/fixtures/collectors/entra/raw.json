@@ -1,0 +1,47 @@
+{
+  "tenant_id": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+  "warnings": [],
+  "users": [
+    {"id": "u-alice", "userPrincipalName": "alice@acme.com", "displayName": "Alice Admin", "accountEnabled": true, "userType": "Member", "createdDateTime": "2022-01-05T00:00:00Z"},
+    {"id": "u-bob", "userPrincipalName": "bob@acme.com", "displayName": "Bob", "accountEnabled": true, "userType": "Member", "createdDateTime": "2023-03-05T00:00:00Z"},
+    {"id": "u-guest", "userPrincipalName": "partner_contoso.com#EXT#@acme.onmicrosoft.com", "displayName": "Partner", "accountEnabled": true, "userType": "Guest", "createdDateTime": "2025-07-01T00:00:00Z"}
+  ],
+  "groups": [
+    {"id": "g-eng", "displayName": "Engineering", "securityEnabled": true, "groupTypes": [], "isAssignableToRole": false},
+    {"id": "g-pim", "displayName": "PIM Admins", "securityEnabled": true, "groupTypes": [], "isAssignableToRole": true}
+  ],
+  "directory_roles": [
+    {"id": "dr-ga", "displayName": "Global Administrator", "roleTemplateId": "62e90394-69f5-4237-9190-012177145e10",
+     "members": [
+       {"@odata.type": "#microsoft.graph.user", "id": "u-alice", "userPrincipalName": "alice@acme.com", "displayName": "Alice Admin"},
+       {"@odata.type": "#microsoft.graph.servicePrincipal", "id": "sp-automation", "displayName": "automation-sp"}
+     ]},
+    {"id": "dr-ua", "displayName": "User Administrator", "roleTemplateId": "fe930be7-5e62-47db-91af-98c3a49a38b1",
+     "members": [{"@odata.type": "#microsoft.graph.user", "id": "u-bob", "userPrincipalName": "bob@acme.com", "displayName": "Bob"}]},
+    {"id": "dr-reader", "displayName": "Directory Readers", "roleTemplateId": "88d8e3e3-8f55-4a1e-953a-9b9898b8876b", "members": []}
+  ],
+  "service_principals": [
+    {"id": "sp-automation", "appId": "app-0001", "displayName": "automation-sp", "servicePrincipalType": "Application", "accountEnabled": true,
+     "passwordCredentials": [{"keyId": "k1", "startDateTime": "2024-01-01T00:00:00Z", "endDateTime": "2029-01-01T00:00:00Z", "displayName": "long-lived"}], "keyCredentials": []},
+    {"id": "sp-graph", "appId": "00000003-0000-0000-c000-000000000000", "displayName": "Microsoft Graph", "servicePrincipalType": "Application", "accountEnabled": true,
+     "passwordCredentials": [], "keyCredentials": []}
+  ],
+  "conditional_access_policies": [
+    {"id": "ca-1", "displayName": "Require MFA for admins", "state": "enabledForReportingButNotEnforced"}
+  ],
+  "risky_sign_ins": [
+    {"id": "si-0001", "createdDateTime": "2026-10-23T05:40:00Z", "userPrincipalName": "bob@acme.com", "appDisplayName": "Office 365 Exchange Online",
+     "ipAddress": "203.0.113.77", "clientAppUsed": "Browser", "userAgent": "Mozilla/5.0", "riskLevelDuringSignIn": "high", "riskState": "atRisk", "riskDetail": "none",
+     "riskEventTypes_v2": ["unfamiliarFeatures", "anonymizedIPAddress"], "status": {"errorCode": 0, "failureReason": "Other."}, "conditionalAccessStatus": "notApplied",
+     "location": {"city": "Lagos", "countryOrRegion": "NG"}}
+  ],
+  "audit_logs": [
+    {"id": "au-0001", "category": "RoleManagement", "activityDisplayName": "Add member to role", "activityDateTime": "2026-10-23T05:55:00Z", "result": "success", "correlationId": "c-1",
+     "initiatedBy": {"user": {"userPrincipalName": "alice@acme.com", "ipAddress": "198.51.100.10"}},
+     "targetResources": [{"id": "u-bob", "type": "User", "userPrincipalName": "bob@acme.com", "modifiedProperties": [
+       {"displayName": "Role.DisplayName", "oldValue": null, "newValue": "\"Global Administrator\""},
+       {"displayName": "Role.TemplateId", "oldValue": null, "newValue": "\"62e90394-69f5-4237-9190-012177145e10\""}]}]},
+    {"id": "au-0002", "category": "UserManagement", "activityDisplayName": "Update user", "activityDateTime": "2026-10-23T05:56:00Z", "result": "success",
+     "initiatedBy": {"user": {"userPrincipalName": "alice@acme.com"}}, "targetResources": [{"id": "u-bob", "type": "User", "userPrincipalName": "bob@acme.com"}]}
+  ]
+}

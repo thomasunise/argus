@@ -1,0 +1,862 @@
+{
+  "description": "Twenty labeled findings. Expected severity follows the documented triage rule: KEV raises one level (high/critical become critical), EPSS >= 0.7 raises one level, development/lab lowers one level, informational never moves. Duplicates are open findings with the same rule and source on other assets; false positives are excluded. CVE ids are reserved fake ids (CVE-2099-*) so live intel feeds return nothing.",
+  "spec": "triage",
+  "grader": "triage",
+  "task": "Triage this finding.",
+  "cases": [
+    {
+      "id": "tp-01",
+      "title": "High in production, nothing else",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-01-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-01-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-01-app service",
+            "description": "Seeded triage case tp-01: High in production, nothing else.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-02",
+      "title": "High plus KEV becomes critical",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-02-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-02-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-02-app service",
+            "description": "Seeded triage case tp-02: High plus KEV becomes critical.",
+            "kev": true,
+            "status": "open",
+            "cvss": 9.8,
+            "cve_ids": [
+              "CVE-2099-0002"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "critical",
+        "duplicates": [],
+        "priority_min": 90,
+        "kev": true
+      }
+    },
+    {
+      "id": "tp-03",
+      "title": "Medium plus KEV becomes high",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-03-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-03-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-03-app",
+            "description": "Seeded triage case tp-03: Medium plus KEV becomes high.",
+            "kev": true,
+            "status": "open",
+            "cvss": 7.5,
+            "cve_ids": [
+              "CVE-2099-0003"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": [],
+        "kev": true
+      }
+    },
+    {
+      "id": "tp-04",
+      "title": "Low plus KEV becomes medium",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-04-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "low"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-04-rule",
+            "severity": "low",
+            "title": "Verbose server banner on tp-04-app",
+            "description": "Seeded triage case tp-04: Low plus KEV becomes medium.",
+            "kev": true,
+            "status": "open",
+            "cve_ids": [
+              "CVE-2099-0004"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-05",
+      "title": "Medium with high EPSS becomes high",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-05-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-05-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-05-app",
+            "description": "Seeded triage case tp-05: Medium with high EPSS becomes high.",
+            "kev": false,
+            "status": "open",
+            "epss": 0.85,
+            "cvss": 6.5,
+            "cve_ids": [
+              "CVE-2099-0005"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-06",
+      "title": "Medium with low EPSS stays medium",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-06-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-06-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-06-app",
+            "description": "Seeded triage case tp-06: Medium with low EPSS stays medium.",
+            "kev": false,
+            "status": "open",
+            "epss": 0.3,
+            "cvss": 6.5,
+            "cve_ids": [
+              "CVE-2099-0006"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-07",
+      "title": "Critical in development drops to high",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-07-app",
+            "kind": "web",
+            "environment": "development",
+            "criticality": "high"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-07-rule",
+            "severity": "critical",
+            "title": "Unauthenticated admin API on tp-07-app",
+            "description": "Seeded triage case tp-07: Critical in development drops to high.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-08",
+      "title": "High in lab drops to medium",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-08-app",
+            "kind": "web",
+            "environment": "lab",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-08-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-08-app service",
+            "description": "Seeded triage case tp-08: High in lab drops to medium.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-09",
+      "title": "Informational never moves, even with KEV",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-09-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "critical"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-09-rule",
+            "severity": "informational",
+            "title": "Directory listing metadata on tp-09-app",
+            "description": "Seeded triage case tp-09: Informational never moves, even with KEV.",
+            "kev": true,
+            "status": "open",
+            "cve_ids": [
+              "CVE-2099-0009"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "informational",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-10",
+      "title": "Low in development stays low (floor)",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-10-app",
+            "kind": "web",
+            "environment": "development",
+            "criticality": "low"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-10-rule",
+            "severity": "low",
+            "title": "Verbose server banner on tp-10-app",
+            "description": "Seeded triage case tp-10: Low in development stays low (floor).",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "low",
+        "duplicates": [],
+        "priority_max": 25
+      }
+    },
+    {
+      "id": "tp-11",
+      "title": "High plus KEV in development nets out to high",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-11-app",
+            "kind": "web",
+            "environment": "development",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-11-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-11-app service",
+            "description": "Seeded triage case tp-11: High plus KEV in development nets out to high.",
+            "kev": true,
+            "status": "open",
+            "cvss": 8.1,
+            "cve_ids": [
+              "CVE-2099-0011"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-12",
+      "title": "Medium with two duplicates on other assets",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-12-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          },
+          {
+            "key": "a2",
+            "name": "tp-12-app-2",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          },
+          {
+            "key": "a3",
+            "name": "tp-12-app-3",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-12-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-12-app",
+            "description": "Seeded triage case tp-12: Medium with two duplicates on other assets.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          },
+          {
+            "key": "f2",
+            "asset": "$a2",
+            "source": "nuclei",
+            "rule": "tp-12-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-12-app-2",
+            "description": "Seeded duplicate for tp-12.",
+            "status": "open"
+          },
+          {
+            "key": "f3",
+            "asset": "$a3",
+            "source": "nuclei",
+            "rule": "tp-12-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-12-app-3",
+            "description": "Seeded duplicate for tp-12.",
+            "status": "open"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": [
+          "$f2",
+          "$f3"
+        ]
+      }
+    },
+    {
+      "id": "tp-13",
+      "title": "Critical KEV with one duplicate",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-13-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "critical"
+          },
+          {
+            "key": "a2",
+            "name": "tp-13-app-2",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-13-rule",
+            "severity": "critical",
+            "title": "Unauthenticated admin API on tp-13-app",
+            "description": "Seeded triage case tp-13: Critical KEV with one duplicate.",
+            "kev": true,
+            "status": "open",
+            "epss": 0.95,
+            "cvss": 9.9,
+            "cve_ids": [
+              "CVE-2099-0013"
+            ],
+            "asset": "$a1"
+          },
+          {
+            "key": "f2",
+            "asset": "$a2",
+            "source": "nuclei",
+            "rule": "tp-13-rule",
+            "severity": "critical",
+            "title": "Unauthenticated admin API on tp-13-app-2",
+            "description": "Seeded duplicate for tp-13.",
+            "status": "open"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "critical",
+        "duplicates": [
+          "$f2"
+        ],
+        "priority_min": 95
+      }
+    },
+    {
+      "id": "tp-14",
+      "title": "False-positive sibling is not a duplicate",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-14-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          },
+          {
+            "key": "a2",
+            "name": "tp-14-app-2",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          },
+          {
+            "key": "a3",
+            "name": "tp-14-app-3",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-14-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-14-app service",
+            "description": "Seeded triage case tp-14: False-positive sibling is not a duplicate.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          },
+          {
+            "key": "f2",
+            "asset": "$a2",
+            "source": "nuclei",
+            "rule": "tp-14-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-14-app-2 service",
+            "description": "Seeded duplicate for tp-14.",
+            "status": "false_positive"
+          },
+          {
+            "key": "f3",
+            "asset": "$a3",
+            "source": "nuclei",
+            "rule": "tp-14-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-14-app-3 service",
+            "description": "Seeded duplicate for tp-14.",
+            "status": "open"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": [
+          "$f3"
+        ]
+      }
+    },
+    {
+      "id": "tp-15",
+      "title": "Staging does not change severity",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-15-app",
+            "kind": "web",
+            "environment": "staging",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-15-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-15-app",
+            "description": "Seeded triage case tp-15: Staging does not change severity.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-16",
+      "title": "Low with very high EPSS becomes medium",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-16-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-16-rule",
+            "severity": "low",
+            "title": "Verbose server banner on tp-16-app",
+            "description": "Seeded triage case tp-16: Low with very high EPSS becomes medium.",
+            "kev": false,
+            "status": "open",
+            "epss": 0.9,
+            "cvss": 5.0,
+            "cve_ids": [
+              "CVE-2099-0016"
+            ],
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "medium",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-17",
+      "title": "High with no linked asset",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-17-rule",
+            "severity": "high",
+            "title": "Remote code execution in tp-17-app service",
+            "description": "Seeded triage case tp-17: High with no linked asset.",
+            "kev": false,
+            "status": "open"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": []
+      }
+    },
+    {
+      "id": "tp-18",
+      "title": "Resolved critical keeps severity but low priority",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-18-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "high"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-18-rule",
+            "severity": "critical",
+            "title": "Unauthenticated admin API on tp-18-app",
+            "description": "Seeded triage case tp-18: Resolved critical keeps severity but low priority.",
+            "kev": false,
+            "status": "resolved",
+            "cvss": 9.1,
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "critical",
+        "duplicates": [],
+        "priority_max": 10
+      }
+    },
+    {
+      "id": "tp-19",
+      "title": "Informational in development",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-19-app",
+            "kind": "web",
+            "environment": "development",
+            "criticality": "low"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-19-rule",
+            "severity": "informational",
+            "title": "Directory listing metadata on tp-19-app",
+            "description": "Seeded triage case tp-19: Informational in development.",
+            "kev": false,
+            "status": "open",
+            "asset": "$a1"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "informational",
+        "duplicates": [],
+        "priority_max": 10
+      }
+    },
+    {
+      "id": "tp-20",
+      "title": "Medium KEV with a duplicate in a different environment",
+      "inputs": {
+        "finding_id": "$f1"
+      },
+      "seed": {
+        "assets": [
+          {
+            "key": "a1",
+            "name": "tp-20-app",
+            "kind": "web",
+            "environment": "production",
+            "criticality": "high"
+          },
+          {
+            "key": "a2",
+            "name": "tp-20-app-2",
+            "kind": "web",
+            "environment": "staging",
+            "criticality": "medium"
+          }
+        ],
+        "findings": [
+          {
+            "key": "f1",
+            "source": "nuclei",
+            "rule": "tp-20-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-20-app",
+            "description": "Seeded triage case tp-20: Medium KEV with a duplicate in a different environment.",
+            "kev": true,
+            "status": "open",
+            "epss": 0.4,
+            "cvss": 7.2,
+            "cve_ids": [
+              "CVE-2099-0020"
+            ],
+            "asset": "$a1"
+          },
+          {
+            "key": "f2",
+            "asset": "$a2",
+            "source": "nuclei",
+            "rule": "tp-20-rule",
+            "severity": "medium",
+            "title": "Outdated TLS configuration on tp-20-app-2",
+            "description": "Seeded duplicate for tp-20.",
+            "status": "open"
+          }
+        ]
+      },
+      "expect": {
+        "severity": "high",
+        "duplicates": [
+          "$f2"
+        ],
+        "kev": true
+      }
+    }
+  ]
+}

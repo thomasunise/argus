@@ -1,0 +1,77 @@
+{
+  "description": "Hypothesis hunts over seeded events and findings. Pass when the entities (or evidence ids) the case plants are recovered at or above min_recall and no forbidden entity is matched.",
+  "spec": "hunt",
+  "grader": "hunt",
+  "task": "Hunt for evidence of the hypothesis.",
+  "cases": [
+    {
+      "id": "hr-01-credential-stuffing",
+      "title": "Failed logins from one actor against the identity provider",
+      "inputs": {"hypothesis": "credential stuffing against okta by mallory", "hours": 24},
+      "seed": {
+        "events": [
+          {"key": "e1", "source": "okta", "external_id": "1", "actor": "mallory@eval.test", "entity": "okta", "action": "user.session.failed", "category": "auth", "title": "Login failed", "minutes_ago": 50},
+          {"key": "e2", "source": "okta", "external_id": "2", "actor": "mallory@eval.test", "entity": "okta", "action": "user.session.failed", "category": "auth", "title": "Login failed", "minutes_ago": 49},
+          {"key": "e3", "source": "okta", "external_id": "3", "actor": "mallory@eval.test", "entity": "okta", "action": "user.session.failed", "category": "auth", "title": "Login failed", "minutes_ago": 48},
+          {"key": "e4", "source": "okta", "external_id": "4", "actor": "mallory@eval.test", "entity": "okta", "action": "user.session.failed", "category": "auth", "title": "Login failed", "minutes_ago": 47},
+          {"key": "n1", "source": "osquery", "external_id": "5", "actor": "bob@eval.test", "entity": "fileshare-eval", "action": "file.read", "category": "process", "title": "Quarterly report opened", "minutes_ago": 40}
+        ]
+      },
+      "expect": {"entities": ["okta"], "evidence": ["$e1", "$e2", "$e3", "$e4"], "forbidden_entities": ["fileshare-eval"], "min_recall": 1.0}
+    },
+    {
+      "id": "hr-02-service-account-fanout",
+      "title": "One service account reading many buckets",
+      "inputs": {"hypothesis": "svc-backup fan-out reading many s3 buckets", "hours": 6},
+      "seed": {
+        "events": [
+          {"key": "e1", "source": "cloudtrail", "external_id": "1", "actor": "svc-backup", "entity": "eval-bucket-1", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 30},
+          {"key": "e2", "source": "cloudtrail", "external_id": "2", "actor": "svc-backup", "entity": "eval-bucket-2", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 29},
+          {"key": "e3", "source": "cloudtrail", "external_id": "3", "actor": "svc-backup", "entity": "eval-bucket-3", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 28},
+          {"key": "e4", "source": "cloudtrail", "external_id": "4", "actor": "svc-backup", "entity": "eval-bucket-4", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 27},
+          {"key": "e5", "source": "cloudtrail", "external_id": "5", "actor": "svc-backup", "entity": "eval-bucket-5", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 26},
+          {"key": "e6", "source": "cloudtrail", "external_id": "6", "actor": "svc-backup", "entity": "eval-bucket-6", "action": "s3.GetObject", "category": "cloud_api", "title": "GetObject", "minutes_ago": 25},
+          {"key": "n1", "source": "cloudtrail", "external_id": "7", "actor": "svc-billing", "entity": "eval-invoices", "action": "dynamodb.Query", "category": "cloud_api", "title": "Query", "minutes_ago": 20}
+        ]
+      },
+      "expect": {"entities": ["eval-bucket-1", "eval-bucket-2", "eval-bucket-3", "eval-bucket-4", "eval-bucket-5", "eval-bucket-6"], "forbidden_entities": ["eval-invoices"], "min_recall": 0.8}
+    },
+    {
+      "id": "hr-03-cve-exploit-attempts",
+      "title": "Exploit attempts for a specific CVE against the web tier",
+      "inputs": {"hypothesis": "CVE-2099-1001 exploitation attempts against web tier hosts", "hours": 12},
+      "seed": {
+        "assets": [{"key": "a1", "name": "hr-03-web-01", "kind": "web"}, {"key": "a2", "name": "hr-03-web-02", "kind": "web"}],
+        "events": [
+          {"key": "e1", "source": "waf", "external_id": "1", "actor": "192.0.2.10", "entity": "hr-03-web-01", "action": "http.blocked", "category": "network", "title": "Exploit attempt CVE-2099-1001 blocked", "asset": "$a1", "minutes_ago": 90, "metadata": {"cve": "CVE-2099-1001"}},
+          {"key": "e2", "source": "waf", "external_id": "2", "actor": "192.0.2.11", "entity": "hr-03-web-02", "action": "http.blocked", "category": "network", "title": "Exploit attempt CVE-2099-1001 blocked", "asset": "$a2", "minutes_ago": 85, "metadata": {"cve": "CVE-2099-1001"}},
+          {"key": "n1", "source": "waf", "external_id": "3", "actor": "192.0.2.12", "entity": "hr-03-static", "action": "http.allowed", "category": "network", "title": "Static asset served", "minutes_ago": 80}
+        ],
+        "findings": [{"key": "f1", "asset": "$a1", "source": "trivy", "rule": "hr-03-cve-2099-1001", "severity": "high", "title": "CVE-2099-1001 in web tier image", "cve_ids": ["CVE-2099-1001"]}]
+      },
+      "expect": {"entities": ["hr-03-web-01", "hr-03-web-02"], "evidence": ["$e1", "$e2"], "forbidden_entities": ["hr-03-static"], "min_recall": 1.0}
+    },
+    {
+      "id": "hr-04-no-evidence",
+      "title": "Hypothesis with nothing behind it returns no matches",
+      "inputs": {"hypothesis": "cryptominer workload scheduled on kubernetes nodes", "hours": 24},
+      "seed": {
+        "events": [{"key": "n1", "source": "okta", "external_id": "1", "actor": "carol@eval.test", "entity": "okta", "action": "user.session.start", "category": "auth", "title": "Login ok", "minutes_ago": 10}]
+      },
+      "expect": {"expect_empty": true, "min_recall": 1.0}
+    },
+    {
+      "id": "hr-05-exfil-from-replica",
+      "title": "Dump followed by egress from a database replica",
+      "inputs": {"hypothesis": "data exfiltration from database replica by alice", "hours": 24},
+      "seed": {
+        "events": [
+          {"key": "e1", "source": "osquery", "external_id": "1", "actor": "alice@eval.test", "entity": "db-replica-eval", "action": "db.dump", "category": "process", "title": "pg_dump executed on replica", "minutes_ago": 120},
+          {"key": "e2", "source": "netflow", "external_id": "2", "actor": "alice@eval.test", "entity": "db-replica-eval", "action": "network.egress", "category": "network", "title": "4.2 GB egress from database replica to external host", "minutes_ago": 110},
+          {"key": "n1", "source": "osquery", "external_id": "3", "actor": "dave@eval.test", "entity": "ci-runner-eval", "action": "process.start", "category": "process", "title": "build started", "minutes_ago": 100}
+        ]
+      },
+      "expect": {"entities": ["db-replica-eval"], "evidence": ["$e1", "$e2"], "forbidden_entities": ["ci-runner-eval"], "min_recall": 1.0}
+    }
+  ]
+}

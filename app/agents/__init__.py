@@ -25,6 +25,9 @@ def _import_all(package_name: str) -> None:
 def setup(app) -> None:
     _import_all('app.agents.tools')
     _import_all('app.agents.specialists')
+    from .evals import register as register_evals
+
+    register_evals(app)
     queue = app.state.queue
 
     @queue.handler('agents.run')

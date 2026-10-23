@@ -110,7 +110,7 @@ class AnthropicProvider(Provider):
         return out
 
     async def complete(self, system, messages, tools, max_tokens=16000) -> ModelTurn:
-        tool_defs = [{'name': t['name'], 'description': t['description'], 'input_schema': t['input_schema'], 'strict': True} for t in tools]
+        tool_defs = [{'name': t['name'], 'description': t['description'], 'input_schema': t['input_schema'], 'strict': strict_compatible(t['input_schema'])} for t in tools]
         params: dict[str, Any] = dict(
             model=self.model, max_tokens=max_tokens,
             system=[{'type': 'text', 'text': system, 'cache_control': {'type': 'ephemeral'}}],
@@ -183,7 +183,7 @@ class OpenAIProvider(Provider):
         return out
 
     async def complete(self, system, messages, tools, max_tokens=16000) -> ModelTurn:
-        tool_defs = [{'type': 'function', 'function': {'name': t['name'], 'description': t['description'], 'parameters': t['input_schema'], 'strict': True}} for t in tools]
+        tool_defs = [{'type': 'function', 'function': {'name': t['name'], 'description': t['description'], 'parameters': t['input_schema'], 'strict': strict_compatible(t['input_schema'])}} for t in tools]
         kwargs: dict[str, Any] = dict(model=self.model, messages=self._convert(system, messages), max_completion_tokens=max_tokens)
         if tool_defs:
             kwargs['tools'] = tool_defs
@@ -232,6 +232,26 @@ class OllamaProvider(Provider):
             calls.append(ToolCall(id=c.get('id') or f'call_{i}', name=fn.get('name', ''), args=args if isinstance(args, dict) else _safe_json(args)))
         usage = Usage(input_tokens=data.get('prompt_eval_count', 0) or 0, output_tokens=data.get('eval_count', 0) or 0)
         return ModelTurn(text=message.get('content', '') or '', tool_calls=calls, stop_reason='tool_use' if calls else 'end_turn', usage=usage, model=self.model)
+
+
+def strict_compatible(schema: dict) -> bool:
+    """Strict tool mode requires every object level to set additionalProperties: false and list required keys.
+    Free-form objects (e.g. action params) are legal tool inputs but must not be sent as strict."""
+    if not isinstance(schema, dict):
+        return True
+    if schema.get('type') == 'object' or 'properties' in schema:
+        if schema.get('additionalProperties', True) is not False:
+            return False
+        props = schema.get('properties', {})
+        if set(schema.get('required', [])) != set(props):
+            return False
+        return all(strict_compatible(v) for v in props.values())
+    if schema.get('type') == 'array':
+        return strict_compatible(schema.get('items', {}))
+    for key in ('anyOf', 'oneOf', 'allOf'):
+        if key in schema and not all(strict_compatible(s) for s in schema[key]):
+            return False
+    return True
 
 
 def _safe_json(text: str) -> dict:

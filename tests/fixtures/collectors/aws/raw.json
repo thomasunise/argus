@@ -1,0 +1,102 @@
+{
+  "account_id": "123456789012",
+  "regions": ["us-east-1"],
+  "collected_at": "2026-10-23T12:00:00+00:00",
+  "warnings": [],
+  "iam": {
+    "account_mfa_enabled": false,
+    "users": [
+      {
+        "UserName": "alice", "Arn": "arn:aws:iam::123456789012:user/alice", "CreateDate": "2024-01-10T09:00:00+00:00",
+        "PasswordLastUsed": "2026-10-20T08:00:00+00:00", "console_access": true,
+        "mfa_devices": [{"SerialNumber": "arn:aws:iam::123456789012:mfa/alice", "EnableDate": "2024-01-10T10:00:00+00:00"}],
+        "access_keys": [{"AccessKeyId": "AKIAEXAMPLEALICE0001", "Status": "Active", "CreateDate": "2026-09-01T00:00:00+00:00"}],
+        "attached_policies": [{"PolicyName": "AdministratorAccess", "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"}],
+        "inline_policies": [], "groups": []
+      },
+      {
+        "UserName": "deploy-bot", "Arn": "arn:aws:iam::123456789012:user/deploy-bot", "CreateDate": "2023-05-01T00:00:00+00:00", "console_access": false,
+        "mfa_devices": [],
+        "access_keys": [
+          {"AccessKeyId": "AKIAEXAMPLEDEPLOY001", "Status": "Active", "CreateDate": "2025-01-15T00:00:00+00:00"},
+          {"AccessKeyId": "AKIAEXAMPLEDEPLOY002", "Status": "Inactive", "CreateDate": "2024-01-15T00:00:00+00:00"}
+        ],
+        "attached_policies": [{"PolicyName": "DeployPolicy", "PolicyArn": "arn:aws:iam::123456789012:policy/DeployPolicy"}],
+        "inline_policies": [{"PolicyName": "s3-wildcard", "PolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}}],
+        "groups": [{"GroupName": "ci", "Arn": "arn:aws:iam::123456789012:group/ci"}]
+      },
+      {
+        "UserName": "bob", "Arn": "arn:aws:iam::123456789012:user/bob", "CreateDate": "2025-03-01T00:00:00+00:00", "console_access": true,
+        "mfa_devices": [], "access_keys": [],
+        "attached_policies": [{"PolicyName": "ReadOnlyAccess", "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess"}],
+        "inline_policies": [], "groups": []
+      }
+    ],
+    "roles": [
+      {
+        "RoleName": "AppServerRole", "Arn": "arn:aws:iam::123456789012:role/AppServerRole", "CreateDate": "2024-02-01T00:00:00+00:00",
+        "AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "ec2.amazonaws.com"}, "Action": "sts:AssumeRole"}]},
+        "attached_policies": [{"PolicyName": "AmazonS3ReadOnlyAccess", "PolicyArn": "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"}],
+        "inline_policies": [], "RoleLastUsed": {"LastUsedDate": "2026-10-22T00:00:00+00:00"}
+      },
+      {
+        "RoleName": "CrossAccountAudit", "Arn": "arn:aws:iam::123456789012:role/CrossAccountAudit", "CreateDate": "2024-02-01T00:00:00+00:00",
+        "AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::999988887777:root"}, "Action": "sts:AssumeRole", "Condition": {"StringEquals": {"sts:ExternalId": "audit-123"}}}]},
+        "attached_policies": [{"PolicyName": "SecurityAudit", "PolicyArn": "arn:aws:iam::aws:policy/SecurityAudit"}],
+        "inline_policies": []
+      },
+      {
+        "RoleName": "OpenRole", "Arn": "arn:aws:iam::123456789012:role/OpenRole", "CreateDate": "2026-01-01T00:00:00+00:00",
+        "AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}]},
+        "attached_policies": [],
+        "inline_policies": [{"PolicyName": "admin", "PolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}}]
+      }
+    ],
+    "policies": [
+      {
+        "PolicyName": "DeployPolicy", "Arn": "arn:aws:iam::123456789012:policy/DeployPolicy", "AttachmentCount": 1, "DefaultVersionId": "v3",
+        "Document": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["ecs:UpdateService", "ecr:GetAuthorizationToken", "iam:PassRole"], "Resource": "*"}]}
+      }
+    ],
+    "instance_profiles": {"AppServerProfile": ["AppServerRole"]}
+  },
+  "ec2": {
+    "us-east-1": {
+      "security_groups": [
+        {"GroupId": "sg-0aaa", "GroupName": "web", "VpcId": "vpc-1", "IpPermissions": [
+          {"IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": [], "UserIdGroupPairs": []},
+          {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": [], "UserIdGroupPairs": []}
+        ]},
+        {"GroupId": "sg-0bbb", "GroupName": "db", "VpcId": "vpc-1", "IpPermissions": [
+          {"IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432, "IpRanges": [], "Ipv6Ranges": [], "UserIdGroupPairs": [{"GroupId": "sg-0aaa"}]}
+        ]}
+      ],
+      "reservations": [{"Instances": [
+        {"InstanceId": "i-0123", "InstanceType": "t3.medium", "State": {"Name": "running"}, "PublicIpAddress": "54.1.2.3", "PrivateIpAddress": "10.0.1.5",
+         "VpcId": "vpc-1", "SubnetId": "subnet-1", "ImageId": "ami-1", "SecurityGroups": [{"GroupId": "sg-0aaa", "GroupName": "web"}],
+         "IamInstanceProfile": {"Arn": "arn:aws:iam::123456789012:instance-profile/AppServerProfile"}, "MetadataOptions": {"HttpTokens": "optional"},
+         "Tags": [{"Key": "Name", "Value": "web-1"}]},
+        {"InstanceId": "i-0456", "InstanceType": "t3.small", "State": {"Name": "running"}, "PrivateIpAddress": "10.0.2.9", "VpcId": "vpc-1",
+         "SecurityGroups": [{"GroupId": "sg-0bbb", "GroupName": "db"}], "MetadataOptions": {"HttpTokens": "required"}, "Tags": [{"Key": "Name", "Value": "worker-1"}]}
+      ]}]
+    }
+  },
+  "s3": {"buckets": [
+    {"Name": "acme-public-assets", "CreationDate": "2022-01-01T00:00:00+00:00", "Region": "us-east-1", "public_access_block": null, "policy_public": true},
+    {"Name": "acme-data-lake", "CreationDate": "2022-01-01T00:00:00+00:00", "Region": "us-east-1",
+     "public_access_block": {"BlockPublicAcls": true, "IgnorePublicAcls": true, "BlockPublicPolicy": true, "RestrictPublicBuckets": true}, "policy_public": false}
+  ]},
+  "rds": {"us-east-1": [
+    {"DBInstanceIdentifier": "orders-db", "Engine": "postgres", "EngineVersion": "15.4", "PubliclyAccessible": true, "StorageEncrypted": true, "MultiAZ": false,
+     "Endpoint": {"Address": "orders-db.abc.us-east-1.rds.amazonaws.com", "Port": 5432}, "VpcSecurityGroups": [{"VpcSecurityGroupId": "sg-0bbb", "Status": "active"}]}
+  ]},
+  "lambda": {"us-east-1": [
+    {"FunctionName": "image-resizer", "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:image-resizer", "Runtime": "python3.12",
+     "Role": "arn:aws:iam::123456789012:role/AppServerRole", "LastModified": "2026-09-01T00:00:00.000+0000", "VpcConfig": {}}
+  ]},
+  "eks": {"us-east-1": [
+    {"name": "prod", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/prod", "version": "1.30", "roleArn": "arn:aws:iam::123456789012:role/AppServerRole",
+     "resourcesVpcConfig": {"endpointPublicAccess": true, "endpointPrivateAccess": true, "publicAccessCidrs": ["0.0.0.0/0"]},
+     "logging": {"clusterLogging": [{"types": ["audit", "authenticator"], "enabled": true}, {"types": ["api"], "enabled": false}]}}
+  ]}
+}

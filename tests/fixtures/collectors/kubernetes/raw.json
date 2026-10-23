@@ -1,0 +1,64 @@
+{
+  "cluster": "prod-eks",
+  "version": "v1.30.4-eks-a737599",
+  "namespaces_filter": [],
+  "warnings": [],
+  "namespaces": [
+    {"metadata": {"name": "default", "labels": {}}},
+    {"metadata": {"name": "prod", "labels": {"pod-security.kubernetes.io/enforce": "baseline"}}},
+    {"metadata": {"name": "kube-system", "labels": {}}}
+  ],
+  "service_accounts": [
+    {"metadata": {"name": "default", "namespace": "default"}},
+    {"metadata": {"name": "default", "namespace": "prod"}},
+    {"metadata": {"name": "api", "namespace": "prod"}, "automountServiceAccountToken": true},
+    {"metadata": {"name": "node-agent", "namespace": "kube-system"}}
+  ],
+  "cluster_role_bindings": [
+    {"metadata": {"name": "cluster-admin"}, "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"}, "subjects": [{"kind": "Group", "name": "system:masters"}]},
+    {"metadata": {"name": "api-admin"}, "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"}, "subjects": [{"kind": "ServiceAccount", "name": "api", "namespace": "prod"}]},
+    {"metadata": {"name": "everyone-admin"}, "roleRef": {"kind": "ClusterRole", "name": "cluster-admin"}, "subjects": [{"kind": "Group", "name": "system:authenticated"}]},
+    {"metadata": {"name": "devs-view"}, "roleRef": {"kind": "ClusterRole", "name": "view"}, "subjects": [{"kind": "Group", "name": "devs"}, {"kind": "User", "name": "alice@acme.com"}]}
+  ],
+  "deployments": [
+    {"metadata": {"name": "api", "namespace": "prod"},
+     "spec": {"replicas": 3, "template": {"metadata": {"labels": {"app": "api"}},
+       "spec": {"_labels": {"app": "api"}, "serviceAccountName": "api", "securityContext": {"runAsNonRoot": true, "runAsUser": 1000},
+                "containers": [{"name": "api", "image": "ghcr.io/acme/api:1.4.2", "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true}}]}}}}
+  ],
+  "daemonsets": [
+    {"metadata": {"name": "node-agent", "namespace": "kube-system"},
+     "spec": {"template": {"metadata": {"labels": {"app": "node-agent"}},
+       "spec": {"_labels": {"app": "node-agent"}, "serviceAccountName": "node-agent", "hostPID": true, "hostNetwork": true,
+                "containers": [{"name": "agent", "image": "acme/node-agent:2.1", "securityContext": {"privileged": true}}],
+                "volumes": [{"name": "root", "hostPath": {"path": "/"}}]}}}}
+  ],
+  "statefulsets": [
+    {"metadata": {"name": "postgres", "namespace": "prod"},
+     "spec": {"replicas": 1, "template": {"metadata": {"labels": {"app": "postgres"}},
+       "spec": {"_labels": {"app": "postgres"}, "containers": [{"name": "postgres", "image": "postgres:16", "securityContext": {}}]}}}}
+  ],
+  "replicasets": [
+    {"metadata": {"name": "api-7d9f8c6b5", "namespace": "prod", "ownerReferences": [{"kind": "Deployment", "name": "api"}]}}
+  ],
+  "pods": [
+    {"metadata": {"name": "api-7d9f8c6b5-abcde", "namespace": "prod", "ownerReferences": [{"kind": "ReplicaSet", "name": "api-7d9f8c6b5"}]},
+     "spec": {"nodeName": "ip-10-0-1-11.ec2.internal", "serviceAccountName": "api", "containers": [{"name": "api", "image": "ghcr.io/acme/api:1.4.2"}]}, "status": {"phase": "Running"}},
+    {"metadata": {"name": "api-7d9f8c6b5-fghij", "namespace": "prod", "ownerReferences": [{"kind": "ReplicaSet", "name": "api-7d9f8c6b5"}]},
+     "spec": {"nodeName": "ip-10-0-1-12.ec2.internal", "serviceAccountName": "api", "containers": [{"name": "api", "image": "ghcr.io/acme/api:1.4.2"}]}, "status": {"phase": "Running"}},
+    {"metadata": {"name": "debug", "namespace": "default"},
+     "spec": {"nodeName": "ip-10-0-1-11.ec2.internal", "hostNetwork": true, "containers": [{"name": "shell", "image": "busybox", "securityContext": {"privileged": true}}]},
+     "status": {"phase": "Running"}}
+  ],
+  "services": [
+    {"metadata": {"name": "kubernetes", "namespace": "default"}, "spec": {"type": "ClusterIP", "ports": [{"port": 443, "protocol": "TCP"}]}},
+    {"metadata": {"name": "api", "namespace": "prod", "annotations": {}}, "spec": {"type": "LoadBalancer", "selector": {"app": "api"}, "ports": [{"port": 443, "protocol": "TCP", "nodePort": 31443}]},
+     "status": {"loadBalancer": {"ingress": [{"hostname": "a1b2c3.elb.amazonaws.com"}]}}},
+    {"metadata": {"name": "metrics", "namespace": "prod"}, "spec": {"type": "NodePort", "selector": {"app": "metrics"}, "ports": [{"port": 9100, "protocol": "TCP", "nodePort": 30910}]}}
+  ],
+  "secrets": [
+    {"metadata": {"name": "db-creds", "namespace": "prod"}, "type": "Opaque", "keys": ["password", "username"]},
+    {"metadata": {"name": "api-tls", "namespace": "prod"}, "type": "kubernetes.io/tls", "keys": ["tls.crt", "tls.key"]},
+    {"metadata": {"name": "default-token-x9z2k", "namespace": "default"}, "type": "kubernetes.io/service-account-token", "keys": ["ca.crt", "namespace", "token"]}
+  ]
+}
