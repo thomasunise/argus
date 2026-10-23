@@ -168,7 +168,9 @@ def test_credentials_resolution(settings, monkeypatch, tmp_path):
     monkeypatch.setenv('ACTIONS_GITHUB_TOKEN', 'env:GH_SECRET')
     assert credentials.resolve('github', 'token', settings) == 'ghp_fromref'
     # tenant override must be a ref; literal values are ignored
-    secret_file = tmp_path / 'tok'
+    # file: references must live under SECRETS_DIR (the fixture points it at tmp_path / 'secrets')
+    secret_file = tmp_path / 'secrets' / 'tok'
+    secret_file.parent.mkdir(parents=True, exist_ok=True)
     secret_file.write_text('ghp_tenant', encoding='utf-8')
     tenant_settings = {'action_credentials': {'github': {'token': f'file:{secret_file}'}}}
     assert credentials.resolve('github', 'token', settings, tenant_settings) == 'ghp_tenant'
