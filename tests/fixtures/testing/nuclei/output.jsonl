@@ -1,0 +1,2 @@
+{"template-id":"tech-detect","info":{"name":"Technology Detection","severity":"info","tags":["tech"]},"type":"http","host":"https://app.example.test","matched-at":"https://app.example.test"}
+{"template-id":"CVE-2021-44228","info":{"name":"Apache Log4j RCE","severity":"critical","description":"Log4Shell remote code execution.","remediation":"Upgrade Log4j to 2.17+.","classification":{"cve-id":["CVE-2021-44228"],"cvss-score":10.0}},"type":"http","host":"https://app.example.test","matched-at":"https://app.example.test/api"}

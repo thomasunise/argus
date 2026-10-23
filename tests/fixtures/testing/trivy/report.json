@@ -1,0 +1,52 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "repo",
+  "Results": [
+    {
+      "Target": "requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-12345",
+          "PkgName": "flask",
+          "InstalledVersion": "2.0.0",
+          "FixedVersion": "2.0.3",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://example.test/CVE-2023-12345",
+          "CVSS": {"nvd": {"V3Score": 7.5}}
+        }
+      ]
+    },
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "ID": "DS002",
+          "Title": "Image user should not be root",
+          "Description": "Running containers as root is dangerous.",
+          "Message": "Specify a non-root USER.",
+          "Resolution": "Add a USER instruction with a non-root uid.",
+          "Severity": "MEDIUM",
+          "Status": "FAIL"
+        }
+      ]
+    },
+    {
+      "Target": "config/app.env",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "aws-access-key-id",
+          "Category": "AWS",
+          "Title": "AWS Access Key ID",
+          "Severity": "CRITICAL",
+          "StartLine": 12,
+          "Match": "AWS_KEY=AKIAIOSFODNN7EXAMPLE"
+        }
+      ]
+    }
+  ]
+}

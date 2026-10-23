@@ -1,0 +1,5 @@
+[
+  {"CheckID":"iam_root_mfa_enabled","CheckTitle":"Ensure MFA is enabled for the root account","Status":"FAIL","Severity":"critical","StatusExtended":"Root account does not have MFA enabled.","Region":"us-east-1","ResourceId":"root","ServiceName":"iam","Remediation":{"Recommendation":{"Text":"Enable a hardware MFA device for the root account."}}},
+  {"CheckID":"s3_bucket_public_access","CheckTitle":"Ensure S3 buckets block public access","Status":"PASS","Severity":"high","Region":"us-east-1","ResourceId":"my-bucket","ServiceName":"s3"},
+  {"CheckID":"ec2_sg_open_ssh","CheckTitle":"Security group allows ingress to 22 from 0.0.0.0/0","Status":"FAIL","Severity":"high","StatusExtended":"SSH open to the world.","Region":"us-west-2","ResourceId":"sg-123","ServiceName":"ec2","Remediation":{"Recommendation":{"Text":"Restrict SSH ingress to known CIDRs."}}}
+]

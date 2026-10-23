@@ -1,0 +1,5 @@
+{"alerts":[
+  {"pluginId":"10038","alert":"Content Security Policy (CSP) Header Not Set","risk":"Medium","confidence":"High","url":"https://app.example.test/","param":"","cweid":"693","description":"CSP header missing.","solution":"Add a Content-Security-Policy header."},
+  {"pluginId":"40018","alert":"SQL Injection","risk":"High","confidence":"Medium","url":"https://app.example.test/search","param":"q","cweid":"89","description":"SQL injection detected.","solution":"Use parameterized queries."},
+  {"pluginId":"40018","alert":"SQL Injection","risk":"High","confidence":"Medium","url":"https://app.example.test/search","param":"q","cweid":"89","description":"duplicate","solution":"dup"}
+]}

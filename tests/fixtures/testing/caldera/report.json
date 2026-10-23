@@ -1,0 +1,4 @@
+{"name":"sentinel-op","steps":{"host-01":{"steps":[
+  {"name":"Find files","ability_id":"abc","status":0,"attack":{"tactic":"collection","technique_id":"T1005","technique_name":"Data from Local System"}},
+  {"name":"Blocked step","ability_id":"def","status":1,"attack":{"tactic":"exfiltration","technique_id":"T1041","technique_name":"Exfil Over C2"}}
+]}}}

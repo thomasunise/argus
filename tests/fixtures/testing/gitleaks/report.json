@@ -1,0 +1,20 @@
+[
+  {
+    "RuleID": "aws-access-token",
+    "Description": "AWS Access Token",
+    "File": "config/secrets.py",
+    "StartLine": 3,
+    "Match": "AKIAIOSFODNN7EXAMPLE",
+    "Secret": "AKIAIOSFODNN7EXAMPLE",
+    "Fingerprint": "config/secrets.py:aws-access-token:3"
+  },
+  {
+    "RuleID": "generic-api-key",
+    "Description": "Generic API Key",
+    "File": "app/client.js",
+    "StartLine": 88,
+    "Match": "apikey = 'super-secret-value'",
+    "Secret": "super-secret-value",
+    "Fingerprint": "app/client.js:generic-api-key:88"
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "version": "1.50.0",
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.dangerous-subprocess-use",
+      "path": "app/runner.py",
+      "start": {"line": 42, "col": 5},
+      "end": {"line": 42, "col": 60},
+      "extra": {
+        "message": "Detected subprocess function with user input.",
+        "severity": "ERROR",
+        "fix": "Use a fixed argv list and never pass shell=True.",
+        "metadata": {"cwe": ["CWE-78: OS Command Injection"], "owasp": ["A03:2021 - Injection"]}
+      }
+    },
+    {
+      "check_id": "generic.secrets.hardcoded",
+      "path": "app/config.py",
+      "start": {"line": 7, "col": 1},
+      "end": {"line": 7, "col": 30},
+      "extra": {
+        "message": "Possible hardcoded value.",
+        "severity": "WARNING",
+        "metadata": {"cwe": "CWE-798: Use of Hard-coded Credentials"}
+      }
+    }
+  ],
+  "errors": []
+}
