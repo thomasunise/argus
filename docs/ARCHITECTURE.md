@@ -357,3 +357,16 @@ Fingerprint rule for findings: `sha256(tenant|asset|source|rule)`; for detection
 - [ ] Every collector stores credentials by `secret_ref`, never inline.
 - [ ] Audit entry for login, authorization, scope creation, test run, action lifecycle, settings change, user/role change.
 - [ ] Prompt-injection eval suite passes for every specialist.
+
+---
+
+## 8. As-built deviations (recorded during integration)
+
+- Queue handler kinds follow `<package>.<verb>`: `testing.run` (not `tests.run`), `collectors.run`, `detections.run`, `detections.baselines`, `graph.recompute`, `agents.run`, `agents.eval`, `actions.execute`, `actions.rollback`, `integrations.fanout`, `integrations.deliver`, `integrations.wazuh_sync`.
+- In-process workers run on a dedicated thread with their own event loop (`core/queue.py`); every queue call is marshalled onto it. Handlers may still do blocking database work without stalling HTTP requests. SQLite busy timeout is 30 s.
+- Integrations models are `IntegrationConfig`, `WebhookDelivery`, `IngestBatch`; inbound webhook secrets are `IntegrationConfig` rows of inbound kinds. `FindingDraft` lives in `app.integrations.inbound`.
+- The tenant kill switch is `Tenant.actions_enabled` (default `False`, so actions are blocked until an admin or owner releases them). `POST /actions/kill-switch {enabled: true}` sets it to `False`.
+- `GraphNode.exposure_score` is persisted and refreshed by `graph.recompute`; `graph.service` has no `query()`, callers select `GraphNode` directly through `scoped()`.
+- `scope.check` in the testing harness takes `settings` and `tier`; `execute_run` accepts a `heartbeat` callable.
+- Models from workstream packages are imported from their module (`app.models.graph`, `app.models.detections`, …), not re-exported by `app.models`.
+- `app.actions.broker.request` is async because it runs the dry run.
