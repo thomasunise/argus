@@ -17,6 +17,7 @@ from ..core.rbac import Principal, system_principal
 from ..models import Asset, loads, utcnow
 from ..models.testing import TestPlan, TestRun, TestScope
 from . import harness
+from .scope import TIER_RANK
 
 log = logging.getLogger('sentinel.testing')
 
@@ -58,6 +59,10 @@ def _adapter_tier(adapter_name: str, requested: str | None) -> tuple[object, str
     if adapter is None:
         raise NotFound(f'unknown adapter {adapter_name!r}')
     tier = requested or adapter.tier
+    if TIER_RANK.get(tier, 0) < TIER_RANK.get(adapter.tier, 0):
+        # Adapters run at their nominal tier whatever the request says (only ZAP degrades by ctx.tier), so a lower
+        # requested tier would let scope.check approve an intrusive tool under a passive label.
+        raise ScopeDenied(f'adapter {adapter.name} runs at tier {adapter.tier}; a {tier} run cannot use it')
     return adapter, tier
 
 

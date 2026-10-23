@@ -82,9 +82,11 @@ class TrivyAdapter(TestAdapter):
         if asset.kind == 'host':
             if not asset.target.startswith('image:'):
                 raise Unavailable('trivy host assets must have a target of the form image:<ref>')
-            ref = asset.target.split(':', 1)[1]
+            ref = asset.target.split(':', 1)[1].strip()
+            if not ref or ref.startswith('-'):
+                raise Unavailable('trivy image reference must not be empty or start with -')
             argv = [settings.trivy_bin, 'image', '--format', 'json', '--scanners', 'vuln,misconfig,secret',
-                    '--quiet', '--no-progress', ref]
+                    '--quiet', '--no-progress', '--', ref]
         else:
             path = policy.validate_repo_target(asset.target, settings)
             argv = [settings.trivy_bin, 'fs', '--format', 'json', '--scanners', 'vuln,misconfig,secret',

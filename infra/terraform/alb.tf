@@ -29,8 +29,17 @@ resource "aws_acm_certificate_validation" "this" {
   validation_record_fqdns = [for r in aws_route53_record.validation : r.fqdn]
 }
 
+# The HTTPS listener must reference an ISSUED certificate. With a hosted zone the validation
+# resource waits for issuance, so the listener depends on it through this local. Without a
+# hosted zone (and without acm_certificate_arn) Terraform cannot validate the certificate:
+# create the CNAME records from `aws acm describe-certificate` in your DNS while the apply is
+# running (the listener fails on a PENDING_VALIDATION certificate; re-run apply once ISSUED).
 locals {
-  certificate_arn = var.acm_certificate_arn != "" ? var.acm_certificate_arn : aws_acm_certificate.this[0].arn
+  certificate_arn = (
+    var.acm_certificate_arn != "" ? var.acm_certificate_arn :
+    var.hosted_zone_id != "" ? aws_acm_certificate_validation.this[0].certificate_arn :
+    aws_acm_certificate.this[0].arn
+  )
 }
 
 resource "aws_lb" "this" {

@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     app_name: str = 'Sentinel'
     base_url: str = 'http://127.0.0.1:8080'
     session_secret: str = ''
-    session_max_age: int = 3600
+    session_max_age: int = 3600  # idle timeout (the cookie is refreshed on every response)
+    session_absolute_max_age: int = 43200  # hard lifetime from login, regardless of activity
     cookie_secure: bool = False
     db_auto_create: bool = True
     request_id_header: str = 'X-Request-ID'
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
     # --- auth ---
     admin_email: str = 'admin@sentinel.local'
     admin_password: str = ''
+    admin_password_reset: bool = False  # true: re-apply ADMIN_PASSWORD to the bootstrap owner at startup (recovery)
     default_tenant_slug: str = 'default'
     default_tenant_name: str = 'Default'
     ingest_api_key: str = ''  # bootstrap ingest key for the default tenant
@@ -42,6 +44,7 @@ class Settings(BaseSettings):
     oidc_default_role: str = 'viewer'
     oidc_allowed_domains: str = ''  # comma separated email domains
     oidc_auto_provision: bool = True
+    oidc_trust_email: bool = False  # link an existing local account to an SSO identity even when the IdP does not assert email_verified
     login_max_attempts: int = 8
     login_window_seconds: int = 300
 
@@ -157,6 +160,13 @@ def assert_safe_config(settings: Settings) -> None:
         raise RuntimeError('Set a strong ADMIN_PASSWORD (at least 14 characters) in .env')
     if settings.ingest_api_key and (len(settings.ingest_api_key) < 24 or settings.ingest_api_key.startswith('REPLACE_')):
         raise RuntimeError('INGEST_API_KEY must be at least 24 random characters')
+    if settings.ingest_api_key:
+        from .security import parse_api_key  # local import: security depends on this module
+
+        if not parse_api_key(settings.ingest_api_key):
+            raise RuntimeError('INGEST_API_KEY must have the snt_<prefix>_<secret> form; generate one with scripts/generate_secrets.py')
+    if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
+        raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
     if settings.is_production:
         if settings.sqlite:
             raise RuntimeError('Production requires PostgreSQL (DATABASE_URL=postgresql+psycopg://...)')

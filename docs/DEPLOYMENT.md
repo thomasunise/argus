@@ -73,8 +73,20 @@ Properties of the stack:
 
 TLS for a single host: `compose.prod.yaml` adds Caddy (ACME certificates, HSTS, `/metrics`
 blocked), sets `APP_ENV=production`, `COOKIE_SECURE=true`, `LOG_JSON=true`,
-`FORWARDED_ALLOW_IPS=*` (Caddy is the only client on the internal network), `restart: always`
-and log rotation. Set `SENTINEL_DOMAIN` and `ACME_EMAIL` in `.env`.
+`BASE_URL=https://$SENTINEL_DOMAIN` and `TOTP_REQUIRED=true` on both `api` and `worker`
+(each process runs `assert_safe_config`), `FORWARDED_ALLOW_IPS=*` on the API (Caddy is the
+only client on the internal network), `restart: always` and log rotation.
+
+Required in `.env` for this overlay; `up` refuses to start without the first two:
+
+- `SENTINEL_DOMAIN` - public hostname; DNS must resolve to the host before `up`.
+- `ACME_EMAIL` - ACME account contact (an empty value is a Caddyfile parse error).
+- `SESSION_SECRET`, `ADMIN_PASSWORD`, `INGEST_API_KEY`, `DATA_ENCRYPTION_KEY`, `AUDIT_SIGNING_KEY` - from `python scripts/generate_secrets.py --write`.
+
+Optional: `TOTP_REQUIRED=false` only together with `OIDC_ISSUER`, `OIDC_CLIENT_ID` and
+`OIDC_CLIENT_SECRET` (single sign-on); `AUDIT_S3_BUCKET` or `AUDIT_AZURE_CONTAINER` for an
+object-lock mirror, which needs the `<tag>-extras` image (`SENTINEL_IMAGE=ghcr.io/<owner>/sentinel:<tag>-extras`,
+or `SENTINEL_EXTRAS=1` when building locally).
 
 ```bash
 docker compose -f compose.yaml -f compose.prod.yaml up -d
@@ -92,7 +104,7 @@ kubectl create namespace sentinel
 kubectl -n sentinel create secret generic sentinel-secrets \
   --from-literal=SESSION_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
   --from-literal=ADMIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(24))')" \
-  --from-literal=INGEST_API_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(40))')" \
+  --from-literal=INGEST_API_KEY="$(python -c 'import secrets;print(f"snt_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}")')" \
   --from-literal=AUDIT_SIGNING_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')"   --from-literal=DATA_ENCRYPTION_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')" \
   --from-literal=DATABASE_URL='postgresql+psycopg://sentinel:...@postgres:5432/sentinel?sslmode=require' \
   --from-literal=REDIS_URL='rediss://:...@redis:6379/0'
@@ -108,13 +120,32 @@ What the chart renders:
 - `Deployment` api (rolling, `maxUnavailable: 0`, startup/liveness `/health`, readiness `/ready`) and worker (exec liveness; the Redis lease reaper requeues jobs of a dead worker).
 - `HorizontalPodAutoscaler` for the API (CPU and memory), `PodDisruptionBudget` for both.
 - `ConfigMap` from `values.config`, `Secret` from `values.secrets` unless `existingSecret` is set (recommended; pods roll on checksum change).
-- `Service`, `Ingress` with TLS and nginx annotations (`/metrics` denied by server snippet; adapt for other controllers).
+- `Service`, `Ingress` with TLS and nginx annotations (redirect, body size, timeouts, `limit-rps`). The chart does not block `/metrics` itself: ingress-nginx 1.12+ rejects the `server-snippet` annotation at admission, so block it at your edge or disable it (see below).
 - `NetworkPolicy`: default deny; API ingress from the ingress-controller namespace (and the monitoring namespace when `serviceMonitor.enabled`); egress allows DNS plus the list in `networkPolicy.egress` (Postgres, Redis, HTTPS). Workers get the same egress because collectors and adapters run there.
 - `ServiceAccount` with `automountServiceAccountToken: false`; annotate it for IRSA or Workload Identity if the audit sink uses S3 or Azure.
 - Pod security: non-root UID 10001, read-only root FS, all capabilities dropped, seccomp RuntimeDefault, `emptyDir` for `/tmp` and `/app/data` (or a RWX PVC when `auditVolume.enabled`).
 - Optional `ServiceMonitor` for the Prometheus operator.
 
 Database and Redis are not part of the chart; use managed services or your own operators.
+
+`image.tag` defaults to `Chart.AppVersion` (`1.0.0`). Images are published by
+`.github/workflows/release.yml` on a `v*` tag, so `ghcr.io/eekosystems/sentinel:1.0.0` exists
+only after the first `v1.0.0` release; pin `image.digest` from the release notes. When
+`config.AUDIT_S3_BUCKET` or `config.AUDIT_AZURE_CONTAINER` is set, use the `<tag>-extras`
+image (it carries `boto3` / `azure-storage-blob`); the base image logs a sink failure instead.
+
+`/metrics` is unauthenticated and must not be reachable through the ingress. Pick one:
+
+- ingress-nginx: allow snippets in the controller ConfigMap (`allow-snippet-annotations: "true"`,
+  `annotations-risk-level: Critical`) and add
+  `nginx.ingress.kubernetes.io/server-snippet: "location = /metrics { return 404; }"` to
+  `ingress.annotations`; or create a second `Ingress` for path `/metrics` (`pathType: Exact`)
+  pointing at a non-existent Service (the controller answers 503).
+- Gateway API, Traefik, HAProxy, cloud load balancers: a route or listener rule returning 404
+  for `/metrics` ahead of the catch-all route.
+- No scrape target at all: `config.METRICS_ENABLED: "false"`, which removes the endpoint.
+
+Prometheus scrapes the Service on the cluster network (`serviceMonitor.enabled`), never via the ingress.
 
 ## 5. AWS (Terraform)
 
@@ -124,7 +155,12 @@ with Object Lock in compliance mode (task role may only `PutObject`), Secrets Ma
 injected as task secrets, an ALB with TLS 1.3 and `/metrics` blocked, AWS WAF (rate limit,
 common rules, known bad inputs, IP reputation, logs with auth headers redacted), KMS-encrypted
 CloudWatch log groups and alarms. Read `infra/terraform/README.md` for the decisions you must
-make (retention, egress, state backend) before applying.
+make (retention, egress, state backend) before applying. The stack always configures
+`AUDIT_S3_BUCKET`, so the `image` variable must point at the `<tag>-extras` image digest
+(`boto3` lives only there). Without `hosted_zone_id` (and without `acm_certificate_arn`)
+Terraform cannot DNS-validate the ACM certificate: create the validation CNAMEs from
+`aws acm describe-certificate` during the first apply and re-run it once the certificate is
+`ISSUED`.
 
 ## 6. Azure (Terraform)
 
@@ -135,7 +171,9 @@ Server (zone-redundant HA, private DNS, `require_secure_transport`), Azure Cache
 mirror, Key Vault (RBAC, purge protection) with generated secrets, Log Analytics and
 Application Insights, and Front Door Premium with a WAF policy (rate limit, DRS 2.1, bot
 manager) plus HSTS and `/metrics` blocked. Read `infra/terraform-azure/README.md` for the
-Front Door origin and immutability-lock decisions.
+Front Door origin and immutability-lock decisions. The stack always configures
+`AUDIT_AZURE_CONTAINER`, so the `image` variable must point at the `<tag>-extras` image digest
+(`azure-storage-blob` lives only there).
 
 ## 7. Configuration contract
 
@@ -159,6 +197,8 @@ resolved at run time and never stored.
 Audit sinks: `AUDIT_JSONL_PATH` (local append-only file), `AUDIT_S3_BUCKET` +
 `AUDIT_S3_PREFIX` (needs `boto3` from `requirements-optional.txt` and an IAM principal),
 `AUDIT_AZURE_CONTAINER` + `AUDIT_AZURE_CONNECTION_STRING` (needs `azure-storage-blob`).
+Both SDKs ship only in the `<tag>-extras` image (`Dockerfile` `EXTRAS=1`, released as
+`ghcr.io/<owner>/sentinel:<tag>-extras`), so run that image wherever an object-lock sink is configured.
 A sink failure is logged and never blocks the operation; the database chain remains the
 source of truth and `GET /api/v1/audit/verify` recomputes it.
 

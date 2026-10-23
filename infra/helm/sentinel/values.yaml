@@ -5,9 +5,12 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Images are published by .github/workflows/release.yml on a `v*` tag (ghcr.io/<owner>/sentinel:<version>
+# plus `<version>-extras` with boto3 / azure-storage-blob for the S3 / Azure audit sinks). The tag
+# must exist in the registry: ghcr.io/eekosystems/sentinel:1.0.0 exists after the first v1.0.0 release.
 image:
   repository: ghcr.io/eekosystems/sentinel
-  tag: ""            # defaults to .Chart.AppVersion; pin a digest in production
+  tag: ""            # defaults to .Chart.AppVersion (1.0.0); use "<version>-extras" when AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER is set; pin a digest in production
   digest: ""         # e.g. sha256:...; when set it overrides tag
   pullPolicy: IfNotPresent
 imagePullSecrets: []
@@ -106,9 +109,17 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "8m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/limit-rps: "50"
-    # /metrics must not be reachable through the ingress. nginx: deny the location.
-    nginx.ingress.kubernetes.io/server-snippet: |
-      location = /metrics { return 404; }
+  # /metrics is unauthenticated and must not be reachable through the ingress. The chart cannot
+  # do this portably (ingress-nginx >= 1.12 rejects `server-snippet` at admission), so block it
+  # at your edge, or set config.METRICS_ENABLED: "false" when nothing scrapes it:
+  #   - ingress-nginx: enable `allow-snippet-annotations: "true"` plus
+  #     `annotations-risk-level: Critical` in the controller ConfigMap and add
+  #     `nginx.ingress.kubernetes.io/server-snippet: "location = /metrics { return 404; }"`
+  #     above; or a second Ingress for path `/metrics` (pathType Exact) whose backend is a
+  #     non-existent Service, which returns 503.
+  #   - Gateway API / Traefik / HAProxy / cloud LBs: a route or listener rule that returns
+  #     404 for `/metrics` ahead of the catch-all route.
+  #   - Prometheus scrapes the Service on the cluster network (serviceMonitor), never via the ingress.
 
 networkPolicy:
   enabled: true
@@ -165,7 +176,7 @@ config:
   ADMIN_EMAIL: admin@sentinel.local
   DEFAULT_TENANT_SLUG: default
   DEFAULT_TENANT_NAME: Default
-  TOTP_REQUIRED: "false"
+  TOTP_REQUIRED: "true"        # production requires TOTP_REQUIRED=true or OIDC_ISSUER; OIDC deployments set this "false" and fill OIDC_ISSUER / OIDC_CLIENT_ID (+ OIDC_CLIENT_SECRET)
   OIDC_ISSUER: ""
   OIDC_CLIENT_ID: ""
   OIDC_DEFAULT_ROLE: viewer
@@ -177,7 +188,7 @@ config:
   AUDIT_AZURE_CONTAINER: ""
   LOG_JSON: "true"
   LOG_LEVEL: INFO
-  METRICS_ENABLED: "true"
+  METRICS_ENABLED: "true"      # set "false" when /metrics is neither scraped nor blocked at the ingress (see ingress.annotations)
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_SERVICE_NAME: sentinel
   AI_PROVIDER: none

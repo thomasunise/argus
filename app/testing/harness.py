@@ -141,7 +141,7 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
-async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbeat=None) -> dict:
+async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbeat=None, job_tenant_id: str = '') -> dict:
     """Load a TestRun, re-check scope at execution time, rate limit, run the adapter under a
     timeout, upsert findings and write TestResult rows. Returns a small status dict.
 
@@ -162,6 +162,8 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
         if run is None:
             return {'run_id': run_id, 'status': 'missing'}
         tenant_id = run.tenant_id
+        if job_tenant_id and job_tenant_id != tenant_id:
+            raise PermissionError('queued job tenant does not match the test run')
         adapter = get_adapter(run.adapter)
         # Rows referenced by id are re-checked against the run's tenant: a queued row is not a grant.
         asset = db.get(Asset, run.asset_id)

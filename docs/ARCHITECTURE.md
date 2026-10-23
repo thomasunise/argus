@@ -7,7 +7,7 @@ reason over an evidence graph with read-only tools, active testing is scope-gate
 change to the world goes through a separate action broker with typed actions, policy,
 approvals, dry runs, rollback and a kill switch.
 
-This document is the build contract. Every package below is owned by one workstream and
+This document is the build contract. Every package below is self-contained and
 exposes only the interfaces described here. Conventions apply to all code.
 
 ---
@@ -135,10 +135,10 @@ docs/                         this file, THREAT-MODEL, RUNBOOKS, COMPLIANCE    (
 tests/                        one file per package, cross-tenant tests         (each)
 ```
 
-A workstream may add files inside its own package and its own `api/<name>.py`,
-`models/<name>.py`, `tests/test_<name>*.py`. It must not edit another package's files.
-If it needs something from core that does not exist, it adds a small helper inside its
-own package and notes it in its report.
+A contributor working on a package adds files inside that package and its own `api/<name>.py`,
+`models/<name>.py`, `tests/test_<name>*.py`, and does not reach into another package's files.
+If the package needs something from core that does not exist, add a small helper inside the
+package and say so in the pull request.
 
 ---
 
@@ -368,5 +368,5 @@ Fingerprint rule for findings: `sha256(tenant|asset|source|rule)`; for detection
 - The tenant kill switch is `Tenant.actions_enabled` (default `False`, so actions are blocked until an admin or owner releases them). `POST /actions/kill-switch {enabled: true}` sets it to `False`.
 - `GraphNode.exposure_score` is persisted and refreshed by `graph.recompute`; `graph.service` has no `query()`, callers select `GraphNode` directly through `scoped()`.
 - `scope.check` in the testing harness takes `settings` and `tier`; `execute_run` accepts a `heartbeat` callable.
-- Models from workstream packages are imported from their module (`app.models.graph`, `app.models.detections`, …), not re-exported by `app.models`.
+- Models from non-core packages are imported from their module (`app.models.graph`, `app.models.detections`, …), not re-exported by `app.models`.
 - `app.actions.broker.request` is async because it runs the dry run.

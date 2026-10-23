@@ -1,5 +1,5 @@
-"""Read-only detection tools. The Detection model and rules registry belong to app.detections
-(another workstream); everything here degrades gracefully when they are absent."""
+"""Read-only detection tools over app.detections (the Detection model and the rules registry);
+everything here degrades gracefully when that package is absent."""
 from __future__ import annotations
 
 from typing import Any

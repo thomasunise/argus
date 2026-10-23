@@ -82,7 +82,7 @@ class Investigation(TenantMixin, Base):
     confidence: Mapped[str] = mapped_column(String(8), default='low')
     recommended_steps: Mapped[str] = mapped_column(Text, default='[]')
     limitations: Mapped[str] = mapped_column(Text, default='[]')
-    created_by: Mapped[str] = mapped_column(String(36), default='')
+    created_by: Mapped[str] = mapped_column(String(64), default='')  # user id or api_key:<id>
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 

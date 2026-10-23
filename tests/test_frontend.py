@@ -19,7 +19,7 @@ os.environ.setdefault('SENTINEL_LAZY_APP', '1')
 os.environ['ADMIN_PASSWORD'] = 'test-password-very-long-123456'
 os.environ['ADMIN_EMAIL'] = 'admin@test.local'
 os.environ['SESSION_SECRET'] = 'session-secret-testing-longer-than-32-characters'
-os.environ['INGEST_API_KEY'] = 'ingest-key-testing-longer-than-24-characters'
+os.environ['INGEST_API_KEY'] = 'snt_0123abcd_ingest-key-testing-longer-than-24-characters'
 os.environ.pop('AI_PROVIDER', None)
 os.environ.pop('REDIS_URL', None)
 
@@ -211,7 +211,12 @@ def session(browser, server):
 
 
 def wait_toast(page, text: str, timeout: int = 10000):
-    page.wait_for_selector(f'#toast-area .toast:has-text("{text}")', timeout=timeout)
+    try:
+        page.wait_for_selector(f'#toast-area .toast:has-text("{text}")', timeout=timeout)
+    except Exception as exc:  # report what the page showed instead, for diagnosis
+        shown = page.inner_text('#toast-area') if page.query_selector('#toast-area') else '<no toast area>'
+        drawer = page.inner_text('#drawer') if page.query_selector('#drawer') else ''
+        raise AssertionError(f'toast {text!r} not shown; toasts={shown!r}; drawer={drawer[:400]!r}') from exc
 
 
 def wait_overview(s: Session, timeout: int = 15000):

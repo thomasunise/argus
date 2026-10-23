@@ -73,7 +73,9 @@ async def start_run(body: RunBody, request: Request, db: Session = Depends(get_d
     record_audit(db, principal, 'agents.run_requested', run.id, {'spec': spec.name, 'finding_id': finding_id, 'task': task[:200]})
     db.commit()  # the worker may claim the job before this request finishes; the row must be visible first
     payload = {'run_id': run.id, 'spec': spec.name, 'task': task, 'inputs': inputs, 'finding_id': finding_id, 'role': principal.role.value,
-               'user_id': principal.user_id, 'email': principal.email, 'system': principal.auth == 'system'}
+               'user_id': principal.user_id, 'email': principal.email, 'system': principal.auth == 'system',
+               # The worker rebuilds the principal from this payload: a scoped API key keeps its scopes inside the run.
+               'auth': principal.auth, 'api_key_id': principal.api_key_id, 'scopes': sorted(principal.scopes)}
     job = await request.app.state.queue.enqueue('agents.run', payload, tenant_id=principal.tenant_id, lease_seconds=max(600, (spec.max_seconds or 300) + 120))
     run.job_id = job.id
     db.commit()

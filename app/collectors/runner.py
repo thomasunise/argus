@@ -105,7 +105,7 @@ async def _with_heartbeat(coro, heartbeat, interval: float = HEARTBEAT_SECONDS):
 async def apply_to_graph(db: Session, tenant_id: str, result: CollectorResult, source: str) -> dict[str, Any]:
     """Hand drafts to app.graph.service.apply when that package exists. Never raises."""
     try:
-        from ..graph import service as graph_service  # lazy: built by another workstream
+        from ..graph import service as graph_service  # lazy: the graph package is optional
     except ModuleNotFoundError as exc:
         if exc.name and exc.name.startswith('app.graph'):
             return {'applied': False, 'reason': 'graph package not installed'}

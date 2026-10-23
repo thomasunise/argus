@@ -85,15 +85,48 @@ def _totp_code(secret: str, counter: int, digits: int = 6) -> str:
     return str(code).zfill(digits)
 
 
-def totp_verify(secret: str, code: str, window: int = 1, period: int = 30) -> bool:
+def totp_match(secret: str, code: str, window: int = 1, period: int = 30) -> int | None:
+    """The time-step counter the code is valid for (within the window), or None. Callers store the counter so the
+    same code cannot be replayed."""
     if not secret or not code or not code.isdigit():
-        return False
+        return None
     now = int(time.time()) // period
-    return any(hmac.compare_digest(_totp_code(secret, now + offset), code) for offset in range(-window, window + 1))
+    matched: int | None = None
+    for offset in range(-window, window + 1):
+        if hmac.compare_digest(_totp_code(secret, now + offset), code):
+            matched = now + offset
+    return matched
+
+
+def totp_verify(secret: str, code: str, window: int = 1, period: int = 30) -> bool:
+    return totp_match(secret, code, window=window, period=period) is not None
 
 
 def totp_provisioning_uri(secret: str, email: str, issuer: str) -> str:
     return f'otpauth://totp/{issuer}:{email}?' + urlencode({'secret': secret, 'issuer': issuer, 'digits': 6, 'period': 30})
+
+
+# ---------------------------------------------------------------- secret references as shown to clients
+
+MASKED_LITERAL_REF = 'literal:[set]'
+
+
+def mask_secret_refs(refs: dict | None) -> dict:
+    """API view of stored secret references: env:/file:/secrets: refs are not secret; a literal: value is."""
+    return {k: (MASKED_LITERAL_REF if isinstance(v, str) and v.startswith('literal:') else v) for k, v in (refs or {}).items()}
+
+
+def merge_secret_refs(new: dict | None, existing: dict | None) -> dict:
+    """A client that edits a config sends the masked view back; keep the stored literal for every masked field."""
+    existing = existing or {}
+    merged: dict = {}
+    for key, value in (new or {}).items():
+        if value == MASKED_LITERAL_REF:
+            if key in existing:
+                merged[key] = existing[key]
+            continue
+        merged[key] = value
+    return merged
 
 
 # ---------------------------------------------------------------- OIDC (authorization code + PKCE)

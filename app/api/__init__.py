@@ -1,5 +1,5 @@
 """Router discovery. Every module in this package that defines `router` is mounted by the
-app factory. Workstreams add their own module and nothing else needs to change."""
+app factory. A new package adds its own module here and nothing else needs to change."""
 from __future__ import annotations
 
 import importlib

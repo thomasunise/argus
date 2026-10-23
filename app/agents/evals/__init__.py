@@ -23,7 +23,8 @@ def register(app) -> None:
 
         payload = job.payload
         principal = Principal(tenant_id=job.tenant_id, role=Role(payload.get('role', 'analyst')), user_id=payload.get('user_id'),
-                              email=payload.get('email', ''), auth='system' if payload.get('system') else 'session')
+                              email=payload.get('email', ''), auth='system' if payload.get('system') else payload.get('auth') or 'session',
+                              api_key_id=payload.get('api_key_id'), scopes=frozenset(payload.get('scopes') or ()))
         if not principal.can('evals:run'):
             raise PermissionError('principal lacks evals:run')
         run = await run_suite(payload['suite'], principal=principal, db_factory=ctx.db_factory, settings=ctx.settings, app=ctx.app,

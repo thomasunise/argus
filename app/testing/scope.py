@@ -13,6 +13,8 @@ from ..core.config import Settings
 from ..core.errors import ScopeDenied
 from ..core import policy
 
+TIER_RANK = {'passive': 0, 'active': 1, 'intrusive': 2}
+
 INTRUSIVE_ENVIRONMENTS = {'staging', 'lab'}
 
 
@@ -37,6 +39,8 @@ def check(adapter, asset, scope, authorization, now: datetime, settings: Setting
     `tier` is the tier the run will execute at; it defaults to the adapter's nominal tier.
     """
     effective_tier = tier or adapter.tier
+    if TIER_RANK.get(effective_tier, 0) < TIER_RANK.get(adapter.tier, 0):
+        raise ScopeDenied(f'adapter {adapter.name} runs at tier {adapter.tier}; it cannot be run as {effective_tier}')
     now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
 
     if scope is None:
@@ -77,7 +81,5 @@ def check(adapter, asset, scope, authorization, now: datetime, settings: Setting
     if not _within_window(scope.window_start, scope.window_end, now):
         raise ScopeDenied('outside the permitted testing time window')
 
-    # Target validity (web/repo get full validation; other kinds are normalized only).
-    if asset.kind in {'web', 'repo'}:
-        return policy.validate_target(asset.kind, asset.target, settings)
+    # Target validity (web/repo get full validation inside validate_target; other kinds are normalized only).
     return policy.validate_target(asset.kind, asset.target, settings)

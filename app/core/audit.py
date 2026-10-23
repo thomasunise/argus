@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
 
 from ..models import AuditEntry, dumps, utcnow
@@ -52,6 +52,10 @@ class S3ObjectLockSink(AuditSink):
     name = 's3'
 
     def __init__(self, bucket: str, prefix: str):
+        try:
+            import boto3  # noqa: F401  (lazy elsewhere; verified here so a dead sink fails at startup, not silently)
+        except ImportError as exc:
+            raise RuntimeError('AUDIT_S3_BUCKET is set but boto3 is not installed; use the -extras image or install requirements-optional.txt') from exc
         self.bucket, self.prefix = bucket, prefix
 
     def write(self, record: dict) -> None:
@@ -66,6 +70,10 @@ class AzureImmutableBlobSink(AuditSink):
     name = 'azure'
 
     def __init__(self, connection_string: str, container: str):
+        try:
+            from azure.storage.blob import BlobServiceClient  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError('AUDIT_AZURE_CONTAINER is set but azure-storage-blob is not installed; use the -extras image or install requirements-optional.txt') from exc
         self.connection_string, self.container = connection_string, container
 
     def write(self, record: dict) -> None:
@@ -88,6 +96,7 @@ def build_sinks(settings: Settings) -> list[AuditSink]:
 
 
 _sinks: list[AuditSink] = []
+_OUTBOX = 'sentinel_audit_outbox'
 _signing_key: bytes = b''
 _signing_keys: dict[str, bytes] = {}
 _signing_kid: str = ''
@@ -162,6 +171,7 @@ def record_audit(db: Session, actor: Principal | str, action: str, subject: str 
     else:
         detail_text = dumps({'text': redact(detail or '')}, limit=4000)
     with _lock:
+        _serialize_tenant(db, tenant)
         last = db.execute(select(AuditEntry).where(AuditEntry.tenant_id == tenant).order_by(AuditEntry.id.desc()).limit(1)).scalar_one_or_none()
         previous = last.entry_hash if last else '0' * 64
         created_at = utcnow()
@@ -174,12 +184,40 @@ def record_audit(db: Session, actor: Principal | str, action: str, subject: str 
     record = {'id': entry.id, 'tenant_id': tenant, 'actor': actor_name, 'actor_kind': kind, 'action': action, 'subject': subject,
               'detail': detail_text, 'previous_hash': previous, 'entry_hash': entry_hash, 'signature': entry.signature,
               'created_at': created_at.isoformat()}
-    for sink in _sinks:
-        try:
-            sink.write(record)
-        except Exception:  # a sink outage must never block the operation; it is itself logged
-            log.exception('audit sink %s failed', sink.name)
+    if _sinks:
+        # Mirrored after the transaction commits (see _flush_outbox): a rolled-back request must not leave phantom entries in a WORM sink.
+        db.info.setdefault(_OUTBOX, []).append(record)
     return entry
+
+
+def _serialize_tenant(db: Session, tenant_id: str) -> None:
+    """Transaction-scoped per-tenant lock so concurrent writers (request threads, workers, replicas) cannot fork
+    the chain by reading the same last entry. PostgreSQL is the production backend; on SQLite (development only)
+    the process-local lock above covers the single-process case and a fork under thread contention is reported by
+    verify_chain() rather than prevented."""
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == 'postgresql':
+        db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:tenant))'), {'tenant': tenant_id})
+
+
+def _flush_outbox(session: Session) -> None:
+    records = session.info.pop(_OUTBOX, None)
+    if not records:
+        return
+    for record in records:
+        for sink in _sinks:
+            try:
+                sink.write(record)
+            except Exception:  # a sink outage must never block the operation; it is itself logged
+                log.exception('audit sink %s failed', sink.name)
+
+
+def _discard_outbox(session: Session) -> None:
+    session.info.pop(_OUTBOX, None)
+
+
+event.listen(Session, 'after_commit', _flush_outbox)
+event.listen(Session, 'after_rollback', _discard_outbox)
 
 
 def verify_chain(db: Session, tenant_id: str) -> dict:

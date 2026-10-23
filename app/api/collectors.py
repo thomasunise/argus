@@ -16,7 +16,7 @@ from ..core.config import Settings
 from ..core.errors import NotFound, SentinelError
 from ..integrations.egress import check_url_config
 from ..core.rbac import Principal
-from ..core.security import redact
+from ..core.security import mask_secret_refs, merge_secret_refs, redact
 from ..models import dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
 from .deps import Page, get_db, get_settings, require
@@ -87,7 +87,7 @@ def _config_dict(config: CollectorConfig) -> dict[str, Any]:
     load_builtin()
     collector = registry.get(config.collector) if registry.has(config.collector) else None
     return {'id': config.id, 'name': config.name, 'collector': config.collector, 'kind': collector.kind if collector else None,
-            'config': loads(config.config_json, {}), 'secret_refs': loads(config.secret_refs_json, {}), 'enabled': config.enabled,
+            'config': loads(config.config_json, {}), 'secret_refs': mask_secret_refs(loads(config.secret_refs_json, {})), 'enabled': config.enabled,
             'schedule_minutes': config.schedule_minutes, 'last_run_at': config.last_run_at, 'last_success_at': config.last_success_at,
             'last_error': config.last_error, 'created_by': config.created_by, 'created_at': config.created_at, 'updated_at': config.updated_at,
             'available': bool(collector and collector.available())}
@@ -162,7 +162,7 @@ def patch_config(config_id: str, body: PatchBody, db: Session = Depends(get_db),
                  settings: Settings = Depends(get_settings)):
     config = _get_config(db, principal, config_id)
     new_config = body.config if body.config is not None else loads(config.config_json, {})
-    new_refs = body.secret_refs if body.secret_refs is not None else loads(config.secret_refs_json, {})
+    new_refs = merge_secret_refs(body.secret_refs, loads(config.secret_refs_json, {})) if body.secret_refs is not None else loads(config.secret_refs_json, {})
     _validate(config.collector, new_config, new_refs, settings)
     changed: dict[str, Any] = {}
     if body.name is not None and body.name != config.name:

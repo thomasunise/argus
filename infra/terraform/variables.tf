@@ -29,7 +29,7 @@ variable "az_count" {
 }
 
 variable "image" {
-  description = "Sentinel container image, digest-pinned in production (ghcr.io/eekosystems/sentinel@sha256:...)."
+  description = "Sentinel container image, digest-pinned in production (ghcr.io/eekosystems/sentinel@sha256:...). Use the `<tag>-extras` image: the S3 audit sink configured here needs boto3."
   type        = string
 }
 

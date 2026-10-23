@@ -82,7 +82,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware, settings=settings)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie='sentinel_session',
-                       same_site='strict', https_only=settings.cookie_secure, max_age=settings.session_max_age)
+                       # lax, not strict: the OIDC callback is a cross-site top-level navigation that must carry the cookie
+                       # holding the PKCE verifier. State-changing requests are protected by the X-CSRF-Token header.
+                       same_site='lax', https_only=settings.cookie_secure, max_age=settings.session_max_age)
     install_error_handlers(app)
     install_metrics_endpoint(app, settings)
     configure_tracing(app, settings)

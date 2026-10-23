@@ -205,7 +205,8 @@ def test_privilege_escalation_chain_negative_missing_stage_or_out_of_window(db, 
 def test_canary_tripwire(db, default_tenant_id, settings):
     tid = default_tenant_id
     canary = canary_svc.create_canary(db, tid, kind='url', label='finance-share', placement='\\\\fs01\\finance\\README.txt', settings=settings)
-    assert canary_svc.record_hit(db, canary, source_ip='203.0.113.77', user_agent='curl/8.0', headers={'Cookie': 'secret', 'Accept': '*/*'}) is not None
+    assert canary_svc.record_hit(db, canary, source_ip='203.0.113.77', user_agent='curl/8.0', headers={'Cookie': 'secret', 'Accept': '*/*'},
+                                 received_at=NOW - timedelta(minutes=1)) is not None  # inside the rule's horizon even in a long suite run
     _, found = run_rule(db, tid, 'canary.tripwire')
     assert len(found) == 1
     d = found[0]

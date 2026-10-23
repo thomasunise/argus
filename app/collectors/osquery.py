@@ -10,8 +10,8 @@
                     listening_ports, users, sudoers, installed_packages | deb_packages | rpm_packages |
                     programs | homebrew_packages | python_packages, processes, system_info, os_version
 
-Emits host assets, listening-port exposures, users with sudo, installed packages (as props, vuln
-matching is a separate workstream) and processes with suspicious parents as events.
+Emits host assets, listening-port exposures, users with sudo, installed packages (as props; vuln
+matching happens in the detections package) and processes with suspicious parents as events.
 """
 from __future__ import annotations
 

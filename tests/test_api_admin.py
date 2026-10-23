@@ -133,9 +133,11 @@ def test_memberships_are_tenant_scoped(client, owner, second_tenant, make_user):
     assert client.patch(f'/api/v1/admin/users/{acme_user}', json={'display_name': 'x'}, headers=headers).status_code == 404
     assert client.delete(f'/api/v1/admin/users/{acme_user}', headers=headers).status_code == 404
     assert client.post(f'/api/v1/admin/users/{acme_user}/reset-password', headers=headers).status_code == 404
-    # Adding an existing user from another tenant creates only a membership here.
+    # An account that exists in another tenant cannot be attached here (that membership would allow a password
+    # reset or deactivation of a user this tenant does not own), and the error does not reveal where it lives.
     added = client.post('/api/v1/admin/users', json={'email': 'acme-analyst@acme.test', 'role': 'viewer'}, headers=headers)
-    assert added.status_code == 201 and added.json()['created'] is False and 'temporary_password' not in added.json()
+    assert added.status_code == 409
+    assert client.post('/api/v1/admin/memberships', json={'user_id': acme_user, 'role': 'viewer'}, headers=headers).status_code == 404
     other = second_tenant['client']
     acme_roles = {u['email']: u['role'] for u in other.get('/api/v1/admin/users').json()['items']}
     assert acme_roles['acme-analyst@acme.test'] == 'analyst' and ADMIN_EMAIL not in acme_roles

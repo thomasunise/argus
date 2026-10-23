@@ -62,7 +62,7 @@ today (with the file), and what remains for the deployer or for later work.
 | Threat | Mitigation | Residual |
 |---|---|---|
 | Tampering with audit history | Per-tenant hash chain (`previous_hash`, `entry_hash`) and HMAC with `AUDIT_SIGNING_KEY`; `verify_chain()` recomputes; sinks mirror each entry to append-only storage (JSONL, S3 Object Lock, Azure immutable) | Set the signing key; use object lock in compliance mode; the task IAM role gets `PutObject` only (Terraform) |
-| Information disclosure from the DB | `redact()` applied to finding titles, descriptions, evidence, event fields and audit detail; secrets never stored (only `secret_ref`) | Encrypt at rest (RDS CMK, Azure default), TLS to the DB (`sslmode=require`) |
+| Information disclosure from the DB | `redact()` applied to finding titles, descriptions, evidence, event fields and audit detail; secrets never stored (only references; development-only `literal:` values are encrypted at rest and masked in API responses) | Encrypt at rest (RDS CMK, Azure default), TLS to the DB (`sslmode=require`) |
 | Job tampering via Redis | Handlers re-validate tenant and authorization inside the job; a queued job is not a grant (`detections`, `graph`, `testing.scope.check`) | Redis AUTH + TLS, private network |
 | Loss of jobs | Leases with heartbeat, reaper requeues expired leases, retries with backoff, `noeviction` | Redis persistence |
 
@@ -73,7 +73,7 @@ today (with the file), and what remains for the deployer or for later work.
 | Instructions hidden in logs, alerts, commits, page titles | Every tool result is `redact()`ed, truncated to `AGENT_TOOL_RESULT_LIMIT`, and wrapped as `<untrusted_data source=...>` with closing-tag escaping (`runtime.wrap_untrusted`); the guardrail prompt states that evidence is data and injection attempts should be reported | Run the `prompt_injection` eval suite per provider/model before enabling a specialist; keep the suite growing |
 | Model persuaded to act | Agents have no execution tools. `propose_action` creates a pending request only; the broker re-runs policy and requires human approval | Keep `ACTIONS_AUTO_APPROVE_LOW=false` unless the policy is reviewed |
 | Exfiltration through tool arguments | Tool schemas are closed (`additionalProperties: false`), arguments validated by type (`Tool.validate`); tools read Sentinel's own tenant-scoped records, not arbitrary URLs | |
-| Runaway cost or loops | `max_steps`, `max_tokens`, `max_seconds`, `AGENT_COST_CEILING_USD` enforced by the runtime; each step persisted | Budget alerts on `sentinel_agent_tokens_total` |
+| Runaway cost or loops | `max_steps`, `max_tokens`, `max_seconds`, `AGENT_COST_CEILING_USD` enforced by the runtime (priced for Anthropic models; other providers are bounded by tokens and steps only); each step persisted | Budget alerts on `sentinel_agent_tokens_total` |
 | Secrets reaching the provider | `redact()` on all evidence; collectors store `secret_ref` only; finding evidence capped at 6 KB | Review provider data-retention terms |
 
 ### B4: Agents to action broker
@@ -92,7 +92,7 @@ today (with the file), and what remains for the deployer or for later work.
 | SSRF / internal probing via web targets | `core/policy.py`: HTTPS only, origin only, ports 443/8443, no credentials, localhost rejected, DNS resolution checked against global addresses; private ranges only with `ALLOW_PRIVATE_TARGETS` and an explicit CIDR allowlist; loopback, link-local, multicast always denied | DNS rebinding is not prevented at the application layer: enforce egress filtering and metadata-endpoint blocking at the network (worker security group / NetworkPolicy) |
 | Path traversal via repo targets | `validate_repo_target` resolves under `SCAN_ROOT` and rejects escapes; `SCAN_ROOT` mounted read-only | |
 | Command injection into tools | `run_tool(argv, timeout, cwd)` uses `create_subprocess_exec` with a fixed list, never a shell; output bounded to 2 MB and redacted; minimal environment (no inherited secrets) | Pin tool versions; run workers in their own network segment |
-| Rate or load damage to targets | Per-scope `max_rps`, `max_concurrency`, global `TEST_RATE_LIMIT_RPS`, tool timeouts | |
+| Rate or load damage to targets | Per-scope `max_rps`, global `TEST_RATE_LIMIT_RPS`, tool timeouts | `max_concurrency` is recorded on the scope but not yet enforced (roadmap) |
 
 ### B6: Tenant isolation
 

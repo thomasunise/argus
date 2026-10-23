@@ -14,7 +14,7 @@ same `.env` so the only schema changes are reviewed migration files.
 
 - `alembic.ini` — configuration. The URL is intentionally blank.
 - `alembic/env.py` — resolves the URL from `ALEMBIC_DATABASE_URL`, then `DATABASE_URL`, then `.env`
-  via `app.core.config.Settings`; imports `app.models` so every workstream's tables are in
+  via `app.core.config.Settings`; imports `app.models` so every package's tables are in
   `Base.metadata`; enables `render_as_batch` for SQLite and `compare_type`.
 - `alembic/versions/` — one file per revision. The first one creates every table.
 - `scripts/migrate.py` — thin wrapper so operators never need the `alembic` CLI on the PATH.

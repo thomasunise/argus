@@ -1,4 +1,4 @@
-"""Shared helpers for the agents workstream tests (no tests of its own).
+"""Shared helpers for the agents package tests (no tests of its own).
 
 Import `no_network` into a test module to block the intel tools' network access there."""
 from __future__ import annotations

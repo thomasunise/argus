@@ -46,7 +46,8 @@ async def start_eval(body: EvalBody, request: Request, db: Session = Depends(get
     record_audit(db, principal, 'evals.run_requested', run.id, {'suite': suite['name'], 'spec': run.spec, 'case_ids': body.case_ids})
     db.commit()
     payload = {'eval_id': run.id, 'suite': suite['name'], 'spec': body.spec, 'case_ids': body.case_ids, 'role': principal.role.value,
-               'user_id': principal.user_id, 'email': principal.email, 'system': principal.auth == 'system'}
+               'user_id': principal.user_id, 'email': principal.email, 'system': principal.auth == 'system',
+               'auth': principal.auth, 'api_key_id': principal.api_key_id, 'scopes': sorted(principal.scopes)}
     job = await request.app.state.queue.enqueue(evals.JOB_KIND, payload, tenant_id=principal.tenant_id, lease_seconds=3600)
     run.report_json = dumps({'job_id': job.id})
     db.commit()

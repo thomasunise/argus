@@ -12,6 +12,7 @@ from ..core.audit import record_audit
 from ..core.errors import NotFound, SentinelError
 from ..core.rbac import Principal
 from ..core.config import Settings
+from ..core.security import mask_secret_refs, merge_secret_refs
 from ..integrations.delivery import TEST_TOPIC, delivery_to_dict, resolve_secrets, send_delivery
 from ..integrations.egress import check_url_config
 from ..integrations.inbound import registry as inbound_registry
@@ -97,7 +98,7 @@ def _dict(row: IntegrationConfig) -> dict[str, Any]:
     except InvalidConfig:
         direction, impl = 'unknown', None
     return {'id': row.id, 'name': row.name, 'kind': row.kind, 'direction': direction, 'config': loads(row.config_json, {}),
-            'secret_refs': loads(row.secret_refs_json, {}), 'enabled': row.enabled, 'topics': loads(row.topics_json, []), 'min_severity': row.min_severity,
+            'secret_refs': mask_secret_refs(loads(row.secret_refs_json, {})), 'enabled': row.enabled, 'topics': loads(row.topics_json, []), 'min_severity': row.min_severity,
             'state': loads(row.state_json, {}), 'last_delivery_at': row.last_delivery_at, 'last_error': row.last_error, 'created_by': row.created_by,
             'created_at': row.created_at, 'updated_at': row.updated_at,
             'secret_fields': list(impl.secret_fields) if impl else [], 'pull': bool(getattr(impl, 'pull', False)),
@@ -218,7 +219,7 @@ def patch_integration(integration_id: str, body: PatchBody, db: Session = Depend
                       settings: Settings = Depends(get_settings)):
     row = _get(db, principal, integration_id)
     config = body.config if body.config is not None else loads(row.config_json, {})
-    secret_refs = body.secret_refs if body.secret_refs is not None else loads(row.secret_refs_json, {})
+    secret_refs = merge_secret_refs(body.secret_refs, loads(row.secret_refs_json, {})) if body.secret_refs is not None else loads(row.secret_refs_json, {})
     topics = body.topics if body.topics is not None else loads(row.topics_json, [])
     min_severity = body.min_severity if body.min_severity is not None else row.min_severity
     _validate(row.kind, config, secret_refs, topics, min_severity, settings)

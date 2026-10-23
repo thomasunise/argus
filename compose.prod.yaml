@@ -3,23 +3,33 @@
 #
 #   docker compose -f compose.yaml -f compose.prod.yaml up -d
 #
-# Required in .env for this overlay (assert_safe_config enforces them in production):
-#   APP_ENV=production   COOKIE_SECURE=true   BASE_URL=https://<host>   TOTP_REQUIRED=true (or OIDC_ISSUER)
-#   DATA_ENCRYPTION_KEY=<random>   AUDIT_SIGNING_KEY=<random>   (python scripts/generate_secrets.py)
-#   AUDIT_JSONL_PATH is set by compose.yaml; add AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER for an object-lock mirror.
-#   SENTINEL_DOMAIN=<host>   (Caddy obtains a certificate via ACME)
-#   ACME_EMAIL=<ops@example.com>
+# Required in .env for this overlay:
+#   SENTINEL_DOMAIN=<host>          public hostname; also becomes BASE_URL=https://<host> (Caddy obtains a certificate via ACME)
+#   ACME_EMAIL=<ops@example.com>    ACME account contact; Caddy fails to parse its config when empty
+#   SESSION_SECRET / ADMIN_PASSWORD / INGEST_API_KEY / DATA_ENCRYPTION_KEY / AUDIT_SIGNING_KEY   (python scripts/generate_secrets.py --write)
+# Set by this overlay for api AND worker (assert_safe_config enforces them in production):
+#   APP_ENV=production   COOKIE_SECURE=true   LOG_JSON=true   BASE_URL=https://${SENTINEL_DOMAIN}   TOTP_REQUIRED=true
+# Optional in .env:
+#   TOTP_REQUIRED=false             only together with OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET (single sign-on)
+#   AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER   object-lock mirror; needs the `<tag>-extras` image (boto3 / azure-storage-blob).
+#   AUDIT_JSONL_PATH is set by compose.yaml.
 # Pin SENTINEL_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).
+
+# Production settings shared by every Sentinel process; both api and worker call
+# assert_safe_config at startup, so the worker needs the full set too.
+x-production-env: &production-env
+  APP_ENV: production
+  COOKIE_SECURE: "true"
+  LOG_JSON: "true"
+  BASE_URL: https://${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+  TOTP_REQUIRED: ${TOTP_REQUIRED:-true}   # OIDC deployments set TOTP_REQUIRED=false in .env together with OIDC_ISSUER
 
 services:
   api:
     # The loopback bind 127.0.0.1:8080 from compose.yaml stays for host-local operations
     # (SSH tunnel, scripts). Caddy is the only network-reachable ingress.
     environment:
-      APP_ENV: production
-      COOKIE_SECURE: "true"
-      LOG_JSON: "true"
-      BASE_URL: https://${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+      <<: *production-env
       FORWARDED_ALLOW_IPS: "*"   # only Caddy can reach the API on the internal network
     restart: always
     logging: &json-logging
@@ -30,8 +40,7 @@ services:
 
   worker:
     environment:
-      APP_ENV: production
-      LOG_JSON: "true"
+      <<: *production-env
     restart: always
     logging: *json-logging
 
@@ -48,7 +57,7 @@ services:
     restart: always
     environment:
       SENTINEL_DOMAIN: ${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}   # Caddyfile `email {$ACME_EMAIL}` does not parse when empty
     ports:
       - "80:80"
       - "443:443"

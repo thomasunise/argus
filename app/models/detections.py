@@ -1,4 +1,4 @@
-"""Detection workstream tables: detections, baselines, canaries, canary hits, per-tenant rule
+"""Detections package tables: detections, baselines, canaries, canary hits, per-tenant rule
 state and run history. Every table is tenant scoped."""
 from __future__ import annotations
 

@@ -33,7 +33,7 @@ def setup(app) -> None:
 
     @queue.handler('testing.run')
     async def _run(job, ctx):
-        return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat)
+        return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id)
 
     if settings.autoscan_enabled:
         async def _start_scheduler(app) -> None:

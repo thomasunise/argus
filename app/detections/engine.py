@@ -135,7 +135,7 @@ class RuleContext:
         return self.baselines(dimension, window_minutes).get(key)
 
     def graph(self):
-        """The graph service module when the graph workstream is present, else None."""
+        """The graph service module when the graph package is present, else None."""
         try:
             return importlib.import_module('app.graph.service')
         except ImportError:

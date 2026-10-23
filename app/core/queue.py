@@ -6,6 +6,7 @@ Two backends: in-memory (asyncio, single process) and Redis (multi-process worke
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import random
@@ -47,6 +48,13 @@ class Job:
         return data
 
 
+def _count(job: 'Job', status: str) -> None:
+    """sentinel_jobs_total{kind,status}; the alert rules in infra/prometheus key on it."""
+    from .telemetry import JOBS  # lazy: telemetry is optional at import time
+
+    JOBS.labels(job.kind, status).inc()
+
+
 class JobContext:
     def __init__(self, queue: 'JobQueue', job: Job):
         self.queue = queue
@@ -55,9 +63,11 @@ class JobContext:
         self.db_factory = queue.db_factory
         self.app = queue.app
         self._cancelled = False
+        self.deadline = time.monotonic() + job.lease_seconds  # pushed out by every heartbeat
 
     async def heartbeat(self) -> None:
         await self.queue._extend_lease(self.job)
+        self.deadline = time.monotonic() + self.job.lease_seconds
         if await self.queue._is_cancelled(self.job.id):
             self._cancelled = True
             raise asyncio.CancelledError('job cancelled')
@@ -249,16 +259,18 @@ class JobQueue:
             await self._backend.update(job)
             return
         try:
-            job.result = await asyncio.wait_for(handler(job, ctx), timeout=job.lease_seconds)
+            job.result = await self._run_with_lease(handler, job, ctx)
             job.status, job.finished_at = 'completed', time.time()
         except asyncio.CancelledError:
             if not self._running:
-                job.status, job.error = 'queued', 'worker shutdown'  # will be re-claimed by the reaper
+                # Shutdown is not a failure of the job: give the attempt back so rolling restarts cannot exhaust it.
+                job.status, job.error, job.attempts = 'queued', 'worker shutdown', max(0, job.attempts - 1)
                 await self._backend.requeue(job)
                 raise
             job.status, job.error, job.finished_at = 'cancelled', 'cancelled', time.time()
+            _count(job, 'cancelled')
         except asyncio.TimeoutError:
-            job.error = f'lease of {job.lease_seconds}s exceeded'
+            job.error = f'lease of {job.lease_seconds}s exceeded without a heartbeat'
             await self._fail_or_retry(job)
             return
         except Exception as exc:
@@ -266,9 +278,33 @@ class JobQueue:
             log.exception('job %s (%s) failed', job.id, job.kind)
             await self._fail_or_retry(job)
             return
+        else:
+            _count(job, 'completed')
         await self._backend.update(job)
 
+    async def _run_with_lease(self, handler, job: Job, ctx: JobContext):
+        """wait_for(lease) with a moving deadline: ctx.heartbeat() pushes ctx.deadline out, so a collector or test run
+        that keeps heartbeating is not killed at the nominal lease while a silent one still is."""
+        task = asyncio.ensure_future(handler(job, ctx))
+        try:
+            while True:
+                remaining = ctx.deadline - time.monotonic()
+                if remaining <= 0:
+                    task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await task
+                    raise asyncio.TimeoutError
+                done, _ = await asyncio.wait({task}, timeout=remaining)
+                if done:
+                    return task.result()
+        except asyncio.CancelledError:
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await task
+            raise
+
     async def _fail_or_retry(self, job: Job) -> None:
+        _count(job, 'retried' if job.attempts < job.max_attempts else 'failed')
         if job.attempts < job.max_attempts:
             backoff = min(300, (2 ** job.attempts) + random.uniform(0, 1))
             job.status, job.not_before = 'queued', time.time() + backoff
@@ -473,6 +509,21 @@ class _RedisBackend:
             job = await self.get(job_id)
             if job and job.status == 'queued':
                 await self.redis.rpush(f'sentinel:q:{job.priority}', job_id)
+        # Jobs a worker popped but never marked running (it died between BLPOP and SADD): status queued, due, in no
+        # list. Scanned every 20th pass; a duplicate push is harmless because claim() ignores non-queued jobs.
+        self._reaps = getattr(self, '_reaps', 0) + 1
+        if self._reaps % 20 == 0:
+            async for key in self.redis.scan_iter('sentinel:job:*', count=500):
+                raw = await self.redis.get(key)
+                if not raw:
+                    continue
+                orphan = Job(**json.loads(raw))
+                if orphan.status != 'queued' or orphan.not_before > now:
+                    continue
+                in_list = await self.redis.lpos(f'sentinel:q:{orphan.priority}', orphan.id)
+                delayed = await self.redis.zscore('sentinel:delayed', orphan.id)
+                if in_list is None and delayed is None:
+                    await self.redis.rpush(f'sentinel:q:{orphan.priority}', orphan.id)
         # Requeue running jobs whose lease expired (worker died).
         for job_id in await self.redis.smembers('sentinel:running'):
             if await self.redis.exists(f'sentinel:lease:{job_id}'):

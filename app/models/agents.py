@@ -27,7 +27,7 @@ class AgentRun(TenantMixin, Base):
     finding_id: Mapped[str | None] = mapped_column(String(36))
     parent_run_id: Mapped[str | None] = mapped_column(String(36))
     job_id: Mapped[str] = mapped_column(String(36), default='')
-    created_by: Mapped[str] = mapped_column(String(36), default='')
+    created_by: Mapped[str] = mapped_column(String(64), default="")  # user id or api_key:<id>
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
@@ -60,6 +60,6 @@ class EvalRun(TenantMixin, Base):
     passed: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     report_json: Mapped[str] = mapped_column(Text, default='{}')
-    created_by: Mapped[str] = mapped_column(String(36), default='')
+    created_by: Mapped[str] = mapped_column(String(64), default="")  # user id or api_key:<id>
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

@@ -53,11 +53,24 @@ resource "aws_secretsmanager_secret_version" "app" {
 }
 
 # Placeholders for secrets you set out of band (model provider keys, OIDC client secret).
-# Terraform creates the container; you write the value with the CLI or console:
+# Terraform creates the container with a placeholder version ("unset") so the ECS task
+# secrets resolve (a secret without a version fails the task with
+# ResourceInitializationError); you write the real value with the CLI or console and
+# Terraform leaves it alone afterwards:
 #   aws secretsmanager put-secret-value --secret-id sentinel-production/ANTHROPIC_API_KEY --secret-string '...'
 resource "aws_secretsmanager_secret" "external" {
   for_each                = toset(["OIDC_CLIENT_SECRET", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
   name                    = "${local.prefix}/${each.key}"
   kms_key_id              = aws_kms_key.data.arn
   recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "external" {
+  for_each      = aws_secretsmanager_secret.external
+  secret_id     = each.value.id
+  secret_string = "unset"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
 }

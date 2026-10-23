@@ -108,7 +108,7 @@ class AgentRuntime:
 
     async def run(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, *,
                   run_id: str | None = None, finding_id: str | None = None, parent_run_id: str | None = None,
-                  job_id: str = '') -> RunResult:
+                  job_id: str = '', heartbeat=None) -> RunResult:
         from ..core.db import session_scope
 
         # Create or load the run row.
@@ -144,6 +144,8 @@ class AgentRuntime:
         status, error = 'completed', ''
         try:
             for step in range(max_steps):
+                if heartbeat is not None:
+                    await heartbeat()  # extends the queue lease and raises CancelledError when the run was cancelled
                 if time.monotonic() - started > max_seconds:
                     status, error = 'budget_exhausted', f'wall clock budget of {max_seconds}s exceeded'
                     break

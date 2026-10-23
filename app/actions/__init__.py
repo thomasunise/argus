@@ -19,7 +19,7 @@ log = logging.getLogger('sentinel.actions')
 def load_executors() -> None:
     try:
         package = importlib.import_module('app.actions.executors')
-    except ModuleNotFoundError:  # pragma: no cover - partial checkout
+    except ModuleNotFoundError:  # pragma: no cover - executors package absent
         return
     for module in pkgutil.iter_modules(package.__path__):
         if not module.name.startswith('_'):

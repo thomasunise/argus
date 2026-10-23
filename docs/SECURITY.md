@@ -6,8 +6,9 @@ procedures are in `docs/RUNBOOKS.md`.
 
 ## Reporting a vulnerability
 
-Email the maintainers (see repository metadata) with steps to reproduce. Do not open a public
-issue for an unpatched vulnerability. Expect an acknowledgement within three business days.
+Use GitHub private vulnerability reporting on this repository (Security tab, "Report a
+vulnerability") with steps to reproduce. Do not open a public issue for an unpatched
+vulnerability. Expect an acknowledgement within three business days.
 
 ## Principles
 
@@ -23,15 +24,17 @@ issue for an unpatched vulnerability. Expect an acknowledgement within three bus
    scoped helper; tests assert cross-tenant access returns 404 or nothing.
 5. **History is tamper-evident.** Audit entries are hash-chained per tenant, HMAC-signed when
    `AUDIT_SIGNING_KEY` is set, and mirrored to append-only sinks.
-6. **Secrets stay out of the database, logs and model context.** Only references are stored;
-   free text passes through `redact()`.
+6. **Secrets stay out of the database, logs and model context.** Only references are stored
+   (`env:`, `file:`, `secrets:`); free text passes through `redact()`. The development-only
+   `literal:` form (`ALLOW_LITERAL_SECRET_REFS`, refused in production) is encrypted at rest and
+   masked as `literal:[set]` in every API response.
 
 ## Implemented controls
 
 Authentication and sessions (`app/core/security.py`, `app/api/auth.py`, `app/api/deps.py`)
 
 - Passwords: scrypt (N=2^14, r=8, p=1), constant-time verification.
-- Sessions: signed cookie, HttpOnly, SameSite=strict, `Secure` when `COOKIE_SECURE=true`, lifetime `SESSION_MAX_AGE`.
+- Sessions: signed cookie, HttpOnly, SameSite=lax (the OIDC callback must carry it; mutations need the CSRF header), idle timeout `SESSION_MAX_AGE`, absolute lifetime `SESSION_ABSOLUTE_MAX_AGE`, `Secure` when `COOKIE_SECURE=true`, lifetime `SESSION_MAX_AGE`.
 - CSRF: `X-CSRF-Token` required on every non-safe method for session principals.
 - Login throttling per client IP (`LOGIN_MAX_ATTEMPTS` in `LOGIN_WINDOW_SECONDS`).
 - TOTP (RFC 6238, six digits, one-step window); `TOTP_REQUIRED` enforces it.
@@ -48,6 +51,7 @@ Transport and headers (`app/core/telemetry.py`)
 Audit (`app/core/audit.py`)
 
 - `record_audit()` writes actor, kind, action, subject, redacted detail, request id, `previous_hash`, `entry_hash`, `signature`, timestamp.
+- Concurrent writers cannot fork a chain on PostgreSQL (transaction-scoped per-tenant advisory lock); sinks receive an entry only after its transaction commits. SQLite is development-only and does not get this guarantee.
 - `verify_chain()` recomputes the chain and signatures; the result reports the first broken id.
 - Sinks: JSONL (append), S3 Object Lock (one object per entry), Azure immutable blob (`overwrite=False`). Sink failures are logged, never block.
 

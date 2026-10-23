@@ -236,3 +236,19 @@ async def test_execute_run_marks_failed_on_adapter_error(app, settings, default_
     with factory() as db:
         run = db.get(TestRun, run_id)
         assert run.status == 'failed' and 'AKIAIOSFODNN7EXAMPLE' not in run.error
+
+
+def test_adapter_cannot_run_below_its_nominal_tier(settings):
+    """Adapters run at their own tier whatever the request says; a lower label must not pass a lower scope."""
+    class _Intrusive(_DummyAdapter):
+        name = 'intrusive-dummy'
+        tier = 'intrusive'
+
+    permissive = _scope(tiers=('passive', 'active', 'intrusive'), envs=('staging',))
+    with pytest.raises(ScopeDenied, match='runs at tier intrusive'):
+        scope_mod.check(_Intrusive(), _asset(env='staging'), permissive, _auth(active=True, intrusive=True), NOW, settings, tier='passive')
+    with pytest.raises(ScopeDenied):
+        scope_mod.check(_Intrusive(), _asset(), _scope(tiers=('passive',)), _auth(), NOW, settings, tier='passive')
+    # Requesting the adapter's own tier (or higher) is still subject to the normal checks.
+    out = scope_mod.check(_Intrusive(), _asset(env='staging'), permissive, _auth(active=True, intrusive=True), NOW, settings, tier='intrusive')
+    assert out == 'acct-123'

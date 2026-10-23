@@ -195,7 +195,7 @@ def run_to_dict(r: ActionRun, *, include_rollback_payload: bool = False) -> dict
             'has_rollback_payload': r.rollback_payload_json not in ('', '{}', 'null'), 'started_at': r.started_at,
             'finished_at': r.finished_at, 'rolled_back_at': r.rolled_back_at, 'rolled_back_by': r.rolled_back_by, 'created_at': r.created_at}
     if include_rollback_payload:
-        data['rollback_payload'] = loads(r.rollback_payload_json, {})
+        data['rollback_payload'] = _redacted(loads(r.rollback_payload_json, {}))
     return data
 
 
@@ -562,7 +562,9 @@ async def handle_execute(job, ctx) -> dict:
             _finish(run, req, run_status='failed', request_status='failed', error=summary,
                     result={'dry_run': dry.as_dict(), 'execution': result.as_dict() if isinstance(result, ExecResult) else {}})
             return _audit_failure(db, principal, req, run)
-        run.rollback_payload_json = dumps(_redacted(result.rollback_payload or {}), limit=64000) if action.reversible else '{}'
+        # Stored intact (the column is encrypted at rest): rollback needs the real values (key ids, rule bodies, tokens
+        # that match secret-looking patterns). It is redacted in run_to_dict when shown to a caller.
+        run.rollback_payload_json = dumps(result.rollback_payload or {}, limit=64000) if action.reversible else '{}'
         _finish(run, req, run_status='executed', request_status='executed', result={'dry_run': dry.as_dict(), 'execution': result.as_dict()})
         record_audit(db, principal, 'actions.executed', req.id,
                      {'action_type': req.action_type, 'run_id': run.id, 'summary': result.summary[:500], 'blast_radius': dry.blast_radius,

@@ -33,7 +33,7 @@ BLOCKED_HOSTS = {'localhost', 'localhost.localdomain', 'metadata', 'metadata.goo
 BLOCKED_SUFFIXES = ('.localhost', '.svc.cluster.local')
 RESERVED_TLDS = ('.test', '.example', '.invalid')
 RESERVED_DOMAINS = ('example.com', 'example.net', 'example.org')
-URL_CONFIG_KEYS = ('url', 'base_url', 'instance_url', 'indexer_url', 'fleet_url', 'api_url', 'endpoint', 'server_url')
+URL_CONFIG_KEYS = ('url', 'base_url', 'instance_url', 'indexer_url', 'fleet_url', 'api_url', 'endpoint', 'server_url', 'graph_url', 'login_url')
 
 
 def _unresolvable_by_design(hostname: str) -> bool:

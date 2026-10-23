@@ -1,5 +1,5 @@
 """Config validation for integrations: a small JSON-schema subset, secret-reference checks and
-topic / severity validation. Kept inside this package so it does not depend on other workstreams."""
+topic / severity validation. Kept inside this package so it does not depend on other packages."""
 from __future__ import annotations
 
 import re

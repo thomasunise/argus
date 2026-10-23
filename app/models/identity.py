@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, EncryptedText, UTCDateTime, uid, utcnow
@@ -27,6 +27,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(512), default='')
     totp_secret: Mapped[str] = mapped_column(EncryptedText(), default='')
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_last_counter: Mapped[int] = mapped_column(Integer, default=0)  # last accepted time step; a code is never accepted twice
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

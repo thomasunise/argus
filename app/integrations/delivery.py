@@ -94,8 +94,8 @@ def build_event(db: Session, tenant_id: str, topic: str, payload: dict, delivery
     elif family == 'detection' and payload.get('detection_id'):
         event.subject_kind, event.subject_id = 'detection', str(payload['detection_id'])
         try:
-            from ..models.detections import Detection  # other workstream's model; optional
-        except Exception:  # pragma: no cover - partial checkout
+            from ..models.detections import Detection  # detections package model; optional
+        except Exception:  # pragma: no cover - detections package absent
             Detection = None  # type: ignore[assignment]
         if Detection is not None:
             detection = db.get(Detection, event.subject_id)

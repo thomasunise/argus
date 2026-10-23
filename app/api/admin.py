@@ -92,6 +92,13 @@ def _membership(db: Session, tenant_id: str, user_id: str) -> Membership | None:
     return db.execute(select(Membership).where(Membership.tenant_id == tenant_id, Membership.user_id == user_id)).scalar_one_or_none()
 
 
+def _assert_home_tenant(db: Session, tenant_id: str, user_id: str) -> None:
+    """Password and active-flag are global user state: only a tenant the user belongs to exclusively may change them."""
+    others = db.execute(select(func.count()).select_from(Membership).where(Membership.user_id == user_id, Membership.tenant_id != tenant_id)).scalar_one()
+    if others:
+        raise Forbidden('This user also belongs to other tenants; their password and active state cannot be changed from here')
+
+
 def _active_owner_ids(db: Session, tenant_id: str) -> set[str]:
     rows = db.execute(select(Membership.user_id).join(User, User.id == Membership.user_id)
                       .where(Membership.tenant_id == tenant_id, Membership.role == Role.owner.value, User.is_active.is_(True))).scalars().all()
@@ -199,9 +206,10 @@ def create_user(body: UserBody, db: Session = Depends(get_db), principal: Princi
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     response: dict[str, Any] = {}
     if user is not None:
-        if _membership(db, principal.tenant_id, user.id) is not None:
-            raise Conflict('User is already a member of this tenant')
-        created = False
+        # An account that exists in another tenant is never attached from here: a membership would let this
+        # tenant's admins reset its password or deactivate it (global user state). The message is the same
+        # in both cases so the endpoint does not reveal which tenants an address belongs to.
+        raise Conflict('A user with this email already exists')
     else:
         temporary = None
         if body.invite:
@@ -231,6 +239,8 @@ def patch_user(user_id: str, body: UserPatch, db: Session = Depends(get_db), pri
         raise NotFound('User not found in this tenant')
     if membership.role == Role.owner.value and principal.role != Role.owner:
         raise Forbidden('Only owners can modify an owner')
+    if body.is_active is not None:
+        _assert_home_tenant(db, principal.tenant_id, user_id)
     changes: dict[str, Any] = {}
     if body.display_name is not None and body.display_name.strip() != user.display_name:
         changes['display_name'] = {'from': user.display_name, 'to': body.display_name.strip()}
@@ -255,6 +265,7 @@ def reset_password(user_id: str, body: ResetBody | None = None, db: Session = De
         raise NotFound('User not found in this tenant')
     if membership.role == Role.owner.value and principal.role != Role.owner and user_id != principal.user_id:
         raise Forbidden('Only owners can reset an owner password')
+    _assert_home_tenant(db, principal.tenant_id, user_id)
     supplied = body.password if body else None
     temporary = supplied or _temp_password()
     user.password_hash = hash_password(temporary)
@@ -288,13 +299,9 @@ def set_role(body: MembershipBody, db: Session = Depends(get_db), principal: Pri
     if user is None:
         raise NotFound('User not found')
     membership = _membership(db, principal.tenant_id, user.id)
-    _assert_can_assign(principal, body.role, membership.role if membership else None)
     if membership is None:
-        membership = Membership(user_id=user.id, tenant_id=principal.tenant_id, role=body.role.value)
-        db.add(membership)
-        db.flush()
-        record_audit(db, principal, 'admin.membership_created', user.id, {'email': user.email, 'role': body.role.value, 'new_user': False})
-        return _member_dict(user, membership)
+        raise NotFound('User not found in this tenant')  # memberships are created through POST /admin/users only
+    _assert_can_assign(principal, body.role, membership.role)
     if membership.role == body.role.value:
         return _member_dict(user, membership)
     if membership.role == Role.owner.value:

@@ -11,6 +11,7 @@ Platform core
 - [x] Local login, OIDC (PKCE), TOTP, API keys with roles and scopes, CSRF, login throttling
 - [x] RBAC with five cumulative roles and per-endpoint permissions
 - [x] Hash-chained, HMAC-signed audit log with JSONL, S3 Object Lock and Azure immutable sinks; `GET /audit/verify` and JSONL export
+- [x] Audit HMAC with key ids: signatures carry the key id and `AUDIT_SIGNING_KEYS` (`kid=value,...`) rotates keys while older segments still verify
 - [x] Job queue with in-memory and Redis backends: leases, heartbeat, retries, cancellation, reaper, standalone worker
 - [x] Prometheus metrics, JSON logs with request/tenant/job/run ids, optional OpenTelemetry tracing
 - [x] Startup safety checks (`assert_safe_config`), bootstrap of tenant, owner and ingest key
@@ -74,13 +75,13 @@ Infrastructure and documentation
 
 Security hardening
 
-- [ ] Audit HMAC with key ids so signing-key rotation verifies each segment with its own key
 - [ ] PostgreSQL row-level security as defence in depth under the application scoping
 - [ ] Distributed rate limiting (Redis-backed) and per-tenant quotas
 - [ ] Identity-based Azure audit sink (replace the connection string)
 - [ ] Dedicated test-tool worker image with pinned binaries and an isolated egress path; DNS pinning in web adapters
 - [ ] Session revocation list and admin-forced logout
 - [ ] Per-tenant encryption keys for stored evidence
+- [ ] Cancel of an agent run stops the model loop promptly (today the run is marked cancelled but the in-flight loop runs to its step/time budget)
 
 Detection and response
 
@@ -94,11 +95,13 @@ Agents
 - [ ] Larger eval datasets with measured precision, recall and latency per provider and model
 - [ ] Specialist-level tool allowlists per tenant; per-tenant provider and model selection exposed in admin settings UI
 - [ ] Cost reporting per tenant from `agent_runs`
+- [ ] Cost ceiling pricing for OpenAI and Ollama models (today only Anthropic models have prices, so `AGENT_COST_CEILING_USD` only trips for Anthropic)
 
 Testing
 
 - [ ] Test harness workers in their own network segment with per-scope egress rules
 - [ ] SARIF import/export for third-party scanners
+- [ ] Enforce `TestScope.max_concurrency` (stored and shown, not yet enforced)
 
 Frontend
 
@@ -110,3 +113,4 @@ Operations
 - [ ] Retention and purge jobs for events, test results, agent steps and deliveries
 - [ ] Backup and restore automation; restore drill documentation
 - [ ] Evidence bundle export for assessors (zip of the items in `docs/COMPLIANCE.md`)
+- [ ] Redis-backed login throttling and rate limits shared across replicas

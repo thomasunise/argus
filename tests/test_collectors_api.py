@@ -1,4 +1,4 @@
-"""API, run job, scheduler and tenant-isolation tests for the collectors workstream."""
+"""API, run job, scheduler and tenant-isolation tests for the collectors package."""
 from __future__ import annotations
 
 import asyncio
@@ -274,8 +274,22 @@ def test_is_due_logic():
     assert is_due(cfg, now) is False
 
 
-def test_scheduler_tick_enqueues_due_configs_across_tenants(owner, fake, app, second_tenant, default_tenant_id):
+def test_scheduler_tick_enqueues_due_configs_across_tenants(owner, fake, app, second_tenant, default_tenant_id, monkeypatch):
+    import threading
+
     client, headers = owner
+    # Keep the in-process worker off the SQLite file until the tick has committed: a job that starts writing while
+    # the tick's read transaction upgrades to a write gets an immediate 'database is locked' on SQLite (WAL snapshot
+    # rule, not subject to busy_timeout). Production runs on PostgreSQL where this cannot happen.
+    gate = threading.Event()
+    original = app.state.queue._handlers['collectors.run']
+
+    async def gated(job, ctx):
+        while not gate.is_set():
+            await asyncio.sleep(0.05)
+        return await original(job, ctx)
+
+    monkeypatch.setitem(app.state.queue._handlers, 'collectors.run', gated)
     due = create(client, headers, schedule_minutes=15).json()
     create(client, headers, name='manual only', schedule_minutes=0)
     other = second_tenant['client'].post(BASE, json={'name': 'acme', 'collector': 'fake', 'config': {'account': 'acme'}, 'schedule_minutes': 5}, headers=second_tenant['headers'])
@@ -283,6 +297,7 @@ def test_scheduler_tick_enqueues_due_configs_across_tenants(owner, fake, app, se
     enqueued = client.portal.call(lambda: scheduler_tick(app))
     assert enqueued == 2
     assert client.portal.call(lambda: scheduler_tick(app)) == 0  # last_run_at set at enqueue time
+    gate.set()
 
     def finished():
         runs = client.get(f"{BASE}/{due['id']}/runs", headers=headers).json()['items']
@@ -328,3 +343,23 @@ def test_cross_tenant_isolation_on_every_endpoint(owner, fake, second_tenant):
     assert other.get(f"/api/v1/ops/jobs/{started['job_id']}", headers=oh).status_code == 404
     assert client.get(f"{BASE}/{config['id']}", headers=headers).json()['name'] == 'prod account'
     assert client.get(f"{BASE}/runs/{started['run_id']}", headers=headers).status_code == 200
+
+
+def test_literal_secret_refs_are_masked_in_responses_and_kept_on_patch(owner, fake, db):
+    client, headers = owner
+    created = create(client, headers, secret_refs={'token': 'literal:dev-only-token'})
+    assert created.status_code == 201, created.text
+    cid = created.json()['id']
+    assert created.json()['secret_refs'] == {'token': 'literal:[set]'}
+    assert 'dev-only-token' not in client.get(BASE, headers=headers).text
+    assert 'dev-only-token' not in client.get(f'{BASE}/{cid}', headers=headers).text
+    # A client editing the config sends the masked view back; the stored literal must survive.
+    patched = client.patch(f'{BASE}/{cid}', json={'secret_refs': {'token': 'literal:[set]'}, 'name': 'renamed'}, headers=headers)
+    assert patched.status_code == 200, patched.text
+    row = db.execute(select(CollectorConfig).where(CollectorConfig.id == cid)).scalar_one()
+    db.refresh(row)
+    assert 'literal:dev-only-token' in row.secret_refs_json
+    # A new reference replaces it.
+    assert client.patch(f'{BASE}/{cid}', json={'secret_refs': {'token': 'env:FAKE_TOKEN'}}, headers=headers).status_code == 200
+    db.refresh(row)
+    assert 'dev-only-token' not in row.secret_refs_json

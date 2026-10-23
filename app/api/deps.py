@@ -41,9 +41,18 @@ class RateLimiter:
 
     def __init__(self):
         self._hits: dict[str, deque] = defaultdict(deque)
+        self._checks = 0
+
+    def _sweep(self, now: float) -> None:
+        """Drop idle buckets so unauthenticated endpoints (canary hits) cannot grow memory without bound."""
+        for key in [k for k, b in self._hits.items() if not b or now - b[-1] > 600]:
+            del self._hits[key]
 
     def check(self, key: str, limit: int, window: float = 60.0) -> None:
         now = time.monotonic()
+        self._checks += 1
+        if self._checks % 1000 == 0 or len(self._hits) > 50000:
+            self._sweep(now)
         bucket = self._hits[key]
         while bucket and now - bucket[0] > window:
             bucket.popleft()
@@ -75,8 +84,14 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
         return None
     if settings.totp_required and not session.get('mfa'):
         return None
+    issued_at = session.get('issued_at')
+    if not isinstance(issued_at, (int, float)) or time.time() - issued_at > settings.session_absolute_max_age:
+        return None  # absolute lifetime: a refreshed cookie cannot be kept alive forever
     user = db.get(User, user_id)
     if not user or not user.is_active:
+        return None
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant or not tenant.is_active:
         return None
     membership = db.execute(select(Membership).where(Membership.user_id == user_id, Membership.tenant_id == tenant_id)).scalar_one_or_none()
     if not membership:

@@ -23,7 +23,7 @@ def test_login_logout(client):
 
 
 def test_legacy_password_only_login(client):
-    response = client.post('/api/v1/auth/login', json={'password': ADMIN_PASSWORD})
+    response = client.post('/api/v1/auth/login', json={'email': ADMIN_EMAIL, 'password': ADMIN_PASSWORD})
     assert response.status_code == 200
 
 
@@ -74,7 +74,9 @@ def test_totp_enrollment_flow(owner):
     assert client.post('/api/v1/auth/totp/verify', json={'code': code}, headers=headers).status_code == 200
     client.post('/api/v1/auth/logout', headers=headers)
     assert client.post('/api/v1/auth/login', json={'email': ADMIN_EMAIL, 'password': ADMIN_PASSWORD}).status_code == 401
-    code = _totp_code(secret, int(time.time()) // 30)
+    # The enrolment code was consumed above: the same time step is a replay and must be rejected.
+    assert client.post('/api/v1/auth/login', json={'email': ADMIN_EMAIL, 'password': ADMIN_PASSWORD, 'totp': code}).status_code == 401
+    code = _totp_code(secret, int(time.time()) // 30 + 1)  # next step, inside the +-1 window
     assert client.post('/api/v1/auth/login', json={'email': ADMIN_EMAIL, 'password': ADMIN_PASSWORD, 'totp': code}).status_code == 200
 
 

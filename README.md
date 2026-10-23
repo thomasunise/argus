@@ -63,7 +63,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
 | Alembic migrations (initial revision) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
-| Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | this workstream | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
+| Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
 
@@ -75,7 +75,7 @@ Requirements: Python 3.11 or 3.12.
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
-python scripts/generate_secrets.py --write          # fills the three REPLACE_ values and AUDIT_SIGNING_KEY stays empty unless you set it
+python scripts/generate_secrets.py --write          # fills the three REPLACE_ values, plus AUDIT_SIGNING_KEY and DATA_ENCRYPTION_KEY when they are empty
 uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
@@ -167,7 +167,7 @@ model and tool step is persisted (`agent_steps`) with input hash, tokens and lat
 eval suites live in `app/agents/evals/suites/`.
 
 **Testing** (`app/testing/`). A `TestScope` lists assets, allowed tiers (passive, active,
-intrusive), environments, a UTC window, rate and concurrency limits. A run is allowed only if
+intrusive), environments, a UTC window and a rate limit (a concurrency limit is recorded but not yet enforced). A run is allowed only if
 the asset has a current `AssetAuthorization` whose flags permit the tier, the scope permits
 it, the window is open and the target passes policy validation. `scope.check()` runs at
 request time and again inside the worker; intrusive tiers are limited to staging and lab
@@ -197,7 +197,7 @@ queue job with a stored rollback payload, and an audit entry at every transition
 | `docs/RUNBOOKS.md` | incident procedures |
 | `docs/COMPLIANCE.md` | SOC 2 / NIST 800-171 / ISO 27001 control mapping (evidence support, not certification) |
 | `docs/ROADMAP.md` | implemented versus next |
-| `CONTRIBUTING.md` | workstream conventions |
+| `CONTRIBUTING.md` | contributing guide |
 
 ## License
 

@@ -1,7 +1,7 @@
 """Platform credentials for executors.
 
-Integrations (per-tenant IntegrationConfig with secret refs) is another workstream, so the
-broker resolves credentials from two places:
+The broker does not depend on the integrations package (per-tenant IntegrationConfig with
+secret refs); it resolves credentials from two places:
 
 1. Tenant override: `Tenant.settings_json['action_credentials'][platform][key]` holding a
    secret *reference* ('env:NAME', 'file:/path', 'secrets:NAME'). Literal values are ignored.

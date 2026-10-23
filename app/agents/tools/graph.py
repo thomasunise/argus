@@ -1,5 +1,5 @@
-"""Read-only evidence-graph tools. The graph package (app.graph) is built by another workstream;
-every tool degrades to {'available': False} when it is missing."""
+"""Read-only evidence-graph tools over app.graph; every tool degrades to {'available': False}
+when that package is missing."""
 from __future__ import annotations
 
 import json

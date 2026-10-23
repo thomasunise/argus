@@ -24,7 +24,7 @@ os.environ.setdefault('SENTINEL_LAZY_APP', '1')
 os.environ['ADMIN_PASSWORD'] = 'test-password-very-long-123456'
 os.environ['ADMIN_EMAIL'] = 'admin@test.local'
 os.environ['SESSION_SECRET'] = 'session-secret-testing-longer-than-32-characters'
-os.environ['INGEST_API_KEY'] = 'ingest-key-testing-longer-than-24-characters'
+os.environ['INGEST_API_KEY'] = 'snt_0123abcd_ingest-key-testing-longer-than-24-characters'
 os.environ.pop('AI_PROVIDER', None)
 os.environ.pop('REDIS_URL', None)
 

@@ -2,8 +2,10 @@ name        = "sentinel"
 environment = "production"
 region      = "us-east-1"
 
-# Pin a digest from a signed release (see .github/workflows/release.yml).
-image = "ghcr.io/eekosystems/sentinel@sha256:REPLACE_WITH_RELEASE_DIGEST"
+# Pin a digest from a signed release (see .github/workflows/release.yml). This stack always
+# configures the object-lock audit sink (AUDIT_S3_BUCKET), which needs the `<tag>-extras` image
+# (boto3 / azure-storage-blob); use the "Extras image" digest from the release notes, not the base one.
+image = "ghcr.io/eekosystems/sentinel@sha256:REPLACE_WITH_RELEASE_EXTRAS_DIGEST"
 
 domain_name    = "sentinel.example.com"
 hosted_zone_id = "Z0000000000000000000"

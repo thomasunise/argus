@@ -51,8 +51,8 @@ Verification after boot (step 3.4): `GET /api/v1/actions/kill-switch` returns
 - [ ] Compose shape: the `redis` service already runs with `--appendonly yes --maxmemory-policy noeviction`.
 
 ### 1.3 TLS and ingress
-- [ ] Compose: `compose.prod.yaml` adds Caddy with ACME. Needs inbound 80/443 (443 UDP for h3) and outbound 443 to the ACME CA; set `SENTINEL_DOMAIN` and `ACME_EMAIL`. DNS A/AAAA for `SENTINEL_DOMAIN` must resolve before `up`.
-- [ ] Kubernetes: ingress-nginx + cert-manager (`ingress.annotations` in `values.yaml`), `/metrics` is denied by the server snippet.
+- [ ] Compose: `compose.prod.yaml` adds Caddy with ACME. Needs inbound 80/443 (443 UDP for h3) and outbound 443 to the ACME CA; set `SENTINEL_DOMAIN` and `ACME_EMAIL` (both required; `up` refuses to start without them). DNS A/AAAA for `SENTINEL_DOMAIN` must resolve before `up`.
+- [ ] Kubernetes: ingress-nginx + cert-manager (`ingress.annotations` in `values.yaml`). The chart does not block `/metrics` (ingress-nginx 1.12+ rejects `server-snippet`); block it at the edge or set `config.METRICS_ENABLED="false"` as described in `docs/DEPLOYMENT.md` section 4.
 - [ ] AWS/Azure Terraform: ALB TLS1.3 / Front Door Premium already block `/metrics`.
 - [ ] `/metrics` and `/health` must not be reachable from the internet. Prometheus scrapes on the internal network.
 - [ ] Edge rate limiting in front of the in-process limiter (Caddy/WAF/nginx `limit-rps`).

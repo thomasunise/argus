@@ -15,7 +15,7 @@ from pathlib import Path
 SECRETS = {
     'ADMIN_PASSWORD': lambda: secrets.token_urlsafe(24),      # >= 14 chars required by assert_safe_config
     'SESSION_SECRET': lambda: secrets.token_urlsafe(48),      # >= 32 chars required
-    'INGEST_API_KEY': lambda: secrets.token_urlsafe(40),      # >= 24 chars required when set
+    'INGEST_API_KEY': lambda: f'snt_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}',  # same shape as keys minted by the API
     'AUDIT_SIGNING_KEY': lambda: secrets.token_hex(32),       # HMAC key for the audit chain
     'DATA_ENCRYPTION_KEY': lambda: secrets.token_urlsafe(32),  # encryption at rest (required in production)
 }

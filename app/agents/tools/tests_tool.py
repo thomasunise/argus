@@ -1,4 +1,4 @@
-"""Read-only views over the active-testing harness (app.testing, another workstream)."""
+"""Read-only views over the active-testing harness (app.testing)."""
 from __future__ import annotations
 
 from typing import Any

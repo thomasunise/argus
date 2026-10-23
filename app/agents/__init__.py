@@ -37,9 +37,10 @@ def setup(app) -> None:
         payload = job.payload
         spec = SPECS[payload['spec']]
         principal = Principal(tenant_id=job.tenant_id, role=Role(payload.get('role', 'analyst')), user_id=payload.get('user_id'),
-                              email=payload.get('email', ''), auth='system' if payload.get('system') else 'session')
+                              email=payload.get('email', ''), auth='system' if payload.get('system') else payload.get('auth') or 'session',
+                              api_key_id=payload.get('api_key_id'), scopes=frozenset(payload.get('scopes') or ()))
         runtime = get_runtime(ctx.app) if ctx.app else AgentRuntime(ctx.settings)
         result = await runtime.run(spec, payload['task'], payload.get('inputs', {}), principal, ctx.db_factory,
                                    run_id=payload.get('run_id'), finding_id=payload.get('finding_id'),
-                                   parent_run_id=payload.get('parent_run_id'), job_id=job.id)
+                                   parent_run_id=payload.get('parent_run_id'), job_id=job.id, heartbeat=ctx.heartbeat)
         return {'run_id': result.run_id, 'status': result.status}

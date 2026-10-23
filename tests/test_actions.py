@@ -374,7 +374,7 @@ def test_full_lifecycle_request_approve_twice_execute_rollback(app, owner, make_
     run = op1.get(f'/api/v1/actions/runs/{run_id}', headers=h1).json()
     assert run['has_rollback_payload'] is True and run['result']['execution']['summary'] == 'touched srv-1'
     assert run['result']['dry_run']['ok'] is True and run['executed_by']
-    assert run['rollback_payload']['target'] == 'srv-1' and 'SuperSecret123' not in run['rollback_payload']['token']  # stored redacted
+    assert run['rollback_payload']['target'] == 'srv-1' and 'SuperSecret123' not in run['rollback_payload']['token']  # redacted for display only
     # executor saw a dry run and then an execute
     kinds = [c[0] for c in fakes['test.fake.high'].calls]
     assert kinds[-2:] == ['dry_run', 'execute']
@@ -390,6 +390,8 @@ def test_full_lifecycle_request_approve_twice_execute_rollback(app, owner, make_
     assert client.get(f'/api/v1/actions/requests/{rid}', headers=headers).json()['status'] == 'rolled_back'
     assert client.post(f'/api/v1/actions/runs/{run_id}/rollback', headers=headers).status_code == 409
     assert fakes['test.fake.high'].calls[-1][0] == 'rollback'
+    # The executor must receive the payload it produced, not the redacted view (a masked key id cannot be rolled back).
+    assert fakes['test.fake.high'].calls[-1][1] == {'target': 'srv-1', 'token': 'password=SuperSecret123'}
     runs = client.get('/api/v1/actions/runs', headers=headers).json()['items']
     assert [r['id'] for r in runs] == [run_id]
     # audit trail covers the whole lifecycle

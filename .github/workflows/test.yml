@@ -123,7 +123,7 @@ jobs:
             -e RUN_MIGRATIONS=true -e DB_AUTO_CREATE=false \
             -e SESSION_SECRET=ci-session-secret-that-is-long-enough-0123456789 \
             -e ADMIN_PASSWORD=ci-admin-password-long-123 \
-            -e INGEST_API_KEY=ci-ingest-key-long-enough-0123456789 \
+            -e INGEST_API_KEY=snt_0123abcd_ci-ingest-key-long-enough-0123456789 \
             sentinel:ci
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/ready; then echo; break; fi
@@ -246,7 +246,7 @@ jobs:
         run: |
           helm template sentinel infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x \
             --set serviceMonitor.enabled=true --set auditVolume.enabled=true > /tmp/rendered.yaml
-          docker run --rm -i ghcr.io/yannh/kubeconform:latest -strict -summary -ignore-missing-schemas \
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -ignore-missing-schemas \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             < /tmp/rendered.yaml

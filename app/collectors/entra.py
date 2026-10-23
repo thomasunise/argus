@@ -68,8 +68,12 @@ class EntraCollector(Collector):
         'properties': {
             'tenant_id': {'type': 'string', 'maxLength': 64},
             'client_id': {'type': 'string', 'maxLength': 64},
-            'graph_url': {'type': 'string', 'pattern': r'^https://', 'description': 'Default https://graph.microsoft.com'},
-            'login_url': {'type': 'string', 'pattern': r'^https://', 'description': 'Default https://login.microsoftonline.com'},
+            # Pinned to Microsoft clouds: the collector posts the resolved client_secret to login_url and a bearer
+            # token to graph_url, so an arbitrary https host here would be a credential exfiltration path.
+            'graph_url': {'type': 'string', 'pattern': r'^https://(graph\.microsoft\.com|graph\.microsoft\.us|dod-graph\.microsoft\.us|microsoftgraph\.chinacloudapi\.cn)/?$',
+                          'description': 'Default https://graph.microsoft.com (also graph.microsoft.us, dod-graph.microsoft.us, microsoftgraph.chinacloudapi.cn)'},
+            'login_url': {'type': 'string', 'pattern': r'^https://(login\.microsoftonline\.com|login\.microsoftonline\.us|login\.chinacloudapi\.cn|login\.partner\.microsoftonline\.cn)/?$',
+                          'description': 'Default https://login.microsoftonline.com (also .us, login.chinacloudapi.cn, login.partner.microsoftonline.cn)'},
             'log_lookback_hours': {'type': 'integer', 'minimum': 1, 'maximum': 720},
             'include_guests': {'type': 'boolean'},
         },

@@ -1,8 +1,8 @@
 # Contributing
 
-Sentinel is built as a set of workstreams, each owning one package. The contract between
-them is `docs/ARCHITECTURE.md`; the day-to-day rules are in `docs/WORKSTREAM-BRIEF.md`.
-This file summarizes what a change must satisfy to be merged.
+Thanks for contributing to Sentinel. The codebase is a set of packages, each with a small,
+documented interface; the contract between them is `docs/ARCHITECTURE.md`. This file
+summarizes what a change must satisfy to be merged.
 
 ## Setup
 
@@ -17,9 +17,12 @@ Set `SENTINEL_LAZY_APP=1` when importing `app.main` outside tests (the conftest 
 Tests run against a fresh SQLite database per test with the in-memory queue and must never
 touch the network (`respx` for httpx, `monkeypatch` for SDKs).
 
-## Ownership
+## Package layout
 
-| Package | Owns |
+Where things live. Each package keeps its models, router and tests in the files listed
+here, so a change to one feature normally touches one row of this table.
+
+| Package | Files |
 |---|---|
 | core | `app/core/`, `app/main.py`, `app/worker.py`, `app/models/{base,identity,inventory,findings,audit,agents}.py`, `app/api/{deps,auth,ops}.py`, `app/agents/{runtime,providers}.py`, `app/agents/tools/registry.py` |
 | graph | `app/graph/`, `app/models/graph.py`, `app/api/graph.py` |
@@ -33,9 +36,9 @@ touch the network (`respx` for httpx, `monkeypatch` for SDKs).
 | frontend | `app/static/` |
 | infra | `Dockerfile*`, `compose*.yaml`, `docker/`, `infra/`, `.github/`, `scripts/`, `docs/` (except `ARCHITECTURE.md`), `README.md` |
 
-A workstream edits only its own files. If you need something from another package that does
-not exist, add a small helper inside your package and say so in your report or PR
-description. Do not reformat or "tidy" files you do not own.
+Keep a change inside the package it belongs to. If you need something from another package
+that does not exist, add a small helper inside your package and say so in the pull request
+description. Do not reformat or "tidy" unrelated files in the same change.
 
 ## Code conventions (enforced in review)
 
@@ -57,7 +60,7 @@ description. Do not reformat or "tidy" files you do not own.
 - Every list and get endpoint has a cross-tenant test using `second_tenant` expecting 404 or an empty list.
 - Permission tests: at least one request from a role that lacks the permission expects 403.
 - Fixtures for external tools and collectors live under `tests/fixtures/` as recorded output; adapters are tested by parsing fixtures, not by running tools.
-- Run your package tests plus `tests/test_core_*.py` before reporting.
+- Run your package tests plus `tests/test_core_*.py` before opening a pull request.
 
 ## Infrastructure and docs changes
 
@@ -67,11 +70,13 @@ description. Do not reformat or "tidy" files you do not own.
 - Documentation states what the code does, with file references. No marketing language, no claims of certification.
 - Never commit `.env`, databases, keys or real telemetry. Example payloads must be synthetic and say so.
 
-## Commits and reports
+## Pull requests
 
-- Do not commit from an agent workstream unless asked; the integrator commits.
-- A workstream report lists: files created, public interfaces (signatures), endpoints added, what is real versus stubbed, helpers added outside the package (should be none), and test output verbatim.
-- Commit messages: imperative subject, body explaining why, and the attribution trailer required by the repository.
+- Branch from `main`; keep each pull request to one change.
+- Tests pass locally (`python -m pytest -q`), including the cross-tenant and permission tests for any endpoint you add.
+- The description says what is real versus stubbed (for example an adapter tested only against fixtures, or a provider without a live integration test) and lists any endpoints or public interfaces added.
+- No secrets, databases, `.env` files or real telemetry in the diff.
+- Commit messages: imperative subject, body explaining why.
 
 ## Security issues
 

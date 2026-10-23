@@ -37,7 +37,7 @@ class AssetAuthorization(TenantMixin, Base):
     __tablename__ = 'asset_authorizations'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
-    authorized_by: Mapped[str] = mapped_column(String(36))
+    authorized_by: Mapped[str] = mapped_column(String(64))  # user id or api_key:<id>
     attestation: Mapped[str] = mapped_column(Text)
     allow_active: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_intrusive: Mapped[bool] = mapped_column(Boolean, default=False)
