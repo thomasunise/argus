@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # --- audit ---
     audit_jsonl_path: str = ''
     audit_signing_key: str = ''
+    audit_signing_keys: str = ''  # 'kid=key,kid2=key2'; first signs, all verify
     audit_s3_bucket: str = ''
     audit_s3_prefix: str = 'sentinel-audit/'
     audit_azure_container: str = ''
@@ -101,9 +102,16 @@ class Settings(BaseSettings):
     actions_require_two_for_high: bool = True
     actions_maintenance_window: str = ''  # e.g. "02:00-04:00" UTC
 
-    # --- secrets backend ---
+    # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''
+    data_encryption_key: str = ''
+    secret_env_prefix: str = 'SENTINEL_SECRET_'  # env: refs must start with this prefix or be allowlisted
+    secret_env_allowlist: str = ''  # comma separated env names; '*' allows any (development only)
+    secrets_dir: Path = Path('/run/secrets')  # file: refs must resolve under this directory
+    max_request_body_bytes: int = 8 * 1024 * 1024
+    data_encryption_keys: str = ''  # 'kid=base64key,kid2=base64key2'; first encrypts, all decrypt
+    allow_literal_secret_refs: bool = True  # forced False in production
 
     # --- legacy integrations ---
     wazuh_indexer_url: str = ''
@@ -156,6 +164,22 @@ def assert_safe_config(settings: Settings) -> None:
             raise RuntimeError('Production requires COOKIE_SECURE=true behind HTTPS')
         if not settings.redis_url:
             raise RuntimeError('Production requires REDIS_URL for durable job processing')
+        if not settings.base_url.startswith('https://'):
+            raise RuntimeError('Production requires BASE_URL to be an https:// URL')
+        if not (settings.data_encryption_key or settings.data_encryption_keys):
+            raise RuntimeError('Production requires DATA_ENCRYPTION_KEY (or DATA_ENCRYPTION_KEYS) for encryption at rest')
+        if not (settings.audit_signing_key or settings.audit_signing_keys):
+            raise RuntimeError('Production requires AUDIT_SIGNING_KEY (or AUDIT_SIGNING_KEYS)')
+        if not (settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
+            raise RuntimeError('Production requires an external audit sink (AUDIT_JSONL_PATH, AUDIT_S3_BUCKET or AUDIT_AZURE_CONTAINER)')
+        if not settings.totp_required and not settings.oidc_issuer:
+            raise RuntimeError('Production requires TOTP_REQUIRED=true or OIDC single sign-on')
+        if settings.secret_env_allowlist.strip() == '*':
+            raise RuntimeError('SECRET_ENV_ALLOWLIST=* is not permitted in production; list the exact variable names')
+        if settings.allow_private_targets and not settings.private_target_cidrs:
+            raise RuntimeError('ALLOW_PRIVATE_TARGETS requires an explicit PRIVATE_TARGET_CIDRS allowlist')
+        settings_dict = settings.__dict__
+        settings_dict['allow_literal_secret_refs'] = False
     if settings.ai_provider == 'anthropic' and not settings.anthropic_api_key:
         # The SDK can also resolve credentials from ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
         import os

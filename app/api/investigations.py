@@ -16,6 +16,7 @@ from .deps import Page, get_db, require
 router = APIRouter(prefix='/api/v1/investigations', tags=['investigations'])
 
 AGENT_SPECS = ('investigate', 'triage')
+MAX_MERGE_OFFSET = 10_000
 
 
 def legacy_to_dict(row: Investigation) -> dict:
@@ -44,7 +45,8 @@ def run_to_investigation(run: AgentRun, steps: list[AgentStep] | None = None) ->
 @router.get('')
 def list_investigations(finding_id: str | None = None, kind: str | None = None, page: Page = Depends(Page), db: Session = Depends(get_db),
                         principal: Principal = Depends(require('investigations:read'))):
-    window = page.offset + page.limit + 1  # fetch enough from each source to merge and slice
+    offset = min(max(0, page.offset), MAX_MERGE_OFFSET)  # the merge loads offset+limit rows from each source; bound it
+    window = offset + page.limit + 1
     items: list[dict] = []
     if kind in (None, 'investigation'):
         stmt = scoped(Investigation, principal)
@@ -57,7 +59,7 @@ def list_investigations(finding_id: str | None = None, kind: str | None = None, 
             stmt = stmt.where(AgentRun.finding_id == finding_id)
         items.extend(run_to_investigation(r) for r in db.execute(stmt.order_by(AgentRun.created_at.desc()).limit(window)).scalars())
     items.sort(key=lambda d: aware(d['created_at']) or aware(d.get('finished_at')), reverse=True)
-    rows = items[page.offset: page.offset + page.limit + 1]
+    rows = items[offset: offset + page.limit + 1]
     return page.wrap(rows, lambda d: d)
 
 

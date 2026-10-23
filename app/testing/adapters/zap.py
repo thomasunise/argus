@@ -38,6 +38,8 @@ class ZapAdapter(TestAdapter):
         if not settings.zap_url:
             raise Unavailable('ZAP_URL is not configured')
         target = ctx.target or asset.target
+        if settings.zap_api_key.startswith('literal:') and not getattr(settings, 'allow_literal_secret_refs', True):
+            raise Unavailable('ZAP_API_KEY uses a literal: reference, which is disabled on this deployment (ALLOW_LITERAL_SECRET_REFS)')
         api_key = resolve_secret(settings.zap_api_key, settings) if settings.zap_api_key.startswith(('env:', 'file:', 'secrets:', 'literal:')) else settings.zap_api_key
         base = settings.zap_url.rstrip('/')
         params = {'apikey': api_key} if api_key else {}

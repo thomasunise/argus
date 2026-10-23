@@ -21,5 +21,5 @@ class AuditEntry(Base):
     request_id: Mapped[str] = mapped_column(String(64), default='')
     previous_hash: Mapped[str] = mapped_column(String(64), default='0' * 64)
     entry_hash: Mapped[str] = mapped_column(String(64))
-    signature: Mapped[str] = mapped_column(String(64), default='')
+    signature: Mapped[str] = mapped_column(String(128), default='')
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

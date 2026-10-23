@@ -156,7 +156,7 @@ def test_canary_hits_public_endpoint_then_detection(owner, second_tenant, db, de
     hits = client.get(f"/api/v1/canaries/{canary['id']}/hits", headers=headers).json()['items']
     assert len(hits) == 2
     post_hit = next(h for h in hits if h['user_agent'].startswith('python-requests'))
-    assert post_hit['source_ip'] == '203.0.113.9' and post_hit['payload']['body']['who'] == 'attacker'
+    assert post_hit['source_ip'] == 'testclient' and post_hit['payload']['body']['who'] == 'attacker'  # forwarded headers are not trusted
     assert 'abcdefghijklmnopqrstuvwxyz' not in post_hit['payload']['body']['Authorization']
     assert 'cookie' not in post_hit['headers'] and 'user-agent' in post_hit['headers']
     get_hit = next(h for h in hits if h['user_agent'] == 'Word/16.0')
@@ -171,7 +171,7 @@ def test_canary_hits_public_endpoint_then_detection(owner, second_tenant, db, de
     db.commit()
     detections = client.get('/api/v1/detections?rule_id=canary.tripwire', headers=headers).json()['items']
     assert len(detections) == 1 and detections[0]['severity'] == 'critical' and detections[0]['entity'] == 'payroll-link'
-    assert set(detections[0]['evidence']['source_ips']) == {'203.0.113.9', 'testclient'}
+    assert set(detections[0]['evidence']['source_ips']) == {'testclient'}
     # Revoked canaries stop recording.
     client.delete(f"/api/v1/canaries/{canary['id']}", headers=headers)
     assert client.post(f'/api/v1/canaries/{token}/hit').status_code == 204

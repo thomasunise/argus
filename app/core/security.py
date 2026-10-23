@@ -165,9 +165,44 @@ async def oidc_exchange_code(doc: OidcDiscovery, settings: Settings, code: str, 
 # ---------------------------------------------------------------- secrets
 
 
-def resolve_secret(ref: str, settings: Settings) -> str:
-    """Resolve 'env:NAME', 'file:/path', or 'literal:value' (discouraged). Empty ref returns ''."""
+_SECRET_LOG = __import__('logging').getLogger('sentinel.secrets')
+
+
+def secret_ref_allowed(ref: str, settings: Settings) -> tuple[bool, str]:
+    """Policy for secret references. env: names must carry SECRET_ENV_PREFIX or be allowlisted
+    (so an admin cannot point an integration at SESSION_SECRET or DATABASE_URL); file: paths must
+    resolve under SECRETS_DIR; literal: requires ALLOW_LITERAL_SECRET_REFS."""
     if not ref:
+        return True, ''
+    kind, _, value = ref.partition(':')
+    if kind == 'env':
+        allow = {x.strip() for x in settings.secret_env_allowlist.split(',') if x.strip()}
+        if '*' in allow or value in allow or (settings.secret_env_prefix and value.startswith(settings.secret_env_prefix)):
+            return True, ''
+        return False, f'env:{value} is not an allowed secret variable (use the {settings.secret_env_prefix} prefix or SECRET_ENV_ALLOWLIST)'
+    if kind == 'file':
+        try:
+            base = Path(settings.secrets_dir).resolve()
+            target = Path(value).resolve()
+        except (OSError, RuntimeError):
+            return False, 'invalid secret file path'
+        if base == target or base in target.parents:
+            return True, ''
+        return False, f'file:{value} is outside SECRETS_DIR'
+    if kind == 'literal':
+        return (True, '') if settings.allow_literal_secret_refs else (False, 'literal: secret references are disabled on this deployment')
+    if kind == 'secrets':
+        return True, ''
+    return False, 'unknown secret reference scheme'
+
+
+def resolve_secret(ref: str, settings: Settings) -> str:
+    """Resolve 'env:NAME', 'file:/path', 'secrets:KEY' or 'literal:value' subject to secret_ref_allowed(). Empty ref returns ''."""
+    if not ref:
+        return ''
+    allowed, reason = secret_ref_allowed(ref, settings)
+    if not allowed:
+        _SECRET_LOG.warning('refused secret reference: %s', reason)
         return ''
     kind, _, value = ref.partition(':')
     if kind == 'env':

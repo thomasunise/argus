@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, excerpt, registry, request_with_retry, result_from_response, severity_label
+from . import Channel, DeliveryResult, OutboundEvent, egress_error, excerpt, registry, request_with_retry, result_from_response, severity_label
 
 _PRIORITY = {'critical': 'Highest', 'high': 'High', 'medium': 'Medium', 'low': 'Low', 'informational': 'Lowest'}
 _DONE_NAMES = ('done', 'resolved', 'closed', 'complete', 'completed', 'fixed')
@@ -66,6 +66,9 @@ class JiraChannel(Channel):
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json', **_auth_header(secrets)}
         if not base.startswith('https://') or 'Authorization' not in headers or not config.get('project_key'):
             return DeliveryResult(ok=False, error='jira needs https base_url, project_key and email+api_token (or bearer_token) secrets')
+        denied = egress_error(base)
+        if denied:
+            return DeliveryResult(ok=False, error=f'jira base_url refused: {denied}')
         timeout = float(config.get('timeout_seconds') or 20)
         label = label_for(event)
         jql = f'labels = "{label}" ORDER BY created DESC'

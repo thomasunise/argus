@@ -53,10 +53,16 @@ def env_name(platform: str, key: str) -> str:
     return ENV.get(platform, {}).get(key, f'ACTIONS_{platform.upper()}_{key.upper()}')
 
 
+def literal_refs_allowed(settings: Settings) -> bool:
+    return bool(getattr(settings, 'allow_literal_secret_refs', True))
+
+
 def _from_env(platform: str, key: str, settings: Settings) -> str:
     raw = os.getenv(env_name(platform, key), '')
     if not raw:
         return ''
+    if raw.startswith('literal:'):
+        return resolve_secret(raw, settings) if literal_refs_allowed(settings) else ''
     if raw.startswith(_REF_PREFIXES):
         return resolve_secret(raw, settings)
     return raw
@@ -65,8 +71,8 @@ def _from_env(platform: str, key: str, settings: Settings) -> str:
 def _from_tenant(platform: str, key: str, settings: Settings, tenant_settings: dict | None) -> str:
     overrides = (tenant_settings or {}).get('action_credentials') or {}
     ref = (overrides.get(platform) or {}).get(key, '') if isinstance(overrides, dict) else ''
-    if not isinstance(ref, str) or not ref.startswith(_REF_PREFIXES):
-        return ''  # refs only; a literal secret in tenant settings is ignored on purpose
+    if not isinstance(ref, str) or ref.startswith('literal:') or not ref.startswith(_REF_PREFIXES):
+        return ''  # refs only; a literal secret in tenant settings is ignored on purpose (never resolved, whatever the setting)
     return resolve_secret(ref, settings)
 
 

@@ -14,12 +14,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from .api import discover_routers
 from .api.deps import RateLimiter
 from .core import audit as audit_module
+from .core import crypto
 from .core.bootstrap import bootstrap
 from .core.config import Settings, assert_safe_config, get_settings
 from .core.db import CommitBeforeResponseMiddleware, init_db, make_engine, make_session_factory, session_scope
 from .core.errors import install_error_handlers
 from .core.queue import JobQueue
-from .core.telemetry import RequestContextMiddleware, configure_logging, configure_tracing, install_metrics_endpoint
+from .core.telemetry import BodySizeLimitMiddleware, RequestContextMiddleware, configure_logging, configure_tracing, install_metrics_endpoint
 
 log = logging.getLogger('sentinel')
 STATIC_DIR = Path(__file__).parent / 'static'
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     assert_safe_config(settings)
     configure_logging(settings)
     audit_module.configure(settings)
+    crypto.configure(settings.data_encryption_keys, settings.data_encryption_key)
 
     engine = make_engine(settings)
     factory = make_session_factory(engine)
@@ -77,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.background_tasks = set()
 
     app.add_middleware(CommitBeforeResponseMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware, settings=settings)
     app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie='sentinel_session',
                        same_site='strict', https_only=settings.cookie_secure, max_age=settings.session_max_age)

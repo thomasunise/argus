@@ -11,16 +11,18 @@ from .deps import require
 router = APIRouter(prefix='/api/v1/ops', tags=['ops'])
 
 
-def _job_dict(job) -> dict:
+def _job_dict(job, include_result: bool = False) -> dict:
     return {'id': job.id, 'kind': job.kind, 'status': job.status, 'attempts': job.attempts, 'max_attempts': job.max_attempts,
             'error': job.error, 'priority': job.priority, 'created_at': iso(job.created_at), 'started_at': iso(job.started_at),
-            'finished_at': iso(job.finished_at), 'result': job.result}
+            'finished_at': iso(job.finished_at), 'result': job.result if include_result else None}
 
 
 @router.get('/jobs')
 async def list_jobs(request: Request, status: str | None = None, limit: int = 100, principal: Principal = Depends(require('audit:read'))):
     jobs = await request.app.state.queue.list(principal.tenant_id, min(500, limit), status)
-    return {'items': [_job_dict(j) for j in jobs], 'kinds': request.app.state.queue.kinds}
+    from ..core.rbac import has
+
+    return {'items': [_job_dict(j, has(principal, 'admin:settings')) for j in jobs], 'kinds': request.app.state.queue.kinds}
 
 
 @router.get('/jobs/{job_id}')
@@ -28,7 +30,9 @@ async def get_job(job_id: str, request: Request, principal: Principal = Depends(
     job = await request.app.state.queue.status(job_id)
     if not job or job.tenant_id != principal.tenant_id:
         raise NotFound('Job not found')
-    return _job_dict(job)
+    from ..core.rbac import has
+
+    return _job_dict(job, has(principal, 'admin:settings'))
 
 
 @router.post('/jobs/{job_id}/cancel')

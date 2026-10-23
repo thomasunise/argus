@@ -23,7 +23,7 @@ from ..core.events import publish, publish_soon
 from ..core.rbac import Principal, Role, has
 from ..core.security import redact
 from ..core.telemetry import ACTIONS
-from ..models import Finding, Tenant, dumps, loads
+from ..models import ApiKey, Finding, Tenant, dumps, loads
 from ..models.actions import EXECUTABLE_STATUSES, ActionApproval, ActionRequest, ActionRun
 from . import catalog, policy
 from .catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecResult
@@ -60,6 +60,25 @@ def actor_id(principal: Principal) -> str:
     if principal.auth == 'system' and not principal.user_id:
         return 'system'
     return principal.user_id or principal.email or 'unknown'
+
+
+def identity_of(db: Session | None, actor: str) -> str:
+    """Canonical human identity behind an actor id. An API key acts on behalf of the user who minted it, so a
+    request made through a key and an approval made by that user (or another of their keys) are the SAME actor
+    for separation-of-duty purposes. Unknown keys and 'system' stay as they are."""
+    actor = actor or ''
+    if actor.startswith('api_key:') and db is not None:
+        key = db.get(ApiKey, actor[len('api_key:'):])
+        if key is not None and key.created_by:
+            return f'user:{key.created_by}'
+        return actor
+    if not actor or actor == 'system':
+        return actor
+    return f'user:{actor}'
+
+
+def same_identity(db: Session | None, a: str, b: str) -> bool:
+    return bool(a) and bool(b) and (policy.same_actor(a, b) or identity_of(db, a) == identity_of(db, b))
 
 
 def _now() -> datetime:
@@ -131,11 +150,13 @@ def _runs(db: Session, req: ActionRequest) -> list[ActionRun]:
     return list(db.execute(stmt).scalars().all())
 
 
-def approvals_satisfied(req: ActionRequest, approvals: list[ActionApproval]) -> bool:
+def approvals_satisfied(req: ActionRequest, approvals: list[ActionApproval], db: Session | None = None) -> bool:
     if req.status == 'auto_approved':
         return True
-    approving = [a for a in approvals if a.decision == 'approve' and a.approver_id != req.requested_by]
-    distinct = {a.approver_id for a in approving}
+    requester = identity_of(db, req.requested_by)
+    approving = [a for a in approvals if a.decision == 'approve' and a.approver_id != req.requested_by
+                 and identity_of(db, a.approver_id) != requester]
+    distinct = {identity_of(db, a.approver_id) for a in approving}
     owner_ok = (not req.owner_approval_required) or any(a.can_approve_critical for a in approving)
     return len(distinct) >= req.required_approvals and owner_ok
 
@@ -200,6 +221,14 @@ def request_detail(db: Session, req: ActionRequest) -> dict:
 # ---------------------------------------------------------------- request
 
 
+def _detection_in_tenant(db: Session, principal: Principal, detection_id: str) -> bool:
+    try:
+        from ..models.detections import Detection
+    except ImportError:  # detections package absent: nothing to link to
+        return False
+    return get_scoped(db, Detection, principal, detection_id) is not None
+
+
 async def request(db: Session, principal: Principal, action_type: str, params: dict, reason: str, finding_id: str | None = None,
                   detection_id: str | None = None, agent_run_id: str | None = None, *, settings: Settings | None = None) -> ActionRequest:
     """Create a pending (or auto-approved) ActionRequest. Nothing is executed here."""
@@ -215,6 +244,8 @@ async def request(db: Session, principal: Principal, action_type: str, params: d
         raise InvalidParams('invalid params: ' + '; '.join(problems[:8]))
     if finding_id and get_scoped(db, Finding, principal, finding_id) is None:
         raise NotFound('finding not found')
+    if detection_id and not _detection_in_tenant(db, principal, detection_id):
+        raise NotFound('detection not found')
     tenant = _tenant(db, principal.tenant_id)
     agent_originated = bool(agent_run_id)
     pre = policy.evaluate(db, tenant, settings, action, params, principal, agent_originated=agent_originated)
@@ -262,10 +293,10 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
     if req.status != 'pending':
         raise Conflict(f'request is {req.status}; only pending requests can be decided')
     me = actor_id(principal)
-    if policy.same_actor(me, req.requested_by):
+    if same_identity(db, me, req.requested_by):
         raise Forbidden('a requester cannot approve or reject their own request')
     existing = _approvals(db, req)
-    if any(a.approver_id == me for a in existing):
+    if any(same_identity(db, a.approver_id, me) for a in existing):
         raise Conflict('you have already decided this request')
     approval = ActionApproval(tenant_id=req.tenant_id, request_id=req.id, approver_id=me, approver_role=str(principal.role),
                               can_approve_critical=policy.can_fill_owner_slot(principal), decision=decision, comment=redact(comment or '')[:2000])
@@ -277,7 +308,7 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
         _publish_sync('action.rejected', _event(req, approver=me))
         return req
     approvals = existing + [approval]
-    if approvals_satisfied(req, approvals):
+    if approvals_satisfied(req, approvals, db):
         req.status, req.decided_at = 'approved', _now()
         record_audit(db, principal, 'actions.approved', req.id,
                      {'action_type': req.action_type, 'approvers': sorted({a.approver_id for a in approvals if a.decision == 'approve'}),
@@ -370,9 +401,13 @@ async def execute(app, principal: Principal, request_id: str, *, db: Session | N
     if action is None:
         raise Conflict(f'action type {req.action_type} is no longer registered')
     tenant = _tenant(db, principal.tenant_id)
-    if not approvals_satisfied(req, _approvals(db, req)):
+    if not approvals_satisfied(req, _approvals(db, req), db):
         raise PolicyDenied('request does not have the required approvals')
-    decision = policy.evaluate(db, tenant, settings, action, loads(req.params_json, {}), None, phase='execute')
+    params = loads(req.params_json, {})
+    problems = action.validate(params if isinstance(params, dict) else {})
+    if problems:
+        raise PolicyDenied('stored params no longer satisfy the action schema: ' + '; '.join(problems[:5]))
+    decision = policy.evaluate(db, tenant, settings, action, params, None, phase='execute')
     if decision.denied:
         record_audit(db, principal, 'actions.denied', req.id, {'action_type': req.action_type, 'reason': decision.deny_reason, 'phase': 'execute'})
         raise PolicyDenied(decision.deny_reason)
@@ -481,8 +516,13 @@ async def handle_execute(job, ctx) -> dict:
         if req.status != 'executing':
             _finish(run, req, run_status='failed', request_status=req.status, error=f'request is {req.status}, not executing')
             return {'ok': False, 'error': run.error}
-        if not approvals_satisfied(req, _approvals(db, req)):
+        if not approvals_satisfied(req, _approvals(db, req), db):
             _finish(run, req, run_status='failed', request_status=previous, error='approvals no longer satisfy policy')
+            return _audit_failure(db, principal, req, run)
+        # Params are validated against the schema again right before acting: what was approved is what runs.
+        problems = action.validate(params if isinstance(params, dict) else {})
+        if problems:
+            _finish(run, req, run_status='failed', request_status='failed', error='params failed schema validation at execution: ' + '; '.join(problems[:5]))
             return _audit_failure(db, principal, req, run)
         decision = policy.evaluate(db, tenant, settings, action, params, None, phase='execute')
         if decision.denied:

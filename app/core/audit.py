@@ -89,12 +89,30 @@ def build_sinks(settings: Settings) -> list[AuditSink]:
 
 _sinks: list[AuditSink] = []
 _signing_key: bytes = b''
+_signing_keys: dict[str, bytes] = {}
+_signing_kid: str = ''
 
 
 def configure(settings: Settings) -> None:
-    global _sinks, _signing_key
+    global _sinks, _signing_key, _signing_keys, _signing_kid
     _sinks = build_sinks(settings)
-    _signing_key = settings.audit_signing_key.encode()
+    keys: dict[str, bytes] = {}
+    order: list[str] = []
+    for item in (settings.audit_signing_keys or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        kid, _, value = item.partition('=')
+        if not value:
+            kid, value = 'k1', kid
+        keys[kid.strip()] = value.strip().encode()
+        order.append(kid.strip())
+    if settings.audit_signing_key and 'k1' not in keys:
+        keys['k1'] = settings.audit_signing_key.encode()
+        order.append('k1')
+    _signing_keys = keys
+    _signing_kid = order[0] if order else ''
+    _signing_key = keys.get(_signing_kid, b'')
 
 
 def _ts(value: datetime) -> str:
@@ -112,7 +130,20 @@ def _entry_hash(tenant_id: str, previous_hash: str, actor: str, action: str, sub
 def _sign(entry_hash: str) -> str:
     if not _signing_key:
         return ''
-    return hmac.new(_signing_key, entry_hash.encode(), hashlib.sha256).hexdigest()
+    return _signing_kid + ':' + hmac.new(_signing_key, entry_hash.encode(), hashlib.sha256).hexdigest()
+
+
+def _signature_valid(entry_hash: str, signature: str) -> bool:
+    """Verifies against the key id embedded in the signature, so rotated keys keep old entries valid."""
+    if not signature:
+        return not _signing_keys
+    kid, sep, digest = signature.partition(':')
+    if not sep:  # legacy unprefixed signature from before key ids existed
+        kid, digest = 'k1', signature
+    key = _signing_keys.get(kid)
+    if key is None:
+        return False
+    return hmac.compare_digest(digest, hmac.new(key, entry_hash.encode(), hashlib.sha256).hexdigest())
 
 
 def record_audit(db: Session, actor: Principal | str, action: str, subject: str = '', detail: dict[str, Any] | str | None = None,
@@ -158,8 +189,8 @@ def verify_chain(db: Session, tenant_id: str) -> dict:
         expected = _entry_hash(tenant_id, previous, entry.actor, entry.action, entry.subject, entry.detail, _ts(entry.created_at))
         if entry.previous_hash != previous or entry.entry_hash != expected:
             return {'valid': False, 'checked': count, 'broken_at': entry.id}
-        if _signing_key and not hmac.compare_digest(entry.signature, _sign(entry.entry_hash)):
+        if _signing_keys and not _signature_valid(entry.entry_hash, entry.signature):
             return {'valid': False, 'checked': count, 'broken_at': entry.id, 'reason': 'signature'}
         previous = entry.entry_hash
         count += 1
-    return {'valid': True, 'checked': count, 'signed': bool(_signing_key)}
+    return {'valid': True, 'checked': count, 'signed': bool(_signing_key), 'key_id': _signing_kid}

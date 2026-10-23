@@ -11,7 +11,7 @@ from typing import Any, Iterator
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -40,6 +40,19 @@ TRANSITIONS: dict[str, set[str]] = {
 AGING_BUCKETS = (('<1d', 1), ('1-7d', 7), ('7-30d', 30), ('>30d', None))
 CSV_COLUMNS = ('id', 'severity', 'status', 'source', 'rule', 'asset_id', 'asset_name', 'title', 'cve_ids', 'cvss', 'epss', 'kev', 'assignee',
                'occurrences', 'created_at', 'updated_at', 'remediation')
+MAX_EXPORT_ROWS = 50_000
+MAX_INPUTS_BYTES = 32_000
+_FORMULA_PREFIX = ('=', '+', '-', '@', '\t', '\r', '\n')
+
+
+def csv_cell(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection: text starting with = + - @ (or a control character) is prefixed with
+    a quote so Excel/Sheets render it as literal text. Numbers and empty values pass through unchanged."""
+    if not isinstance(value, str) or not value:
+        return value
+    if value[0] in _FORMULA_PREFIX or value.lstrip()[:1] in ('=', '+', '-', '@'):
+        return "'" + value
+    return value
 SEVERITY_RANK = case({name: index for index, name in enumerate(SEVERITIES)}, value=Finding.severity, else_=len(SEVERITIES))
 
 
@@ -53,6 +66,13 @@ class FindingPatch(BaseModel):
 class InvestigateBody(BaseModel):
     task: str = Field(default='', max_length=2000)
     inputs: dict[str, Any] = {}
+
+    @field_validator('inputs')
+    @classmethod
+    def _inputs(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(dumps(value)) > MAX_INPUTS_BYTES:
+            raise ValueError(f'inputs exceed {MAX_INPUTS_BYTES} bytes')
+        return value
 
 
 def _get_finding(db: Session, principal: Principal, finding_id: str) -> Finding:
@@ -149,7 +169,7 @@ def export_csv(status: str | None = None, severity: str | None = None, source: s
                                                                                          'assignee': assignee}.items() if v}})
     db.commit()
     asset_names = {a.id: a.name for a in db.execute(select(Asset.id, Asset.name).where(Asset.tenant_id == principal.tenant_id)).all()}
-    rows = db.execute(_ordered(stmt, sort)).scalars().all()
+    rows = db.execute(_ordered(stmt, sort).limit(MAX_EXPORT_ROWS)).scalars().all()
 
     def generate() -> Iterator[str]:
         buffer = io.StringIO()
@@ -159,9 +179,10 @@ def export_csv(status: str | None = None, severity: str | None = None, source: s
         for f in rows:
             buffer.seek(0)
             buffer.truncate()
-            writer.writerow([f.id, f.severity, f.status, f.source, f.rule, f.asset_id or '', asset_names.get(f.asset_id or '', ''), f.title,
-                             f.cve_ids, f.cvss if f.cvss is not None else '', f.epss if f.epss is not None else '', int(bool(f.kev)), f.assignee,
-                             f.occurrences, aware(f.created_at).isoformat(), aware(f.updated_at).isoformat(), f.remediation])
+            writer.writerow([csv_cell(v) for v in (
+                f.id, f.severity, f.status, f.source, f.rule, f.asset_id or '', asset_names.get(f.asset_id or '', ''), f.title,
+                f.cve_ids, f.cvss if f.cvss is not None else '', f.epss if f.epss is not None else '', int(bool(f.kev)), f.assignee,
+                f.occurrences, aware(f.created_at).isoformat(), aware(f.updated_at).isoformat(), f.remediation)])
             yield buffer.getvalue()
 
     return StreamingResponse(generate(), media_type='text/csv',

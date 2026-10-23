@@ -8,7 +8,7 @@ import json
 import time
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, registry, request_with_retry, result_from_response
+from . import Channel, DeliveryResult, OutboundEvent, egress_error, registry, request_with_retry, result_from_response
 
 SIGNATURE_HEADER = 'X-Sentinel-Signature'
 
@@ -43,6 +43,9 @@ class WebhookChannel(Channel):
         url = str(config.get('url') or '')
         if not url.startswith(('http://', 'https://')):
             return DeliveryResult(ok=False, error='webhook url missing or not http(s)')
+        denied = egress_error(url)
+        if denied:
+            return DeliveryResult(ok=False, error=f'webhook url refused: {denied}')
         body = build_body(event, event.delivery_id)
         headers = {'Content-Type': 'application/json', 'User-Agent': 'Sentinel-Webhook/1.0', 'X-Sentinel-Topic': event.topic,
                    'X-Sentinel-Delivery': event.delivery_id, 'X-Sentinel-Timestamp': str(int(time.time()))}

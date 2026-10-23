@@ -669,7 +669,11 @@ def test_api_key_can_request_and_counts_as_distinct_actor(app, owner, api_key, m
     assert created.status_code == 201 and created.json()['requested_by'].startswith('api_key:')
     rid = created.json()['id']
     assert client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers=key_headers).status_code == 403  # self
-    assert client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers=headers).json()['status'] == 'approved'
+    # The key was minted by the owner, so the owner is the same human as the requester and cannot approve either (security review).
+    assert client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers=headers).status_code == 403
+    make_user('op9@test.local', PW, 'operator')
+    op9, h9 = as_user(app, 'op9@test.local', PW)
+    assert op9.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers=h9).json()['status'] == 'approved'
 
 
 def test_irreversible_action_has_no_rollback(app, owner, make_user, fakes):

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, excerpt, registry, request_with_retry, result_from_response, severity_label
+from . import Channel, DeliveryResult, OutboundEvent, egress_error, excerpt, registry, request_with_retry, result_from_response, severity_label
 
 POST_MESSAGE_URL = 'https://slack.com/api/chat.postMessage'
 
@@ -73,6 +73,9 @@ class SlackChannel(Channel):
         url = secrets.get('webhook_url') or ''
         if not url.startswith('https://'):
             return DeliveryResult(ok=False, error='webhook_url secret missing or not https')
+        denied = egress_error(url)
+        if denied:
+            return DeliveryResult(ok=False, error=f'webhook_url refused: {denied}')
         if config.get('username'):
             message['username'] = str(config['username'])
         response, error = await request_with_retry(lambda client: client.post(url, json=message), attempts=2, timeout=timeout)

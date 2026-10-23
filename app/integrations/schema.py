@@ -76,13 +76,17 @@ def validate_schema(schema: dict[str, Any], config: Any, path: str = '') -> list
     return errors
 
 
-def validate_secret_refs(secret_refs: dict[str, Any], allowed: list[str]) -> list[str]:
+def validate_secret_refs(secret_refs: dict[str, Any], allowed: list[str], *, allow_literal: bool = True) -> list[str]:
     errors: list[str] = []
     for key, ref in (secret_refs or {}).items():
         if key not in allowed:
             errors.append(f'unknown secret field {key}; allowed: {", ".join(allowed) or "none"}')
         elif not is_secret_ref(ref):
-            errors.append(f'secret_refs.{key} must be a reference (env:NAME, file:/path, secrets:KEY); a literal value needs the literal: prefix')
+            errors.append(f'secret_refs.{key} must be a reference (env:NAME, file:/path, secrets:KEY)'
+                          + ('; a literal value needs the literal: prefix' if allow_literal else ''))
+        elif not allow_literal and str(ref).startswith('literal:'):
+            errors.append(f'secret_refs.{key} uses a literal: value; literal secret references are disabled on this deployment '
+                          '(ALLOW_LITERAL_SECRET_REFS). Use env:NAME, file:/path or secrets:KEY')
     return errors
 
 

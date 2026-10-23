@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
-from ..core.errors import NotFound
+from ..core.errors import NotFound, SentinelError
 from ..core.rbac import Principal
 from ..detections import canaries as svc
 from ..models import utcnow
@@ -24,6 +24,26 @@ router = APIRouter(prefix='/api/v1/canaries', tags=['canaries'])
 Kind = Literal['token', 'url', 'credential', 'file', 'dns', 'aws_key', 'api_key', 'document']
 MAX_HIT_BODY = 64 * 1024
 _NO_STORE = {'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache'}
+
+
+class HitTooLarge(SentinelError):
+    status = 413
+    code = 'payload_too_large'
+
+
+async def _bounded_body(request: Request, limit: int = MAX_HIT_BODY) -> bytes:
+    """Read at most `limit` bytes of an unauthenticated hit body without buffering the whole request."""
+    declared = request.headers.get('content-length', '')
+    if declared.isdigit() and int(declared) > limit:
+        raise HitTooLarge('hit payload too large')
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HitTooLarge('hit payload too large')
+        chunks.append(chunk)
+    return b''.join(chunks)
 
 
 class CreateCanaryBody(BaseModel):
@@ -92,9 +112,8 @@ def download_artifact(canary_id: str, request: Request, db: Session = Depends(ge
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get('x-forwarded-for', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()[:64]
+    # X-Forwarded-For is attacker-controlled on a public endpoint. Behind a trusted proxy run uvicorn with
+    # --proxy-headers and --forwarded-allow-ips so request.client.host already reflects the real peer.
     return (request.client.host if request.client else '')[:64]
 
 
@@ -112,8 +131,7 @@ async def _hit(token: str, request: Request, db: Session) -> None:
         return
     raw = b''
     if request.method == 'POST':
-        raw = await request.body()
-        raw = raw[:MAX_HIT_BODY]
+        raw = await _bounded_body(request)
     payload = {'query': dict(request.query_params)} if request.query_params else {}
     if raw:
         try:

@@ -75,6 +75,55 @@ if not METRICS_AVAILABLE:  # pragma: no cover
     HTTP_REQUESTS = HTTP_LATENCY = JOBS = AGENT_TOKENS = AGENT_RUNS = FINDINGS_OPEN = ACTIONS = DETECTIONS = _Noop()
 
 
+class BodySizeLimitMiddleware:
+    """Pure ASGI middleware: rejects requests whose declared or streamed body exceeds the limit."""
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            await self.app(scope, receive, send)
+            return
+        declared = next((v for k, v in scope.get('headers', []) if k == b'content-length'), None)
+        if declared is not None:
+            try:
+                if int(declared) > self.max_bytes:
+                    await self._reject(send)
+                    return
+            except ValueError:
+                pass
+        seen = 0
+        rejected = False
+
+        async def limited_receive():
+            nonlocal seen, rejected
+            message = await receive()
+            if message['type'] == 'http.request':
+                seen += len(message.get('body', b''))
+                if seen > self.max_bytes and not rejected:
+                    rejected = True
+                    raise _BodyTooLarge()
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _BodyTooLarge:
+            await self._reject(send)
+
+    @staticmethod
+    async def _reject(send):
+        body = b'{"detail":"Request body too large","code":"payload_too_large"}'
+        await send({'type': 'http.response.start', 'status': 413,
+                    'headers': [(b'content-type', b'application/json'), (b'content-length', str(len(body)).encode())]})
+        await send({'type': 'http.response.body', 'body': body})
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Adds a request id, timing, security headers and metrics to each request."""
 

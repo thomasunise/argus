@@ -163,8 +163,13 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
             return {'run_id': run_id, 'status': 'missing'}
         tenant_id = run.tenant_id
         adapter = get_adapter(run.adapter)
+        # Rows referenced by id are re-checked against the run's tenant: a queued row is not a grant.
         asset = db.get(Asset, run.asset_id)
+        if asset is not None and asset.tenant_id != tenant_id:
+            asset = None
         scope = db.get(TestScope, run.scope_id) if run.scope_id else None
+        if scope is not None and scope.tenant_id != tenant_id:
+            scope = None
         authorization = None
         if asset is not None:
             authorization = db.execute(
@@ -298,7 +303,10 @@ def _plan_params_for(db_factory, run_id: str) -> dict:
         if run is None or not run.plan_id:
             return {}
         plan = db.get(TestPlan, run.plan_id)
-        return loads(plan.params_json, {}) if plan else {}
+        if plan is None or plan.tenant_id != run.tenant_id:
+            return {}
+        params = loads(plan.params_json, {})
+        return params if isinstance(params, dict) else {}
 
 
 def _json_dumps(value: dict) -> str:

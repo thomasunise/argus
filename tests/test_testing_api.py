@@ -43,14 +43,17 @@ def test_list_adapters(owner):
     assert web['tier'] == 'passive' and 'web' in web['target_kinds']
 
 
-def test_scope_crud_and_validation(owner):
+def test_scope_crud_and_validation(app, owner, default_tenant_id):
     client, headers = owner
     # invalid tier rejected
     bad = client.post('/api/v1/tests/scopes', json={'name': 's', 'allowed_tiers': ['nope']}, headers=headers)
     assert bad.status_code == 422
     bad_window = client.post('/api/v1/tests/scopes', json={'name': 's', 'window_start': '25:00'}, headers=headers)
     assert bad_window.status_code == 422
-    created = client.post('/api/v1/tests/scopes', json={'name': 's1', 'asset_ids': ['x'], 'allowed_tiers': ['passive', 'active'],
+    # asset ids must belong to the caller's tenant (security review): an unknown id is refused
+    assert client.post('/api/v1/tests/scopes', json={'name': 's1', 'asset_ids': ['x']}, headers=headers).status_code == 404
+    asset_id = _make_asset(app, default_tenant_id, kind='host', target='host-1')
+    created = client.post('/api/v1/tests/scopes', json={'name': 's1', 'asset_ids': [asset_id], 'allowed_tiers': ['passive', 'active'],
                                                         'window_start': '02:00', 'window_end': '04:00'}, headers=headers)
     assert created.status_code == 201
     sid = created.json()['id']
@@ -59,9 +62,9 @@ def test_scope_crud_and_validation(owner):
     assert client.post(f'/api/v1/tests/scopes/{sid}/revoke', headers=headers).status_code == 200
 
 
-def test_plan_crud_and_unknown_adapter(owner):
+def test_plan_crud_and_unknown_adapter(app, owner, default_tenant_id):
     client, headers = owner
-    sid = _create_scope(client, headers, 'asset-x')
+    sid = _create_scope(client, headers, _make_asset(app, default_tenant_id, kind='host', target='host-x'))
     bad = client.post('/api/v1/tests/plans', json={'name': 'p', 'scope_id': sid, 'adapters': ['nope']}, headers=headers)
     assert bad.status_code == 422
     ok = client.post('/api/v1/tests/plans', json={'name': 'p1', 'scope_id': sid, 'adapters': ['trivy'],

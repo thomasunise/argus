@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 DELIVERY_STATUSES = ('queued', 'sent', 'failed', 'skipped')
 
@@ -24,7 +24,7 @@ class IntegrationConfig(TenantMixin, Base):
     name: Mapped[str] = mapped_column(String(120))
     kind: Mapped[str] = mapped_column(String(40), index=True)
     config_json: Mapped[str] = mapped_column(Text, default='{}')
-    secret_refs_json: Mapped[str] = mapped_column(Text, default='{}')
+    secret_refs_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     topics_json: Mapped[str] = mapped_column(Text, default='[]')
     min_severity: Mapped[str] = mapped_column(String(16), default='low')

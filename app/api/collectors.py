@@ -9,14 +9,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..collectors import is_secret_ref, load_builtin, registry, validate_config
+from ..collectors.base import literal_refs_allowed
 from ..collectors.runner import enqueue_run
 from ..core.audit import record_audit
+from ..core.config import Settings
 from ..core.errors import NotFound, SentinelError
+from ..integrations.egress import check_url_config
 from ..core.rbac import Principal
 from ..core.security import redact
 from ..models import dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
-from .deps import Page, get_db, require
+from .deps import Page, get_db, get_settings, require
 
 router = APIRouter(prefix='/api/v1/collectors', tags=['collectors'])
 
@@ -47,12 +50,20 @@ def _page(limit: int = 50, cursor: str | None = None) -> Page:
     return Page(limit, cursor)
 
 
-def _validate(collector_name: str, config: dict[str, Any], secret_refs: dict[str, str]) -> None:
+MAX_CONFIG_BYTES = 32_000
+
+
+def _validate(collector_name: str, config: dict[str, Any], secret_refs: dict[str, str], settings: Settings | None = None) -> None:
     load_builtin()
     if not registry.has(collector_name):
         raise InvalidConfig(f'unknown collector {collector_name!r}; see GET /api/v1/collectors/types')
     collector = registry.get(collector_name)
+    if len(dumps(config)) > MAX_CONFIG_BYTES:
+        raise InvalidConfig(f'config exceeds {MAX_CONFIG_BYTES} bytes')
     errors = validate_config(collector.config_schema, config)
+    if settings is not None:
+        errors += check_url_config(config, settings, allow_http=bool(settings.allow_private_targets))
+    allow_literal = literal_refs_allowed(settings) if settings is not None else True
     for key in collector.secret_fields:
         if key in config:
             errors.append(f'{key} is a secret and must be supplied in secret_refs as env:NAME, file:/path or secrets:KEY, never inline')
@@ -63,7 +74,11 @@ def _validate(collector_name: str, config: dict[str, Any], secret_refs: dict[str
         if key not in collector.secret_fields:
             errors.append(f'unknown secret field {key}; allowed: {", ".join(collector.secret_fields) or "none"}')
         elif not is_secret_ref(ref):
-            errors.append(f'secret_refs.{key} must be a reference (env:NAME, file:/path, secrets:KEY); a literal value needs the literal: prefix')
+            errors.append(f'secret_refs.{key} must be a reference (env:NAME, file:/path, secrets:KEY)'
+                          + ('; a literal value needs the literal: prefix' if allow_literal else ''))
+        elif not allow_literal and str(ref).startswith('literal:'):
+            errors.append(f'secret_refs.{key} uses a literal: value; literal secret references are disabled on this deployment '
+                          '(ALLOW_LITERAL_SECRET_REFS). Use env:NAME, file:/path or secrets:KEY')
     if errors:
         raise InvalidConfig('; '.join(errors)[:2000])
 
@@ -115,8 +130,9 @@ def list_configs(collector: str | None = None, enabled: bool | None = None, db: 
 
 @router.post('', status_code=201)
 @router.post('/', status_code=201, include_in_schema=False)
-def create_config(body: CreateBody, db: Session = Depends(get_db), principal: Principal = Depends(require('collectors:write'))):
-    _validate(body.collector, body.config, body.secret_refs)
+def create_config(body: CreateBody, db: Session = Depends(get_db), principal: Principal = Depends(require('collectors:write')),
+                  settings: Settings = Depends(get_settings)):
+    _validate(body.collector, body.config, body.secret_refs, settings)
     collector = registry.get(body.collector)
     schedule = body.schedule_minutes if body.schedule_minutes is not None else collector.default_schedule_minutes
     config = CollectorConfig(tenant_id=principal.tenant_id, name=body.name, collector=body.collector, config_json=dumps(body.config),
@@ -142,11 +158,12 @@ def get_config(config_id: str, db: Session = Depends(get_db), principal: Princip
 
 
 @router.patch('/{config_id}')
-def patch_config(config_id: str, body: PatchBody, db: Session = Depends(get_db), principal: Principal = Depends(require('collectors:write'))):
+def patch_config(config_id: str, body: PatchBody, db: Session = Depends(get_db), principal: Principal = Depends(require('collectors:write')),
+                 settings: Settings = Depends(get_settings)):
     config = _get_config(db, principal, config_id)
     new_config = body.config if body.config is not None else loads(config.config_json, {})
     new_refs = body.secret_refs if body.secret_refs is not None else loads(config.secret_refs_json, {})
-    _validate(config.collector, new_config, new_refs)
+    _validate(config.collector, new_config, new_refs, settings)
     changed: dict[str, Any] = {}
     if body.name is not None and body.name != config.name:
         config.name, changed['name'] = body.name, body.name

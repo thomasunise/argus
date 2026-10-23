@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -41,9 +42,18 @@ def build_query(since: datetime, size: int) -> dict[str, Any]:
             '_source': ['id', 'rule', 'agent', 'timestamp', 'data', 'syscheck', 'location', 'decoder', 'GeoLocation', 'full_log']}
 
 
-async def fetch_alerts(url: str, index: str, auth: tuple[str, str] | None, ca_bundle: str, since: datetime, size: int) -> list[dict]:
+async def fetch_alerts(url: str, index: str, auth: tuple[str, str] | None, ca_bundle: str, since: datetime, size: int,
+                       settings: Settings | None = None) -> list[dict]:
     if not url.startswith('https://'):
         raise WazuhSyncError('Wazuh indexer URL must use https://')
+    if settings is not None:
+        from .egress import egress_ok
+
+        denied = egress_ok(url, settings)
+        if denied:
+            raise WazuhSyncError(f'Wazuh indexer URL refused: {denied}')
+    if not re.fullmatch(r'[A-Za-z0-9*_.,-]{1,128}', index):
+        raise WazuhSyncError('Wazuh index pattern contains unsupported characters')
     alerts: list[dict] = []
     cursor = since
     async with httpx.AsyncClient(timeout=20, verify=ca_bundle or True, trust_env=False, follow_redirects=False) as client:
@@ -108,7 +118,7 @@ async def run_sync(db_factory, settings: Settings, tenant_id: str, integration_i
             int(config.get('page_size') or DEFAULT_PAGE_SIZE)
     started = utcnow()
     try:
-        alerts = await fetch_alerts(url, index, auth, ca_bundle, since, size)
+        alerts = await fetch_alerts(url, index, auth, ca_bundle, since, size, settings)
     except WazuhSyncError as exc:
         with session_scope(db_factory) as db:
             if integration_id:

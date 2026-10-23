@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -13,7 +13,8 @@ from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
 from ..core.errors import NotFound
 from ..core.rbac import Principal
-from ..models import dumps, utcnow
+from ..models import Asset, dumps, utcnow
+from ._common import BadRequest
 from ..models.testing import TestPlan, TestResult, TestRun, TestScope
 from ..testing import harness
 from ..testing import service
@@ -23,6 +24,8 @@ router = APIRouter(prefix='/api/v1/tests', tags=['tests'])
 
 TIERS = ('passive', 'active', 'intrusive')
 _HHMM = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+MAX_SCOPE_ASSETS = 500
+MAX_PARAMS_BYTES = 16_000
 
 
 class ScopeBody(BaseModel):
@@ -59,6 +62,23 @@ class ScopeBody(BaseModel):
             raise ValueError('max_rps must be between 0 and 100')
         return value
 
+    @field_validator('max_concurrency')
+    @classmethod
+    def _concurrency(cls, value: int) -> int:
+        if value < 1 or value > 64:
+            raise ValueError('max_concurrency must be between 1 and 64')
+        return value
+
+    @field_validator('asset_ids')
+    @classmethod
+    def _assets(cls, value: list[str]) -> list[str]:
+        cleaned = [str(v).strip() for v in value if str(v).strip()]
+        if len(cleaned) > MAX_SCOPE_ASSETS:
+            raise ValueError(f'at most {MAX_SCOPE_ASSETS} assets per scope')
+        if any(len(v) > 36 for v in cleaned):
+            raise ValueError('asset ids must be at most 36 characters')
+        return list(dict.fromkeys(cleaned))
+
 
 class PlanBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -74,6 +94,13 @@ class PlanBody(BaseModel):
         bad = [a for a in value if a not in harness.ADAPTERS]
         if bad:
             raise ValueError(f'unknown adapters {bad}')
+        return value
+
+    @field_validator('params')
+    @classmethod
+    def _params(cls, value: dict) -> dict:
+        if len(dumps(value)) > MAX_PARAMS_BYTES:
+            raise ValueError(f'params exceed {MAX_PARAMS_BYTES} bytes')
         return value
 
 
@@ -100,6 +127,16 @@ def list_scopes(page: Page = Depends(), db: Session = Depends(get_db), principal
 
 @router.post('/scopes', status_code=201)
 def create_scope(body: ScopeBody, db: Session = Depends(get_db), principal: Principal = Depends(require('tests:scopes'))):
+    # A scope may only name assets the caller's tenant owns; foreign or unknown ids are rejected rather than stored.
+    if body.asset_ids:
+        known = set(db.execute(select(Asset.id).where(Asset.tenant_id == principal.tenant_id, Asset.id.in_(body.asset_ids))).scalars().all())
+        unknown = [a for a in body.asset_ids if a not in known]
+        if unknown:
+            raise NotFound(f'assets not found in this tenant: {", ".join(unknown[:5])}')
+    if body.expires_at is not None:
+        expires = body.expires_at if body.expires_at.tzinfo else body.expires_at.replace(tzinfo=timezone.utc)
+        if expires <= utcnow():
+            raise BadRequest('expires_at must be in the future', code='invalid_expiry')
     scope = TestScope(tenant_id=principal.tenant_id, name=body.name, asset_ids_json=dumps(body.asset_ids),
                       allowed_tiers_json=dumps(body.allowed_tiers), environments_json=dumps(body.environments),
                       window_start=body.window_start, window_end=body.window_end, max_rps=body.max_rps,

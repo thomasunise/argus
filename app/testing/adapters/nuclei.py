@@ -7,12 +7,28 @@ finding per line. The configured rate limit is derived from scope.max_rps.
 from __future__ import annotations
 
 import json
+import re
 
 from ...core.config import Settings
-from ...core.errors import Unavailable
+from ...core.errors import ScopeDenied, Unavailable
 from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register, run_tool
 
 _SEV = {'critical', 'high', 'medium', 'low', 'info'}
+# Template selectors are relative template-directory paths or tags (e.g. "http/cves", "cves/2024"). Never absolute
+# paths, parent traversal, URLs or anything that nuclei would parse as a flag.
+_TEMPLATE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_./-]{0,255}$')
+
+
+def safe_templates(value: object) -> str:
+    """Validate a plan-supplied template selector (comma separated). Raises ScopeDenied on anything unsafe."""
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    parts = [p.strip() for p in text.split(',') if p.strip()]
+    for part in parts:
+        if not _TEMPLATE_RE.match(part) or '..' in part or '://' in part or part.startswith(('-', '/', '~')):
+            raise ScopeDenied('nuclei templates must be relative template paths or tags; absolute paths, traversal, URLs and flags are not allowed')
+    return ','.join(parts)
 
 
 def parse_jsonl(text: str) -> list[NormalizedFinding]:
@@ -60,7 +76,7 @@ class NucleiAdapter(TestAdapter):
         rps = max(1, int(scope.max_rps if scope else settings.test_rate_limit_rps))
         argv = [settings.nuclei_bin, '-u', target, '-jsonl', '-severity', 'low,medium,high,critical',
                 '-rate-limit', str(rps), '-timeout', '10', '-no-interactsh', '-silent']
-        templates = plan_params.get('templates') or settings.nuclei_templates
+        templates = safe_templates(plan_params.get('templates')) if plan_params.get('templates') else settings.nuclei_templates
         if templates:
             argv += ['-t', str(templates)]
         await ctx.rate_limiter.acquire()

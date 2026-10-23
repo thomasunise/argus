@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved')
 RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed')
@@ -66,7 +66,7 @@ class ActionRun(TenantMixin, Base):
     status: Mapped[str] = mapped_column(String(18), default='queued')
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
     result_json: Mapped[str] = mapped_column(Text, default='{}')
-    rollback_payload_json: Mapped[str] = mapped_column(Text, default='{}')  # redacted; encryption at rest is out of scope
+    rollback_payload_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')  # redacted and encrypted at rest
     error: Mapped[str] = mapped_column(Text, default='')
     executed_by: Mapped[str] = mapped_column(String(64), default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')

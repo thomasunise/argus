@@ -215,6 +215,11 @@ _TYPE_CHECKS: dict[str, tuple[type, ...]] = {
 }
 
 
+def literal_refs_allowed(settings: Any) -> bool:
+    """Whether `literal:` secret references may be stored. Production forces this off (core.config)."""
+    return bool(getattr(settings, 'allow_literal_secret_refs', True))
+
+
 def validate_config(schema: dict[str, Any], config: dict[str, Any], path: str = '') -> list[str]:
     """Small JSON-schema subset (type, properties, required, additionalProperties, enum, items,
     minimum, maximum, maxLength, pattern). Returns human-readable errors; empty means valid."""

@@ -20,8 +20,8 @@ router = APIRouter(prefix='/api/v1/evals', tags=['evals'])
 
 class EvalBody(BaseModel):
     suite: str = Field(min_length=1, max_length=64)
-    spec: str | None = None
-    case_ids: list[str] | None = None
+    spec: str | None = Field(default=None, max_length=64)
+    case_ids: list[str] | None = Field(default=None, max_length=500)
 
 
 def _page(limit: int = 50, cursor: str | None = None) -> Page:

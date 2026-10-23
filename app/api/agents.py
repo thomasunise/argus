@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,11 +20,21 @@ router = APIRouter(prefix='/api/v1/agents', tags=['agents'])
 TERMINAL = {'completed', 'failed', 'cancelled', 'refused', 'budget_exhausted'}
 
 
+MAX_INPUTS_BYTES = 32_000
+
+
 class RunBody(BaseModel):
     spec: str = Field(min_length=1, max_length=64)
     task: str = Field(default='', max_length=4000)
     inputs: dict = {}
-    finding_id: str | None = None
+    finding_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator('inputs')
+    @classmethod
+    def _inputs(cls, value: dict) -> dict:
+        if len(dumps(value)) > MAX_INPUTS_BYTES:
+            raise ValueError(f'inputs exceed {MAX_INPUTS_BYTES} bytes')
+        return value
 
 
 def _page(limit: int = 50, cursor: str | None = None) -> Page:

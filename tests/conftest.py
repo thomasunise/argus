@@ -37,17 +37,36 @@ ADMIN_EMAIL = 'admin@test.local'
 ADMIN_PASSWORD = 'test-password-very-long-123456'
 
 
+TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', '')
+TEST_REDIS_URL = os.getenv('TEST_REDIS_URL', '')
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
-    return Settings(database_url=f'sqlite:///{tmp_path}/test.db', scan_root=tmp_path / 'repos', autoscan_enabled=False,
+    database_url = TEST_DATABASE_URL or f'sqlite:///{tmp_path}/test.db'
+    return Settings(database_url=database_url, redis_url=TEST_REDIS_URL, scan_root=tmp_path / 'repos', autoscan_enabled=False,
                     enable_trivy=False, ai_provider='none', allow_private_targets=False, metrics_enabled=False,
-                    audit_jsonl_path=str(tmp_path / 'audit.jsonl'), audit_signing_key='test-signing-key', app_env='development',
+                    audit_jsonl_path=str(tmp_path / 'audit.jsonl'), audit_signing_keys='k2=test-signing-key-2,k1=test-signing-key',
+                    data_encryption_key='test-data-encryption-key', app_env='development', secret_env_allowlist='*', secrets_dir=tmp_path / 'secrets',
                     workers_inprocess=True, worker_concurrency=2, actions_kill_switch=False)
 
 
 @pytest.fixture
 def app(settings):
-    return create_app(settings)
+    application = create_app(settings)
+    if TEST_DATABASE_URL:
+        # Shared external database: start every test from empty tables.
+        from app.models import Base
+
+        Base.metadata.drop_all(application.state.engine)
+        Base.metadata.create_all(application.state.engine)
+    if TEST_REDIS_URL:
+        import redis as _redis
+
+        _redis.from_url(TEST_REDIS_URL).flushdb()
+    yield application
+    if TEST_DATABASE_URL:
+        application.state.engine.dispose()
 
 
 @pytest.fixture

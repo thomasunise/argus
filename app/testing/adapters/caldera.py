@@ -68,6 +68,8 @@ class CalderaAdapter(TestAdapter):
         group = str(plan_params.get('group') or asset.target)
         if not adversary_id:
             raise Unavailable('caldera requires an adversary_id in plan params')
+        if settings.caldera_api_key.startswith('literal:') and not getattr(settings, 'allow_literal_secret_refs', True):
+            raise Unavailable('CALDERA_API_KEY uses a literal: reference, which is disabled on this deployment (ALLOW_LITERAL_SECRET_REFS)')
         api_key = resolve_secret(settings.caldera_api_key, settings) if settings.caldera_api_key.startswith(
             ('env:', 'file:', 'secrets:', 'literal:')) else settings.caldera_api_key
         base = settings.caldera_url.rstrip('/')

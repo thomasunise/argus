@@ -14,6 +14,7 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
+from ...core.config import get_settings
 from ...core.findings import SEVERITIES
 
 log = logging.getLogger('sentinel.integrations.outbound')
@@ -169,9 +170,22 @@ def result_from_response(response: httpx.Response | None, error: str, *, ok_code
                           detail={'response': excerpt(response)} if not ok else {})
 
 
+def egress_error(url: Any, *, allow_http: bool = False) -> str:
+    """Send-time guard for a destination URL: '' when it may be contacted, else the reason. Never raises."""
+    from ..egress import egress_ok
+
+    try:
+        settings = get_settings()
+    except Exception:  # settings unavailable outside the app (pure unit tests): fall back to the syntactic default rules
+        from ...core.config import Settings
+
+        settings = Settings(session_secret='x' * 32, admin_password='x' * 14)
+    return egress_ok(url, settings, allow_http=allow_http or bool(settings.allow_private_targets))
+
+
 def severity_label(severity: str) -> str:
     return {'critical': 'Critical', 'high': 'High', 'medium': 'Medium', 'low': 'Low', 'informational': 'Info'}.get(severity, severity.title())
 
 
 __all__ = ['registry', 'Registry', 'Channel', 'OutboundEvent', 'DeliveryResult', 'request_with_retry', 'result_from_response', 'severity_label',
-           'excerpt', 'is_transient', 'BUILTIN']
+           'excerpt', 'is_transient', 'egress_error', 'BUILTIN']

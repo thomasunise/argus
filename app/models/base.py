@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -54,6 +54,24 @@ class UTCDateTime(TypeDecorator):
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
+
+
+class EncryptedText(TypeDecorator):
+    """Text column encrypted at rest with core.crypto (AES-256-GCM envelope). Transparent to the ORM:
+    plaintext in, plaintext out. Without a configured key values are stored as-is (development)."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        from ..core import crypto
+
+        return crypto.encrypt(value)
+
+    def process_result_value(self, value, dialect):
+        from ..core import crypto
+
+        return crypto.decrypt(value)
 
 
 class Base(DeclarativeBase):

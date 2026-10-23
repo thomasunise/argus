@@ -254,13 +254,18 @@ async def _fetch_fleet(ctx: CollectorContext) -> dict[str, Any]:
     base = str(config.get('fleet_url') or '').rstrip('/')
     if not base:
         raise ValueError('fleet_url is required for mode=fleet')
+    from ..integrations.egress import egress_ok
+
+    denied = egress_ok(base, ctx.settings, allow_http=bool(getattr(ctx.settings, 'allow_private_targets', False)))
+    if denied:
+        raise ValueError(f'fleet_url refused: {denied}')
     headers = {'Accept': 'application/json', 'User-Agent': 'sentinel-collector'}
     if config.get('fleet_token'):
         headers['Authorization'] = f"Bearer {config['fleet_token']}"
     warnings: list[str] = []
     hosts: dict[int, dict[str, Any]] = {}
     max_hosts = int(config.get('max_hosts') or 5000)
-    async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(30.0)) as client:
+    async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(30.0), follow_redirects=False, trust_env=False) as client:
         page = 0
         while len(hosts) < max_hosts:
             response = await client.get(f'{base}/api/v1/fleet/hosts', params={'per_page': 100, 'page': page})

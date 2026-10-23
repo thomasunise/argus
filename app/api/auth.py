@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
-from ..core.rbac import Principal, Role
+from ..core.rbac import ALL_PERMISSIONS, Principal, Role
 from ..core.security import (generate_api_key, oidc_authorize_url, oidc_discover, oidc_exchange_code, pkce_pair,
                              totp_generate_secret, totp_provisioning_uri, totp_verify, verify_password)
 from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, utcnow
@@ -251,6 +251,17 @@ def list_api_keys(db: Session = Depends(get_db), principal: Principal = Depends(
 def create_api_key(body: ApiKeyBody, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:api_keys'))):
     if body.role in {Role.admin, Role.owner} and principal.role != Role.owner:
         raise Forbidden('Only owners can mint admin keys')
+    valid_domains = {p.split(':')[0] for p in ALL_PERMISSIONS}
+    for scope in body.scopes:
+        ok = scope == 'ingest' or scope in ALL_PERMISSIONS or (scope.endswith(':*') and scope[:-2] in valid_domains)
+        if not ok:
+            from ..core.errors import SentinelError
+
+            raise SentinelError(f'Unknown scope {scope!r}', code='invalid_scope', status=400)
+    if len(body.scopes) > 32:
+        from ..core.errors import SentinelError
+
+        raise SentinelError('Too many scopes', code='invalid_scope', status=400)
     plaintext, prefix, key_hash = generate_api_key()
     key = ApiKey(tenant_id=principal.tenant_id, name=body.name, prefix=prefix, key_hash=key_hash, role=body.role,
                  scopes=','.join(sorted(set(body.scopes))), created_by=principal.user_id or '')

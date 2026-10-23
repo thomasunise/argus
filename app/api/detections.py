@@ -17,6 +17,7 @@ from ..detections import engine
 from ..detections.engine import detection_to_dict, effective_params, registry, rule_states, validate_params
 from ..models import dumps, loads, utcnow
 from ..models.detections import DETECTION_STATUSES, Detection, DetectionRuleState, DetectionRun
+from ._common import like
 from .deps import Page, get_db, require
 
 router = APIRouter(prefix='/api/v1/detections', tags=['detections'])
@@ -60,7 +61,7 @@ def list_detections(status: str | None = None, severity: str | None = None, rule
     if rule_id:
         stmt = stmt.where(Detection.rule_id == rule_id)
     if entity:
-        stmt = stmt.where(Detection.entity.ilike(f'%{entity[:200]}%'))
+        stmt = stmt.where(Detection.entity.ilike(like(entity[:200]), escape='\\'))
     rows = db.execute(page.apply(stmt.order_by(Detection.last_seen_at.desc(), Detection.id.desc()))).scalars().all()
     return page.wrap(rows, detection_to_dict)
 

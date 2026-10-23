@@ -5,13 +5,24 @@ Results are mapped to findings with the Semgrep rule id, file, line and a severi
 from __future__ import annotations
 
 import json
+import re
 
 from ...core.config import Settings
-from ...core.errors import Unavailable
+from ...core.errors import ScopeDenied, Unavailable
 from ...core import policy
 from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register, run_tool
 
 _SEV_MAP = {'ERROR': 'high', 'WARNING': 'medium', 'INFO': 'low', 'INVENTORY': 'informational', 'EXPERIMENT': 'informational'}
+# `--config` accepts local files and URLs, which would let a plan author read arbitrary files or make the worker
+# fetch arbitrary URLs. Only "auto" and registry rule packs (p/<name>, r/<name>) are allowed from plan params.
+_CONFIG_RE = re.compile(r'^(auto|[pr]/[A-Za-z0-9][A-Za-z0-9_.-]{0,120})$')
+
+
+def safe_config(value: object) -> str:
+    text = str(value or 'auto').strip()
+    if not _CONFIG_RE.match(text):
+        raise ScopeDenied('semgrep config must be "auto" or a registry pack such as p/ci; local paths and URLs are not allowed')
+    return text
 
 
 def parse_report(report: dict) -> list[NormalizedFinding]:
@@ -48,7 +59,7 @@ class SemgrepAdapter(TestAdapter):
     async def run(self, plan_params: dict, asset, scope, ctx: HarnessContext) -> list[NormalizedFinding]:
         settings = ctx.settings
         path = policy.validate_repo_target(asset.target, settings)
-        config = str(plan_params.get('config') or 'auto')
+        config = safe_config(plan_params.get('config'))
         argv = [settings.semgrep_bin, '--config', config, '--json', '--metrics=off', '--quiet', '--disable-version-check', str(path)]
         await ctx.rate_limiter.acquire()
         code, out, err = await run_tool(argv, timeout=settings.test_tool_timeout_seconds)

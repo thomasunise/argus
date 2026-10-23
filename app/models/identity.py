@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, UTCDateTime, uid, utcnow
 
 
 class Tenant(Base):
@@ -25,7 +25,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(120), default='')
     password_hash: Mapped[str] = mapped_column(String(512), default='')
-    totp_secret: Mapped[str] = mapped_column(String(128), default='')
+    totp_secret: Mapped[str] = mapped_column(EncryptedText(), default='')
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

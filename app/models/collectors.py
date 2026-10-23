@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 RUN_STATUSES = ('queued', 'running', 'completed', 'failed')
 
@@ -21,7 +21,7 @@ class CollectorConfig(TenantMixin, Base):
     name: Mapped[str] = mapped_column(String(120))
     collector: Mapped[str] = mapped_column(String(40), index=True)
     config_json: Mapped[str] = mapped_column(Text, default='{}')
-    secret_refs_json: Mapped[str] = mapped_column(Text, default='{}')
+    secret_refs_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     schedule_minutes: Mapped[int] = mapped_column(Integer, default=0)  # 0 = manual only
     last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

@@ -143,7 +143,7 @@ class Page:
     def __init__(self, limit: int = 50, cursor: str | None = None):
         self.limit = max(1, min(500, limit))
         try:
-            self.offset = int(cursor) if cursor else 0
+            self.offset = max(0, min(int(cursor), 1_000_000)) if cursor else 0
         except ValueError:
             self.offset = 0
 

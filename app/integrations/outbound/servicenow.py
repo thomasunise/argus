@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, registry, request_with_retry, result_from_response, severity_label
+from . import Channel, DeliveryResult, OutboundEvent, egress_error, registry, request_with_retry, result_from_response, severity_label
 
 # (impact, urgency) per severity; ServiceNow derives priority from these.
 _IMPACT_URGENCY = {'critical': ('1', '1'), 'high': ('2', '1'), 'medium': ('2', '2'), 'low': ('3', '3'), 'informational': ('3', '3')}
@@ -54,6 +54,9 @@ class ServiceNowChannel(Channel):
             auth = (secrets['username'], secrets.get('password') or '')
         if not base.startswith('https://') or (auth is None and 'Authorization' not in headers):
             return DeliveryResult(ok=False, error='servicenow needs https instance_url and username/password (or bearer_token) secrets')
+        denied = egress_error(base)
+        if denied:
+            return DeliveryResult(ok=False, error=f'servicenow instance_url refused: {denied}')
         timeout = float(config.get('timeout_seconds') or 20)
         corr = correlation_id(event)
         lookup, error = await request_with_retry(lambda c: c.get(f'{base}/api/now/table/{table}', params={'sysparm_query': f'correlation_id={corr}', 'sysparm_limit': 1,

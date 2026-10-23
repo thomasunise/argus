@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.errors import NotFound, SentinelError
 from ..core.rbac import Principal
+from ..core.config import Settings
 from ..integrations.delivery import TEST_TOPIC, delivery_to_dict, resolve_secrets, send_delivery
+from ..integrations.egress import check_url_config
 from ..integrations.inbound import registry as inbound_registry
 from ..integrations.ingest import batch_to_dict
 from ..integrations.outbound import registry as outbound_registry
@@ -60,11 +62,24 @@ def _kind(kind: str) -> tuple[str, Any]:
     raise InvalidConfig(f'unknown integration kind {kind!r}; see GET /api/v1/integrations/types')
 
 
-def _validate(kind: str, config: dict[str, Any], secret_refs: dict[str, str], topics: list[str], min_severity: str) -> None:
+MAX_CONFIG_BYTES = 32_000
+
+
+def _literal_allowed(settings: Settings | None) -> bool:
+    return bool(getattr(settings, 'allow_literal_secret_refs', True))
+
+
+def _validate(kind: str, config: dict[str, Any], secret_refs: dict[str, str], topics: list[str], min_severity: str,
+              settings: Settings | None = None) -> None:
     direction, impl = _kind(kind)
+    if len(dumps(config)) > MAX_CONFIG_BYTES:
+        raise InvalidConfig(f'config exceeds {MAX_CONFIG_BYTES} bytes')
     errors = validate_schema(impl.config_schema, config)
     errors += validate_no_inline_secrets(config, list(impl.secret_fields))
-    errors += validate_secret_refs(secret_refs, list(impl.secret_fields))
+    errors += validate_secret_refs(secret_refs, list(impl.secret_fields), allow_literal=_literal_allowed(settings))
+    if settings is not None:
+        # Destinations are operator input: never loopback, link-local, metadata or (unless allow-listed) private space.
+        errors += check_url_config(config, settings, allow_http=bool(settings.allow_private_targets))
     errors += validate_topics(topics)
     errors += validate_severity(min_severity)
     if direction == 'outbound':
@@ -123,10 +138,11 @@ def list_integrations(kind: str | None = None, enabled: bool | None = None, dire
 
 @router.post('', status_code=201)
 @router.post('/', status_code=201, include_in_schema=False)
-def create_integration(body: CreateBody, db: Session = Depends(get_db), principal: Principal = Depends(require('integrations:write'))):
+def create_integration(body: CreateBody, db: Session = Depends(get_db), principal: Principal = Depends(require('integrations:write')),
+                       settings: Settings = Depends(get_settings)):
     direction, impl = _kind(body.kind)
     topics = body.topics if body.topics is not None else (list(impl.default_topics) if direction == 'outbound' else [])
-    _validate(body.kind, body.config, body.secret_refs, topics, body.min_severity)
+    _validate(body.kind, body.config, body.secret_refs, topics, body.min_severity, settings)
     row = IntegrationConfig(tenant_id=principal.tenant_id, name=body.name, kind=body.kind, config_json=dumps(body.config), secret_refs_json=dumps(body.secret_refs),
                             enabled=body.enabled, topics_json=dumps(topics), min_severity=body.min_severity, created_by=principal.user_id or principal.actor)
     db.add(row)
@@ -148,7 +164,8 @@ def list_deliveries(integration_id: str | None = None, status: str | None = None
     if status:
         stmt = stmt.where(WebhookDelivery.status == status)
     if topic:
-        stmt = stmt.where(WebhookDelivery.topic.like(topic.replace('*', '%')) if '*' in topic else WebhookDelivery.topic == topic)
+        escaped = topic[:80].replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('*', '%')
+        stmt = stmt.where(WebhookDelivery.topic.like(escaped, escape='\\') if '*' in topic else WebhookDelivery.topic == topic)
     rows = db.execute(page.apply(stmt.order_by(WebhookDelivery.created_at.desc()))).scalars().all()
     return page.wrap(rows, delivery_to_dict)
 
@@ -197,13 +214,14 @@ def get_integration(integration_id: str, db: Session = Depends(get_db), principa
 
 
 @router.patch('/{integration_id}')
-def patch_integration(integration_id: str, body: PatchBody, db: Session = Depends(get_db), principal: Principal = Depends(require('integrations:write'))):
+def patch_integration(integration_id: str, body: PatchBody, db: Session = Depends(get_db), principal: Principal = Depends(require('integrations:write')),
+                      settings: Settings = Depends(get_settings)):
     row = _get(db, principal, integration_id)
     config = body.config if body.config is not None else loads(row.config_json, {})
     secret_refs = body.secret_refs if body.secret_refs is not None else loads(row.secret_refs_json, {})
     topics = body.topics if body.topics is not None else loads(row.topics_json, [])
     min_severity = body.min_severity if body.min_severity is not None else row.min_severity
-    _validate(row.kind, config, secret_refs, topics, min_severity)
+    _validate(row.kind, config, secret_refs, topics, min_severity, settings)
     changed: dict[str, Any] = {}
     if body.name is not None and body.name != row.name:
         row.name, changed['name'] = body.name, body.name
