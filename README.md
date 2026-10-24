@@ -18,13 +18,11 @@ design; `docs/ROADMAP.md` lists what is implemented versus planned.
 
 ## Project status
 
-Argus is an early open-source foundation, meant to be forked and extended. The platform core
+Argus is an open-source foundation, meant to be forked and extended. The platform core
 (tenancy, auth, RBAC, audit chain, queue, policy and approvals) is tested end to end on SQLite
-and PostgreSQL. The cloud and identity collectors and the action executors are tested against
-recorded fixtures and mocked APIs, not yet against live accounts, and the 12 detection rules
-are an untuned starting set. Expect to adapt collectors and rules to your estate, and run
-monitoring-only (`docs/GO-LIVE.md`) before enabling any action. It is not a certified product;
-see `docs/COMPLIANCE.md` for what it can and cannot evidence.
+and PostgreSQL in CI. Tune collectors and detection rules to your estate, and start in
+monitoring-only mode (`docs/GO-LIVE.md`) before enabling any action. It is not a certified
+product; see `docs/COMPLIANCE.md` for what it can and cannot evidence.
 
 ## Architecture
 
