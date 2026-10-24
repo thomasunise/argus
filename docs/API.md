@@ -214,6 +214,30 @@ Off unless `AUTORESPONSE_ENABLED=true` and the tenant opts in. See `docs/AUTONOM
 | `GET /ingest/{source}/verify?integration=`, `POST /ingest/{source}/verify?integration=` | signed-webhook path for sources that support signature verification (for example Okta challenge, GitHub HMAC); rate limited per integration |
 | `POST /slack/interactions/{integration_id}` (public; Slack request signature with the integration's `signing_secret`) | Approve / Deny / Roll back buttons on Slack action messages; the clicking Slack user is mapped to an Argus user and the broker enforces permissions and separation of duty; high and critical actions refused unless `allow_high_risk` |
 
+## AI gateway and shadow-AI inventory
+
+See `docs/AI-GATEWAY.md`. Proxy routes take an Argus API key only (`Authorization: Bearer` or
+`x-api-key`) with `ai_gateway:use`, return provider-shaped errors, and are 404 unless
+`AI_GATEWAY_ENABLED=true`.
+
+| Route | Purpose |
+|---|---|
+| `POST /ai-gateway/openai/v1/chat/completions` (`ai_gateway:use`) | OpenAI-compatible chat completions through the gateway (streaming supported) |
+| `POST /ai-gateway/openai/v1/embeddings` (`ai_gateway:use`) | OpenAI embeddings through the gateway |
+| `GET /ai-gateway/openai/v1/models` (`ai_gateway:use`) | upstream model list filtered by the tenant's `allowed_models` |
+| `POST /ai-gateway/anthropic/v1/messages` (`ai_gateway:use`) | Anthropic Messages API through the gateway (streaming supported) |
+| `GET /ai-gateway/anthropic/v1/models` (`ai_gateway:use`) | upstream model list filtered by policy |
+| `GET /ai-gateway/status` (`ai:read`) | enabled flag, configured providers, policy, month-to-date spend |
+| `GET /ai-gateway/policy` (`ai:read`), `PUT /ai-gateway/policy` (`ai:write`) | tenant gateway policy; PUT replaces it, audited as `ai_gateway.policy_updated` |
+| `GET /ai-gateway/requests?status=&provider=&model=&api_key_id=` (`ai:read`) | request records (metadata only), `GET /ai-gateway/requests/{id}` |
+| `GET /ai-gateway/stats?days=30` (`ai:read`) | totals, tokens, cost, by status/provider/DLP action, DLP hit types, top models |
+| `GET /ai/services?status=&channel=&provider=&service_key=&q=` (`ai:read`) | AI-usage inventory rows (service x channel x actor) |
+| `GET /ai/services/stats` (`ai:read`) | counts by status, channel, provider, category and per service |
+| `GET /ai/services/{id}` (`ai:read`), `PATCH /ai/services/{id}` (`ai:write`) | review: `status` sanctioned / blocked / unreviewed (applied to the whole service unless `apply_to_service=false`), `notes`; audited as `ai.service_reviewed` |
+| `POST /ai/discover` (`ai:write`) | 202: queue an `ai.discover` job for the tenant |
+| `GET /ai/discovery` (`ai:read`) | discovery cursor and counters |
+| `GET /ai/catalog` (`ai:read`) | known AI services (domains, app names) and cloud API signatures |
+
 ## Audit and reports
 
 | Route | Purpose |

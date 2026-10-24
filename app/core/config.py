@@ -121,6 +121,19 @@ class Settings(BaseSettings):
     autoresponse_max_per_hour: int = 20  # enforced autonomous actions per tenant per hour (tenant may lower it)
     autoresponse_sweep_seconds: int = 60  # how often expired autonomous actions are rolled back
 
+    # --- AI gateway and shadow-AI discovery ---
+    ai_gateway_enabled: bool = False
+    ai_gateway_openai_api_key: str = ''  # value or secret ref (env:/file:/secrets:/literal:)
+    ai_gateway_anthropic_api_key: str = ''
+    ai_gateway_openai_base_url: str = 'https://api.openai.com'
+    ai_gateway_anthropic_base_url: str = 'https://api.anthropic.com'
+    ai_gateway_timeout_seconds: int = 120
+    ai_gateway_max_request_bytes: int = 2 * 1024 * 1024
+    ai_gateway_requests_per_minute: int = 120  # per API key, unless the tenant policy sets requests_per_minute
+    ai_gateway_model_prices: str = ''  # 'model=input:output,...' USD per million tokens; extends the agent price table
+    ai_discovery_enabled: bool = True
+    ai_discovery_interval_minutes: int = 15
+
     # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''
@@ -231,6 +244,13 @@ def assert_safe_config(settings: Settings) -> None:
             raise RuntimeError('ALLOW_PRIVATE_TARGETS requires an explicit PRIVATE_TARGET_CIDRS allowlist')
         settings_dict = settings.__dict__
         settings_dict['allow_literal_secret_refs'] = False
+    try:
+        parse_model_prices(settings.ai_gateway_model_prices)
+    except ValueError as exc:
+        raise RuntimeError(str(exc).replace('AGENT_MODEL_PRICES', 'AI_GATEWAY_MODEL_PRICES')) from None
+    for name in ('ai_gateway_openai_base_url', 'ai_gateway_anthropic_base_url'):
+        if not str(getattr(settings, name) or '').startswith('https://'):
+            raise RuntimeError(f'{name.upper()} must be an https:// URL')
     if settings.ai_provider == 'anthropic' and not settings.anthropic_api_key:
         # The SDK can also resolve credentials from ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
         import os
