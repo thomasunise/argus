@@ -51,7 +51,7 @@ Agents
 
 Action broker
 
-- [x] Catalog of 25 typed actions across AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare and Argus-internal operations, each with dry run and rollback or `reversible=False`
+- [x] Catalog of 27 typed actions across AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, CrowdStrike, SentinelOne and Argus-internal operations, each with dry run and rollback or `reversible=False`
 - [x] Policy: global and tenant kill switch, deny-lists, maintenance window, auto-approval of low-risk reversible actions, two approvals for high risk, owner-level approval for critical, request TTL
 - [x] Queue jobs `actions.execute` and `actions.rollback`; audit entries for every transition
 

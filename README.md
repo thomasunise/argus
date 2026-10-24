@@ -68,11 +68,14 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Job queue (in-memory and Redis, leases, retries, cancellation, reaper) and standalone worker | implemented | `app/core/queue.py`, `app/worker.py` |
 | Prometheus metrics, JSON logging, optional OpenTelemetry tracing | implemented | `app/core/telemetry.py` |
 | Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
-| Detections: 12 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic), baselines, canaries | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
+| Detections: 12 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
 | Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented with fixtures; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
 | Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; tools must be installed separately | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
 | Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
-| Action broker: catalog of 25 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
+| Action broker: catalog of 27 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, CrowdStrike, SentinelOne, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
+| Autonomous response: playbooks that act on detections without a human (shadow mode first, reversible actions only, caps, automatic rollback); Slack approve / deny / roll back buttons | implemented; off by default | `app/actions/autoresponse.py`, `app/api/autoresponse.py`, `app/api/slack.py`, `docs/AUTONOMOUS-RESPONSE.md` |
+| Threat intel: automatic CISA KEV and EPSS enrichment of findings, offline cache | implemented | `app/intel/`, `app/api/intel.py`, `docs/INTEL.md` |
+| Agentic attack simulator: 8 agent-driven attack scenarios replayed in an isolated sandbox tenant, coverage report, evasion variants | implemented | `app/simulator/`, `app/api/simulations.py`, `docs/SIMULATOR.md` |
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
 | Alembic migrations (initial revision) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |

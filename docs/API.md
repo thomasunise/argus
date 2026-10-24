@@ -108,10 +108,29 @@ automatically by `app/api/__init__.py`.
 | `GET /detections/stats` | counts, last run |
 | `POST /detections/run` `{since_minutes?, rule_ids?}` (`detections:run`) | enqueue `detections.run` (202) |
 | `GET /canaries` (`canaries:read`) | canaries |
-| `POST /canaries` `{kind, label, placement?, metadata?, expires_in_days?}` (`canaries:write`) | create; kinds token, url, credential, file, dns, aws_key, api_key, document |
+| `POST /canaries` `{kind, label, placement?, metadata?, expires_in_days?}` (`canaries:write`) | create; kinds token, url, credential, file, dns, aws_key, api_key, document, and for AI agents prompt_injection, agent_rules, mcp_server, llm_api_key |
 | `DELETE /canaries/{id}` (`canaries:write`) | revoke |
 | `GET /canaries/{id}/hits`, `GET /canaries/{id}/artifact` (`canaries:read`) | hit records; downloadable lure |
 | `POST /canaries/{token}/hit`, `GET /canaries/{token}/hit` | **unauthenticated by design**: records a hit by token; GET returns a 1x1 GIF |
+| `GET|POST /canaries/{token}/llm/{path}` | **unauthenticated by design**: fake OpenAI/Anthropic API for `llm_api_key` canaries; records model and prompt opening, answers 401 |
+| `POST /canaries/{token}/mcp` | **unauthenticated by design**: fake MCP server for `mcp_server` canaries; answers initialize / tools/list, records every call and tool arguments |
+
+## Attack simulator
+
+| Route | Purpose |
+|---|---|
+| `GET /simulations/scenarios` (`detections:read`) | scenario catalog with ATT&CK techniques and the rules each should trigger |
+| `POST /simulations` `{scenarios?, intensity: low|normal|high, evasion}` (`detections:run`) | queue a run (`simulation.run`); empty scenarios = all |
+| `GET /simulations`, `GET /simulations/{id}` (`detections:read`) | runs with coverage, per-scenario outcome (detected / partial / missed), missed and disabled rules |
+
+## Threat intel
+
+| Route | Purpose |
+|---|---|
+| `GET /intel/status` (`findings:read`) | KEV catalog version and age, EPSS cache and bulk-file state, offline flag |
+| `POST /intel/refresh` (`admin:settings`) | queue a KEV catalog refresh |
+| `POST /intel/enrich` `{finding_ids?, include_closed?}` (`findings:write`) | queue enrichment (backfill all open CVE findings when empty) |
+| `GET /intel/cve/{cve_id}` (`findings:read`) | KEV entry and EPSS score from the cache (fetches when online and stale) |
 
 ## Collectors
 
@@ -156,7 +175,7 @@ automatically by `app/api/__init__.py`.
 
 | Route | Purpose |
 |---|---|
-| `GET /actions/catalog` (`actions:read`) | 25 action types with risk, reversibility, platforms, params schema |
+| `GET /actions/catalog` (`actions:read`) | 27 action types with risk, reversibility, platforms, params schema |
 | `GET /actions/requests`, `GET /actions/requests/{id}` (`actions:read`) | requests with approvals and runs |
 | `POST /actions/requests` `{action_type, params, reason, finding_id?, detection_id?}` (`actions:request`) | create; policy decides `pending` or `auto_approved` |
 | `POST /actions/requests/{id}/approve` `{decision: approve|reject, comment}` (`actions:approve`; critical needs an approver with `actions:approve_critical`) | approvals; requester cannot approve own request |

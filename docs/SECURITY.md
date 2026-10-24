@@ -79,7 +79,7 @@ Agents (`app/agents/`)
 
 Actions (`app/actions/`)
 
-- 25 typed actions, each with a parameter schema, risk, reversibility and platform list; executors implement `dry_run`, `execute` and `rollback`.
+- 27 typed actions, each with a parameter schema, risk, reversibility and platform list; executors implement `dry_run`, `execute` and `rollback`.
 - Policy evaluated at request and again at execution: global `ACTIONS_KILL_SWITCH`, tenant kill switch (`actions_enabled=false`), deny-lists, maintenance window, auto-approval only for low-risk reversible actions when enabled, two approvals for high risk, owner-level (`actions:approve_critical`) approval for critical; requester cannot approve own request; request TTL.
 - Execution and rollback are queue jobs with stored rollback payloads; every transition is audited (`actions.requested`, `actions.approved`, `actions.executed`, `actions.rolled_back`, `actions.kill_switch`, ...).
 
