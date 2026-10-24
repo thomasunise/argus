@@ -238,7 +238,7 @@ jobs:
       - name: terraform validate (azure)
         working-directory: infra/terraform-azure
         run: terraform init -backend=false -input=false && terraform validate
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
       - run: tflint --chdir=infra/terraform && tflint --chdir=infra/terraform-azure
       - uses: azure/setup-helm@v4
       - run: helm lint --strict infra/helm/argus --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x
