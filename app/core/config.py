@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     intel_kev_min_severity: str = 'high'  # KEV-listed findings are raised to at least this; '' disables
     intel_epss_escalate_threshold: float = 0.0  # e.g. 0.5 raises findings with EPSS >= 0.5 to high; 0 disables
 
+    # --- autonomous response (playbooks that act on detections without a human; off by default) ---
+    autoresponse_enabled: bool = False  # global switch; each tenant must also opt in (Tenant.settings_json['autoresponse'])
+    autoresponse_max_per_hour: int = 20  # enforced autonomous actions per tenant per hour (tenant may lower it)
+    autoresponse_sweep_seconds: int = 60  # how often expired autonomous actions are rolled back
+
     # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''

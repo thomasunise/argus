@@ -8,4 +8,4 @@ from .findings import Approval, Finding, Investigation, ScanRun, SecurityEvent  
 from .audit import AuditEntry  # noqa: F401
 from .agents import AgentRun, AgentStep, EvalRun  # noqa: F401
 
-from . import actions, collectors, detections, graph, integrations, simulation, testing  # noqa: F401  (registers their tables)
+from . import actions, autoresponse, collectors, detections, graph, integrations, simulation, testing  # noqa: F401  (registers their tables)

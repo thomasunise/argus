@@ -166,6 +166,20 @@ automatically by `app/api/__init__.py`.
 | `POST /actions/runs/{id}/rollback` (`actions:rollback`) | enqueue `actions.rollback` |
 | `GET /actions/kill-switch` (`actions:read`), `POST /actions/kill-switch` `{enabled, reason}` (`actions:kill_switch`) | tenant kill switch state; `global` reflects `ACTIONS_KILL_SWITCH` |
 
+## Autonomous response
+
+Off unless `AUTORESPONSE_ENABLED=true` and the tenant opts in. See `docs/AUTONOMOUS-RESPONSE.md`.
+
+| Route | Purpose |
+|---|---|
+| `GET /autoresponse/status` (`autoresponse:read`) | global and tenant switches, effective state, hourly cap, enforced in the last hour, kill switch, playbook counts |
+| `PUT /autoresponse/settings` `{enabled?, max_per_hour?}` (`autoresponse:write`) | tenant opt-in and hourly cap (cannot exceed `AUTORESPONSE_MAX_PER_HOUR`) |
+| `GET /autoresponse/playbooks`, `GET /autoresponse/playbooks/{id}` (`autoresponse:read`) | playbooks |
+| `POST /autoresponse/playbooks`, `PATCH /autoresponse/playbooks/{id}`, `DELETE /autoresponse/playbooks/{id}` (`autoresponse:write`) | `{name, mode: shadow|enforce, rule_ids, min_severity, min_confidence, entity_kind, action_type, params_template, max_per_hour, max_blast_radius, rollback_after_minutes, allow_high_risk}`; only reversible, non-critical actions; high risk needs `allow_high_risk` |
+| `GET /autoresponse/executions?playbook_id=&outcome=&detection_id=`, `GET /autoresponse/executions/{id}` (`autoresponse:read`) | every decision: `skipped`, `shadow`, `escalated`, `enforced`, `denied`, `failed`, with reason, params, dry run, request/run ids and rollback state |
+| `POST /autoresponse/executions/{id}/keep` (`actions:approve`) | cancel the automatic rollback of an enforced action |
+| `POST /autoresponse/executions/{id}/rollback` (`actions:rollback`) | roll the action back now through the broker |
+
 ## Integrations and ingest
 
 | Route | Purpose |
@@ -179,6 +193,7 @@ automatically by `app/api/__init__.py`.
 | `GET /integrations/ingest/batches` | inbound batch history |
 | `POST /ingest/{source}` (API key with scope `ingest`; optional `X-Asset-ID`) | inbound events and findings; per-key rate limit |
 | `GET /ingest/{source}/verify?integration=`, `POST /ingest/{source}/verify?integration=` | signed-webhook path for sources that support signature verification (for example Okta challenge, GitHub HMAC); rate limited per integration |
+| `POST /slack/interactions/{integration_id}` (public; Slack request signature with the integration's `signing_secret`) | Approve / Deny / Roll back buttons on Slack action messages; the clicking Slack user is mapped to an Argus user and the broker enforces permissions and separation of duty; high and critical actions refused unless `allow_high_risk` |
 
 ## Audit and reports
 

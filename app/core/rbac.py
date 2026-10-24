@@ -18,6 +18,7 @@ _VIEWER = {
     'assets:read', 'findings:read', 'events:read', 'graph:read', 'detections:read', 'collectors:read',
     'agents:read', 'tests:read', 'actions:read', 'integrations:read', 'audit:read', 'reports:read',
     'investigations:read', 'approvals:read', 'canaries:read', 'scans:read', 'evals:read',
+    'autoresponse:read',
 }
 _ANALYST = _VIEWER | {
     'findings:write', 'investigations:write', 'agents:run', 'detections:write', 'canaries:write',
@@ -29,7 +30,7 @@ _OPERATOR = _ANALYST | {
 }
 _ADMIN = _OPERATOR | {
     'admin:users', 'admin:api_keys', 'admin:settings', 'collectors:write', 'integrations:write',
-    'actions:kill_switch', 'tests:scopes',
+    'actions:kill_switch', 'tests:scopes', 'autoresponse:write',
 }
 _OWNER = _ADMIN | {'admin:tenant', 'actions:approve_critical'}
 
