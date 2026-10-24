@@ -1,17 +1,61 @@
 # Argus
 
+**The open-source security operations platform where AI agents do the legwork and you stay in control.**
+
 [![Test](https://github.com/thomasunise/argus/actions/workflows/test.yml/badge.svg)](https://github.com/thomasunise/argus/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Argus is a self-hosted, multi-tenant security operations platform in which AI agents
-analyze evidence but never act on the estate. Collectors inventory cloud, identity, code,
-endpoint, network and Kubernetes assets into an evidence graph; a detection engine evaluates
-events for swarm, identity, cloud, code and canary signals; a scope-gated test harness runs
-authorized security tools; governed agents triage, investigate and hunt with read-only tools;
-and a separate action broker (typed actions, policy, approvals, dry runs, rollback, kill
-switch) is the only component allowed to change anything.
+Argus watches your cloud, identity, code, endpoints, network and Kubernetes. It catches
+attacks at machine speed, investigates them with AI agents, and contains them in seconds.
+Every action is typed, checked against policy, dry-run first and reversible. It is
+self-hosted, multi-tenant and MIT licensed, so your security data never leaves your hands.
 
 ![Argus overview](docs/screenshots/overview-light.png)
+
+## Why Argus
+
+**Stop attacks while they are happening, not the next morning.** Autonomous response
+playbooks act the moment a detection fires: block an attacker at Cloudflare, cut a laptop off
+the network through CrowdStrike or SentinelOne, and more from a catalog of 27 typed actions.
+They start in shadow mode so you can see what they would do, use only reversible actions,
+stay within hourly and blast-radius caps, and roll themselves back unless you keep the change.
+
+**Approve from Slack in one click.** Approve, deny or roll back actions straight from the
+alert. No console, no context switch.
+
+**AI that investigates without taking the wheel.** Seven specialist agents triage, investigate
+and hunt using read-only tools. They can propose a fix but never execute one. Everything they
+read is treated as untrusted data, so a prompt injection hidden in a log becomes a signal
+instead of a hijack.
+
+**See every AI tool your company is really using.** The AI gateway puts OpenAI and Anthropic
+traffic behind org-held keys, model allowlists, data-loss prevention, prompt-injection flags
+and budgets. Shadow-AI discovery finds the services people use without approval, using your
+network, cloud and SSO telemetry.
+
+**Catch rogue AI agents in the act.** Plant canaries built for agents: hidden prompt
+injections, agent rules files, a fake MCP server and fake LLM API keys. Any agent that takes
+the bait trips a detection, with its IP, model and prompt recorded.
+
+**Prove your detections work before an attacker tests them.** The agentic attack simulator
+replays 8 AI-driven attack scenarios in an isolated sandbox tenant, with optional evasion
+variants, and reports exactly which ones you caught, which you missed and which rules were off.
+
+**Pentest continuously, not once a year.** Autopilot has the red-team agent plan tests, runs
+them through the scope-checked harness, and re-plans from what it finds. It only runs inside
+scopes a human has marked for unattended testing.
+
+**Fix what attackers are exploiting right now.** Every finding with a CVE is enriched with
+CISA's Known Exploited Vulnerabilities list and EPSS exploit-probability scores, and severity
+is raised automatically. It works offline for air-gapped installs.
+
+**Audit-ready from day one.** A hash-linked, signed audit chain records every action, approval
+and agent step, mirrored to S3 Object Lock or Azure immutable storage. Control mappings for
+SOC 2, NIST 800-171 and ISO 27001 are included.
+
+**Runs anywhere you do.** Docker Compose for a pilot, Helm for Kubernetes, and Terraform for
+AWS and Azure. Every autonomous feature ships off by default, so you turn on exactly as much
+autonomy as you trust.
 
 This README describes what is in the repository today. `docs/ARCHITECTURE.md` describes the
 design; `docs/ROADMAP.md` lists what is implemented versus planned.
@@ -45,6 +89,8 @@ product; see `docs/COMPLIANCE.md` for what it can and cannot evidence.
   |  Worker processes run the same handlers as the API:        |
   |   collectors.run   detections.run / baselines              |
   |   graph.recompute  testing.run   agents.run                |
+  |   autoresponse.evaluate   testing.autopilot                |
+  |   simulation.run   intel.enrich / refresh   ai.discover    |
   +------------------------------------------------------------+
          |
          v  agents call propose_action only -> ActionRequest(pending)
@@ -54,6 +100,8 @@ product; see `docs/COMPLIANCE.md` for what it can and cannot evidence.
 Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 
 1. Agents cannot execute anything; their one write-capable tool creates a pending request.
+   Autonomous response acts only through the broker, as the system principal, with reversible
+   non-critical actions, caps and automatic rollback.
 2. Everything an agent reads is wrapped as untrusted data and the prompt says so.
 3. Active testing runs only inside a recorded authorization and scope, re-checked at run time.
 4. Every domain table carries `tenant_id`; queries go through a scoped helper; tests assert it.
@@ -68,7 +116,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Job queue (in-memory and Redis, leases, retries, cancellation, reaper) and standalone worker | implemented | `app/core/queue.py`, `app/worker.py` |
 | Prometheus metrics, JSON logging, optional OpenTelemetry tracing | implemented | `app/core/telemetry.py` |
 | Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
-| Detections: 12 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
+| Detections: 13 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic, unsanctioned AI service), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
 | Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented with fixtures; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
 | Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; tools must be installed separately | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
 | Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
@@ -80,7 +128,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Agentic attack simulator: 8 agent-driven attack scenarios replayed in an isolated sandbox tenant, coverage report, evasion variants | implemented | `app/simulator/`, `app/api/simulations.py`, `docs/SIMULATOR.md` |
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
-| Alembic migrations (initial revision) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Alembic migrations (4 revisions, through autonomy and AI security) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
 | Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
@@ -164,10 +212,10 @@ Roles are cumulative (`app/core/rbac.py`):
 
 | Role | Adds |
 |---|---|
-| viewer | read everything in the tenant |
-| analyst | edit findings and detections, run agents and evals, manage canaries, record approvals |
-| operator | manage and authorize assets, run tests, scans and collectors, request, approve, execute and roll back actions, run detections |
-| admin | users, API keys, settings, collector and integration configuration, the actions kill switch, test scopes |
+| viewer | read everything in the tenant, including autoresponse playbooks and the AI inventory |
+| analyst | edit findings and detections, run agents and evals, manage canaries, record approvals, use the AI gateway |
+| operator | manage and authorize assets, run tests, scans, autopilot and collectors, request, approve, execute and roll back actions, run detections and simulations |
+| admin | users, API keys, settings, collector and integration configuration, the actions kill switch, test scopes (including marking one autonomous), autoresponse playbooks, AI gateway policy |
 | owner | tenant settings, approving critical actions |
 
 API keys carry a role and optional scopes (for example `ingest`) that further restrict them.
@@ -206,6 +254,15 @@ queue job with a stored rollback payload, and an audit entry at every transition
 `ACTIONS_KILL_SWITCH=true` (global, environment) or `POST /api/v1/actions/kill-switch`
 (per tenant, sets `actions_enabled=false`) rejects every request and execution.
 
+**Autonomy** (`docs/AUTONOMOUS-RESPONSE.md`, `docs/AUTOPENTEST.md`). Both autonomous features
+need a global switch and a tenant opt-in, and both are off by default. Autonomous response
+playbooks start in shadow mode (they record what they would have done), may only use
+reversible, non-critical actions, are capped per hour and by blast radius, roll actions back
+automatically unless a human keeps them, and ignore detections from the simulator. Autopilot
+runs only in scopes a human has marked `autonomous`; the red-team agent plans, and every test
+it proposes is re-checked by the normal scope machinery before and during execution.
+`AUTOPENTEST_KILL_SWITCH` and the actions kill switch stop each one at once.
+
 ## Documentation
 
 | Document | Content |
@@ -213,6 +270,12 @@ queue job with a stored rollback payload, and an audit entry at every transition
 | `docs/ARCHITECTURE.md` | design: packages, interfaces, data model, API table |
 | `docs/API.md` | v1 route summary with status |
 | `docs/DEPLOYMENT.md` | dev, compose, Kubernetes, AWS, Azure; production checklist |
+| `docs/AUTONOMOUS-RESPONSE.md` | autonomous response playbooks, safety limits, Slack buttons |
+| `docs/AUTOPENTEST.md` | autonomous pentesting gates and how runs proceed |
+| `docs/AI-GATEWAY.md` | AI gateway policy, DLP, budgets and shadow-AI discovery |
+| `docs/SIMULATOR.md` | agentic attack simulator scenarios and coverage reports |
+| `docs/INTEL.md` | CISA KEV and EPSS enrichment, caching and offline mode |
+| `docs/MIGRATIONS.md` | Alembic workflow |
 | `docs/GO-LIVE.md` | step-by-step production rollout in monitoring-only mode |
 | `docs/SECURITY.md` | security model as implemented, reporting |
 | `docs/THREAT-MODEL.md` | STRIDE per trust boundary, prompt injection, SSRF, tenancy, credentials, broker abuse, supply chain |
