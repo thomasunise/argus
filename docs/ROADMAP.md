@@ -59,6 +59,17 @@ Integrations
 
 - [x] Inbound parsers: AWS CloudTrail, GuardDuty, Azure Defender, CrowdStrike, Falco, GCP SCC, generic, GitHub webhook, Kubernetes audit, Okta logs, SentinelOne, Trivy, Wazuh; `POST /ingest/{source}` with API-key scope and signed-webhook verification where the source supports it
 - [x] Outbound channels: webhook, Slack, Jira, ServiceNow, PagerDuty, email; event-bus fan-out, delivery log, retries
+- [x] Slack interactive messages: approve / deny action requests and roll back runs from Slack (signed requests, user mapping, high risk off by default)
+
+Autonomy and AI security
+
+- [x] Autonomous response playbooks: shadow mode, reversible non-critical actions only, blast-radius and hourly caps, automatic rollback unless kept, simulator detections skipped
+- [x] Endpoint containment: CrowdStrike host containment and SentinelOne network disconnect, reversible
+- [x] CISA KEV and EPSS enrichment of findings with an on-disk cache and offline mode
+- [x] Canaries aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key and API
+- [x] Agentic attack simulator: 8 scenarios in an isolated sandbox tenant, coverage report, evasion variants
+- [x] AI gateway (OpenAI and Anthropic proxy with policy, DLP, budgets, usage log) and shadow-AI discovery with an unsanctioned-AI detection rule
+- [x] Autonomous pentesting: plan, run scope-checked tests and re-plan, opt-in per tenant and per scope, capped and stoppable
 - [x] Wazuh indexer pull job
 
 Infrastructure and documentation
@@ -87,8 +98,13 @@ Detection and response
 
 - [ ] More rules from the ATT&CK matrix for cloud and identity; versioned rule packs per tenant
 - [ ] Attack-path-aware prioritization of findings (graph score into severity)
-- [ ] Automatic reversible containment for narrow, heavily validated cases only, behind policy and canary-grade evidence
-- [ ] CVE / KEV / EPSS enrichment feeds with offline caching
+
+Autonomy and AI security
+
+- [ ] Frontend screens for playbooks, simulator reports, AI inventory and autopilot runs
+- [ ] Shared (Redis) Slack replay cache and AI-gateway rate limits across replicas
+- [ ] AI gateway: OpenAI Responses / Assistants APIs and more providers
+- [ ] More simulator scenarios (prompt-injection-driven tool abuse, MCP server poisoning, agent-to-agent lateral movement)
 
 Agents
 
