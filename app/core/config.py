@@ -107,6 +107,15 @@ class Settings(BaseSettings):
     actions_require_two_for_high: bool = True
     actions_maintenance_window: str = ''  # e.g. "02:00-04:00" UTC
 
+    # --- threat intel enrichment (CISA KEV / FIRST EPSS) ---
+    intel_enrichment_enabled: bool = True
+    intel_offline: bool = False  # never fetch; use files placed in INTEL_CACHE_DIR
+    intel_cache_dir: Path = Path('./data/intel')
+    intel_kev_refresh_hours: int = 12
+    intel_epss_ttl_hours: int = 24
+    intel_kev_min_severity: str = 'high'  # KEV-listed findings are raised to at least this; '' disables
+    intel_epss_escalate_threshold: float = 0.0  # e.g. 0.5 raises findings with EPSS >= 0.5 to high; 0 disables
+
     # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''

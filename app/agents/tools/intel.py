@@ -105,13 +105,26 @@ async def cve_lookup(args: dict, ctx: ToolContext) -> dict:
             'reference_count': len(cve.get('references') or [])}
 
 
+def _local_kev(ctx: ToolContext) -> dict | None:
+    try:
+        from ...intel import feeds
+
+        return feeds.kev_raw(ctx.settings)
+    except Exception:  # the cache is an optimisation; never fail the tool over it
+        return None
+
 @registry.tool('kev_check', 'Check which of the given CVE ids are in the CISA Known Exploited Vulnerabilities catalog (actively exploited in the wild).',
                {'properties': {'cve_ids': {'type': 'array', 'items': {'type': 'string'}}}, 'required': ['cve_ids']}, tags=('intel',))
 async def kev_check(args: dict, ctx: ToolContext) -> dict:
     valid, invalid = normalize_ids(args.get('cve_ids'))
     if not valid:
         return {'available': False, 'reason': 'no valid CVE ids', 'invalid': invalid}
-    data, error = await _cached(KEV_URL, 6 * HOUR)
+    data = _local_kev(ctx)  # the enrichment package's on-disk catalog, when present (works offline)
+    error = ''
+    if data is None:
+        if getattr(ctx.settings, 'intel_offline', False):
+            return {'available': False, 'reason': 'offline mode and no cached KEV catalog', 'checked': valid}
+        data, error = await _cached(KEV_URL, 6 * HOUR)
     if data is None:
         return {'available': False, 'reason': f'KEV feed unreachable ({error})', 'checked': valid}
     index = {str(v.get('cveID', '')).upper(): v for v in data.get('vulnerabilities') or []}
@@ -128,6 +141,12 @@ async def epss_scores(args: dict, ctx: ToolContext) -> dict:
     valid, invalid = normalize_ids(args.get('cve_ids'))
     if not valid:
         return {'available': False, 'reason': 'no valid CVE ids', 'invalid': invalid}
+    if getattr(ctx.settings, 'intel_offline', False):
+        from ...intel import feeds
+
+        cached = await feeds.epss_lookup(ctx.settings, valid)
+        scores = {c: {'epss': v['epss'], 'percentile': v['percentile'], 'date': v.get('date')} for c, v in cached.items()}
+        return {'available': True, 'scores': scores, 'missing': [c for c in valid if c not in scores], 'invalid': invalid, 'offline': True}
     data, error = await _cached(EPSS_URL + ','.join(valid), HOUR)
     if data is None:
         return {'available': False, 'reason': f'EPSS API unreachable ({error})', 'checked': valid}

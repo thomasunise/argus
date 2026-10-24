@@ -27,7 +27,7 @@ STATIC_DIR = Path(__file__).parent / 'static'
 VERSION = '1.0.0'
 
 # Packages that may expose setup(app). Order matters: tools before specialists, catalogs before brokers.
-PACKAGES = ['app.graph', 'app.detections', 'app.collectors', 'app.integrations', 'app.testing', 'app.actions', 'app.agents', 'app.reports']
+PACKAGES = ['app.graph', 'app.detections', 'app.collectors', 'app.integrations', 'app.testing', 'app.actions', 'app.agents', 'app.reports', 'app.intel']
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

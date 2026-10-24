@@ -81,7 +81,8 @@ def upsert_finding(db: Session, tenant_id: str, *, source: str, rule: str, title
     db.add(record)
     db.flush()
     publish_soon('finding.created', {'tenant_id': tenant_id, 'finding_id': record.id, 'severity': record.severity, 'title': record.title,
-                                     'source': record.source, 'asset_id': asset_id})
+                                     'source': record.source, 'asset_id': asset_id,
+                                     'has_cves': bool(record.cve_ids)})
     return record, True
 
 

@@ -48,7 +48,8 @@ def settings(tmp_path) -> Settings:
                     enable_trivy=False, ai_provider='none', allow_private_targets=False, metrics_enabled=False,
                     audit_jsonl_path=str(tmp_path / 'audit.jsonl'), audit_signing_keys='k2=test-signing-key-2,k1=test-signing-key',
                     data_encryption_key='test-data-encryption-key', app_env='development', secret_env_allowlist='*', secrets_dir=tmp_path / 'secrets',
-                    workers_inprocess=True, worker_concurrency=2, actions_kill_switch=False)
+                    workers_inprocess=True, worker_concurrency=2, actions_kill_switch=False,
+                    intel_enrichment_enabled=False, intel_cache_dir=tmp_path / 'intel')
 
 
 @pytest.fixture
