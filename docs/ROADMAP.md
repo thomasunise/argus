@@ -38,12 +38,12 @@ Collectors
 
 Testing harness
 
-- [x] Scopes, plans, runs, results; scope re-check at execution; rate limits; shell-free tool runner
+- [x] Scopes, plans, runs, results; scope re-check at execution; rate limits; per-scope `max_concurrency` (excess runs wait in the queue); shell-free tool runner
 - [x] Adapters: web baseline, Trivy, Nuclei, ZAP, Prowler, CALDERA, Semgrep, Gitleaks (binaries installed separately)
 
 Agents
 
-- [x] Runtime with budgets, traces, untrusted-data wrapping, structured results via `submit_result`
+- [x] Runtime with budgets, traces, untrusted-data wrapping, structured results via `submit_result`; cost ceiling with built-in Claude prices and `AGENT_MODEL_PRICES` for other models
 - [x] Providers: Anthropic, OpenAI, Ollama, none (deterministic fallbacks)
 - [x] Read-only tools over assets, findings, events, graph, detections, tests, intel, memory; `propose_action`
 - [x] Specialists: triage, investigate, hunt, redteam_plan, remediate, posture_report, swarm_responder
@@ -51,7 +51,7 @@ Agents
 
 Action broker
 
-- [x] Catalog of 25 typed actions across AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare and Sentinel-internal operations, each with dry run and rollback or `reversible=False`
+- [x] Catalog of 25 typed actions across AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare and Argus-internal operations, each with dry run and rollback or `reversible=False`
 - [x] Policy: global and tenant kill switch, deny-lists, maintenance window, auto-approval of low-risk reversible actions, two approvals for high risk, owner-level approval for critical, request TTL
 - [x] Queue jobs `actions.execute` and `actions.rollback`; audit entries for every transition
 
@@ -95,13 +95,11 @@ Agents
 - [ ] Larger eval datasets with measured precision, recall and latency per provider and model
 - [ ] Specialist-level tool allowlists per tenant; per-tenant provider and model selection exposed in admin settings UI
 - [ ] Cost reporting per tenant from `agent_runs`
-- [ ] Cost ceiling pricing for OpenAI and Ollama models (today only Anthropic models have prices, so `AGENT_COST_CEILING_USD` only trips for Anthropic)
 
 Testing
 
 - [ ] Test harness workers in their own network segment with per-scope egress rules
 - [ ] SARIF import/export for third-party scanners
-- [ ] Enforce `TestScope.max_concurrency` (stored and shown, not yet enforced)
 
 Frontend
 

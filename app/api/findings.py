@@ -26,7 +26,7 @@ from ..models.findings import FINDING_STATUSES
 from ._common import BadRequest, aware, asset_to_dict, like
 from .deps import Page, get_db, require
 
-log = logging.getLogger('sentinel.api.findings')
+log = logging.getLogger('argus.api.findings')
 
 router = APIRouter(prefix='/api/v1/findings', tags=['findings'])
 
@@ -186,7 +186,7 @@ def export_csv(status: str | None = None, severity: str | None = None, source: s
             yield buffer.getvalue()
 
     return StreamingResponse(generate(), media_type='text/csv',
-                             headers={'Content-Disposition': 'attachment; filename="sentinel-findings.csv"', 'X-Row-Count': str(int(total))})
+                             headers={'Content-Disposition': 'attachment; filename="argus-findings.csv"', 'X-Row-Count': str(int(total))})
 
 
 @router.get('/stats')

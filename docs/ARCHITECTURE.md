@@ -1,6 +1,6 @@
-# Sentinel — Agentic Security Operations Platform
+# Argus — Agentic Security Operations Platform
 
-**Purpose.** Sentinel lets a security team analyze, test and fix security issues across an
+**Purpose.** Argus lets a security team analyze, test and fix security issues across an
 enterprise estate using governed AI agents, and defends that estate against autonomous
 attacker agents and swarms. It is multi-tenant, auditable, and safe by construction: agents
 reason over an evidence graph with read-only tools, active testing is scope-gated, and every
@@ -16,7 +16,7 @@ exposes only the interfaces described here. Conventions apply to all code.
 
 ```
                  ┌──────────────────────────────────────────────────────────────┐
-                 │                         Sentinel API                         │
+                 │                         Argus API                         │
   Browser ──────►│  FastAPI app factory  ·  SSO/local auth  ·  RBAC  ·  tenancy │
   SDK/CLI ──────►│  routers: /api/v1/*   ·  CSRF  ·  rate limits  ·  OpenAPI    │
   Sensors ──────►│  /api/v1/ingest/*     (API-key auth, per-source parsers)     │

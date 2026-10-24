@@ -34,7 +34,7 @@ locals {
     INGEST_API_KEY      = random_password.ingest_api_key.result
     AUDIT_SIGNING_KEY   = random_password.audit_signing_key.result
     DATA_ENCRYPTION_KEY = random_password.data_encryption_key.result
-    DATABASE_URL        = "postgresql+psycopg://sentinel:${random_password.db.result}@${aws_db_instance.this.address}:5432/sentinel?sslmode=require"
+    DATABASE_URL        = "postgresql+psycopg://argus:${random_password.db.result}@${aws_db_instance.this.address}:5432/argus?sslmode=require"
     REDIS_URL           = "rediss://:${random_password.redis.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379/0"
   }
 }
@@ -57,7 +57,7 @@ resource "aws_secretsmanager_secret_version" "app" {
 # secrets resolve (a secret without a version fails the task with
 # ResourceInitializationError); you write the real value with the CLI or console and
 # Terraform leaves it alone afterwards:
-#   aws secretsmanager put-secret-value --secret-id sentinel-production/ANTHROPIC_API_KEY --secret-string '...'
+#   aws secretsmanager put-secret-value --secret-id argus-production/ANTHROPIC_API_KEY --secret-string '...'
 resource "aws_secretsmanager_secret" "external" {
   for_each                = toset(["OIDC_CLIENT_SECRET", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
   name                    = "${local.prefix}/${each.key}"

@@ -22,7 +22,7 @@ from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, age_days, jsonable, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.aws')
+log = logging.getLogger('argus.collectors.aws')
 
 ACCESS_KEY_MAX_AGE_DAYS = 90
 ADMIN_MANAGED_POLICIES = {'AdministratorAccess', 'IAMFullAccess'}
@@ -441,7 +441,7 @@ def _boto_session(config: dict[str, Any], region: str) -> Any:
             kwargs['aws_session_token'] = config['session_token']
     session = boto3.Session(**kwargs)
     if config.get('role_arn'):
-        params = {'RoleArn': config['role_arn'], 'RoleSessionName': 'sentinel-collector', 'DurationSeconds': 3600}
+        params = {'RoleArn': config['role_arn'], 'RoleSessionName': 'argus-collector', 'DurationSeconds': 3600}
         if config.get('external_id'):
             params['ExternalId'] = config['external_id']
         creds = session.client('sts').assume_role(**params)['Credentials']

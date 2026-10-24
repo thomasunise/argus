@@ -105,7 +105,7 @@ export default {
     const apply = () => { pageReset(state); setQuery(navigate, 'findings', [], filters()); list.reload(); };
     bind(root, {
       open: (el) => { history.replaceState(null, '', `#/findings/${el.dataset.id}`); openFinding(el.dataset.id, { onChange: () => list.reload(true) }); },
-      export: async () => { await download('/findings/export.csv', 'sentinel-findings.csv', filters()); toast('CSV exported (audited)'); },
+      export: async () => { await download('/findings/export.csv', 'argus-findings.csv', filters()); toast('CSV exported (audited)'); },
       'page-next': () => { pageNext(state); list.reload(); },
       'page-prev': () => { pagePrev(state); list.reload(); },
     }, { apply });

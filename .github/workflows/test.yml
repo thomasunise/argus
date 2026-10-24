@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SENTINEL_LAZY_APP: "1"
+  ARGUS_LAZY_APP: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
@@ -43,17 +43,17 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: sentinel
-          POSTGRES_USER: sentinel
-          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: argus
+          POSTGRES_USER: argus
+          POSTGRES_PASSWORD: argus
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-cmd "pg_isready -U argus -d argus"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel
+      DATABASE_URL: postgresql+psycopg://argus:argus@localhost:5432/argus
       DB_AUTO_CREATE: "true"
     steps:
       - uses: actions/checkout@v4
@@ -111,45 +111,45 @@ jobs:
           context: .
           push: false
           load: true
-          tags: sentinel:ci
+          tags: argus:ci
           build-args: |
             APP_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Image runs as non-root with migrations applied
         run: |
-          docker run --rm -d --name sentinel-ci -p 127.0.0.1:8080:8080 \
+          docker run --rm -d --name argus-ci -p 127.0.0.1:8080:8080 \
             --read-only --tmpfs /tmp --tmpfs /app/data:uid=10001,gid=10001 \
             -e RUN_MIGRATIONS=true -e DB_AUTO_CREATE=false \
             -e SESSION_SECRET=ci-session-secret-that-is-long-enough-0123456789 \
             -e ADMIN_PASSWORD=ci-admin-password-long-123 \
-            -e INGEST_API_KEY=snt_0123abcd_ci-ingest-key-long-enough-0123456789 \
-            sentinel:ci
+            -e INGEST_API_KEY=argus_0123abcd_ci-ingest-key-long-enough-0123456789 \
+            argus:ci
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/ready; then echo; break; fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/health; echo
-          test "$(docker exec sentinel-ci id -u)" = "10001"
-          docker exec sentinel-ci python scripts/migrate.py --current | grep -q 'Rev' || { echo "no alembic revision applied"; exit 1; }
-          docker exec sentinel-ci sh -c 'pip show pytest >/dev/null 2>&1' && { echo "test tooling must not ship in the image"; exit 1; } || true
+          test "$(docker exec argus-ci id -u)" = "10001"
+          docker exec argus-ci python scripts/migrate.py --current | grep -q 'Rev' || { echo "no alembic revision applied"; exit 1; }
+          docker exec argus-ci sh -c 'pip show pytest >/dev/null 2>&1' && { echo "test tooling must not ship in the image"; exit 1; } || true
       - name: Day-1 smoke test against the single container (SQLite, in-process queue)
         env:
-          SENTINEL_URL: http://127.0.0.1:8080
-          SENTINEL_PASSWORD: ci-admin-password-long-123
+          ARGUS_URL: http://127.0.0.1:8080
+          ARGUS_PASSWORD: ci-admin-password-long-123
         run: python3 scripts/smoke_test.py
       - if: always()
         run: |
-          docker logs sentinel-ci 2>&1 | tail -n 50 || true
-          docker rm -f sentinel-ci || true
+          docker logs argus-ci 2>&1 | tail -n 50 || true
+          docker rm -f argus-ci || true
       - name: Worker image builds from the API image
-        run: docker build -q -f Dockerfile.worker --build-arg BASE_IMAGE=sentinel:ci -t sentinel:ci-worker .
+        run: docker build -q -f Dockerfile.worker --build-arg BASE_IMAGE=argus:ci -t argus:ci-worker .
       - name: Save image for the compose job
-        run: docker save sentinel:ci | gzip > /tmp/sentinel-ci.tar.gz
+        run: docker save argus:ci | gzip > /tmp/argus-ci.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: sentinel-ci-image
-          path: /tmp/sentinel-ci.tar.gz
+          name: argus-ci-image
+          path: /tmp/argus-ci.tar.gz
           retention-days: 1
 
   compose:
@@ -162,15 +162,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: sentinel-ci-image
+          name: argus-ci-image
           path: /tmp
-      - run: docker load < /tmp/sentinel-ci.tar.gz
+      - run: docker load < /tmp/argus-ci.tar.gz
       - name: Generate .env
         run: |
           {
             python3 scripts/generate_secrets.py
             echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
-            echo "SENTINEL_IMAGE=sentinel:ci"
+            echo "ARGUS_IMAGE=argus:ci"
             echo "DB_AUTO_CREATE=false"
             echo "LOG_JSON=true"
             echo "ACTIONS_KILL_SWITCH=true"
@@ -179,7 +179,7 @@ jobs:
       - name: Compose config validates (dev and prod overlay)
         run: |
           docker compose -f compose.yaml config --quiet
-          SENTINEL_DOMAIN=sentinel.example.com docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+          ARGUS_DOMAIN=argus.example.com docker compose -f compose.yaml -f compose.prod.yaml config --quiet
       - name: Start the stack
         run: |
           docker compose -f compose.yaml up -d --no-build postgres redis api worker
@@ -196,11 +196,11 @@ jobs:
       - name: Demo owner can log in
         run: |
           curl -fsS -c /tmp/jar -X POST http://127.0.0.1:8080/api/v1/auth/login -H 'Content-Type: application/json' \
-            -d '{"email":"demo-owner@sentinel.local","password":"ci-demo-owner-password-123","tenant":"demo"}' | grep -q '"authenticated":true'
+            -d '{"email":"demo-owner@argus.local","password":"ci-demo-owner-password-123","tenant":"demo"}' | grep -q '"authenticated":true'
       - name: Day-1 smoke test through the Redis queue and the worker
         env:
-          SENTINEL_URL: http://127.0.0.1:8080
-        run: SENTINEL_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' .env)" python3 scripts/smoke_test.py
+          ARGUS_URL: http://127.0.0.1:8080
+        run: ARGUS_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' .env)" python3 scripts/smoke_test.py
       - if: failure()
         run: docker compose -f compose.yaml logs --tail=200
       - if: always()
@@ -241,10 +241,10 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
       - run: tflint --chdir=infra/terraform && tflint --chdir=infra/terraform-azure
       - uses: azure/setup-helm@v4
-      - run: helm lint --strict infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x
+      - run: helm lint --strict infra/helm/argus --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x
       - name: helm template + kubeconform
         run: |
-          helm template sentinel infra/helm/sentinel --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x \
+          helm template argus infra/helm/argus --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x \
             --set serviceMonitor.enabled=true --set auditVolume.enabled=true > /tmp/rendered.yaml
           docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -ignore-missing-schemas \
             -schema-location default \

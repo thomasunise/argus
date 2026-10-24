@@ -34,7 +34,7 @@ function configForm(direction, impl, existing, reload) {
 
 function curlFor(source, example) {
   const payload = example ? JSON.stringify(example) : '{"events": []}';
-  return `curl -X POST ${location.origin}/api/v1/ingest/${source} \\\n  -H "X-API-Key: $SENTINEL_INGEST_KEY" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Asset-ID: <optional asset id>" \\\n  -d '${payload.replace(/'/g, "'\\''").slice(0, 1200)}${payload.length > 1200 ? '…' : ''}'`;
+  return `curl -X POST ${location.origin}/api/v1/ingest/${source} \\\n  -H "X-API-Key: $ARGUS_INGEST_KEY" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Asset-ID: <optional asset id>" \\\n  -d '${payload.replace(/'/g, "'\\''").slice(0, 1200)}${payload.length > 1200 ? '…' : ''}'`;
 }
 
 async function openConfig(id, reload) {

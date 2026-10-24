@@ -24,7 +24,7 @@ from ..models import dumps, loads, utcnow
 from ..models.detections import CANARY_KINDS, Canary, CanaryHit
 from .util import aware
 
-log = logging.getLogger('sentinel.detections.canaries')
+log = logging.getLogger('argus.detections.canaries')
 
 _ALNUM = string.ascii_letters + string.digits
 _UPPER = string.ascii_uppercase + string.digits

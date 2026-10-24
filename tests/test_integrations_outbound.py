@@ -41,14 +41,14 @@ async def test_webhook_signature_and_retry():
         return httpx.Response(503, text='try later') if len(calls) == 1 else httpx.Response(200, text='ok')
 
     with respx.mock() as mock:
-        route = mock.post('https://hooks.example.test/sentinel').mock(side_effect=responder)
-        result = await registry.get('webhook').send(make_event(), {'url': 'https://hooks.example.test/sentinel', 'retry_attempts': 3, 'retry_backoff_seconds': 0,
+        route = mock.post('https://hooks.example.test/argus').mock(side_effect=responder)
+        result = await registry.get('webhook').send(make_event(), {'url': 'https://hooks.example.test/argus', 'retry_attempts': 3, 'retry_backoff_seconds': 0,
                                                                    'headers': {'X-Env': 'prod', 'Authorization': 'must-not-pass'}}, {'signing_secret': 'shh'})
     assert result.ok and result.status_code == 200 and len(route.calls) == 2
     request = route.calls[-1].request
     expected = 'sha256=' + hmac.new(b'shh', request.content, hashlib.sha256).hexdigest()
-    assert request.headers[SIGNATURE_HEADER] == expected and request.headers['X-Sentinel-Topic'] == 'finding.created' and request.headers['X-Env'] == 'prod'
-    assert request.headers['X-Sentinel-Delivery'] == 'd-1' and 'Authorization' not in request.headers
+    assert request.headers[SIGNATURE_HEADER] == expected and request.headers['X-Argus-Topic'] == 'finding.created' and request.headers['X-Env'] == 'prod'
+    assert request.headers['X-Argus-Delivery'] == 'd-1' and 'Authorization' not in request.headers
     body = json.loads(request.content)
     assert body['topic'] == 'finding.created' and body['event']['title'] == 'Public bucket marketing-assets-public' and body['event']['severity'] == 'high'
     assert body['event']['payload']['finding_id'] == 'f-1' and body['id'] == 'd-1'
@@ -73,7 +73,7 @@ async def test_slack_webhook_and_bot_modes():
         assert payload['text'] == '[High] Public bucket marketing-assets-public' and payload['blocks'][0]['type'] == 'header'
         fields = {f['text'].split('\n')[0] for f in payload['blocks'][1]['fields']}
         assert {'*Severity*', '*Topic*', '*Status*', '*Subject*', '*Source*'} <= fields and payload['blocks'][-1]['type'] == 'context'
-        assert any('Open in Sentinel' in el['text'] for el in payload['blocks'][-1]['elements'])
+        assert any('Open in Argus' in el['text'] for el in payload['blocks'][-1]['elements'])
         bot = mock.post('https://slack.com/api/chat.postMessage').mock(return_value=httpx.Response(200, json={'ok': True, 'ts': '1729687200.000100'}))
         result = await registry.get('slack').send(make_event(), {'mode': 'bot', 'channel': '#security'}, {'bot_token': 'xoxb-not-real-token-123456'})
         assert result.ok and result.external_ref == '1729687200.000100'
@@ -93,11 +93,11 @@ async def test_jira_create_then_comment_and_transition():
         create = mock.post('https://example.atlassian.net/rest/api/3/issue').mock(return_value=httpx.Response(201, json={'id': '10001', 'key': 'SEC-7'}))
         result = await registry.get('jira').send(make_event(severity='critical'), config, secrets)
         assert result.ok and result.external_ref == 'SEC-7'
-        assert 'labels = "sentinel-finding-f-1"' in search.calls[0].request.url.params['jql']
+        assert 'labels = "argus-finding-f-1"' in search.calls[0].request.url.params['jql']
         assert search.calls[0].request.headers['Authorization'].startswith('Basic ')
         fields = json.loads(create.calls[0].request.content)['fields']
         assert fields['project'] == {'key': 'SEC'} and fields['issuetype'] == {'name': 'Bug'} and fields['priority'] == {'name': 'Highest'}
-        assert 'sentinel-finding-f-1' in fields['labels'] and fields['summary'].startswith('[Critical] Public bucket') and fields['description']['type'] == 'doc'
+        assert 'argus-finding-f-1' in fields['labels'] and fields['summary'].startswith('[Critical] Public bucket') and fields['description']['type'] == 'doc'
         search.mock(return_value=httpx.Response(200, json={'issues': [{'key': 'SEC-7', 'fields': {'status': {'name': 'Open'}}}]}))
         comment = mock.post('https://example.atlassian.net/rest/api/3/issue/SEC-7/comment').mock(return_value=httpx.Response(201, json={'id': '1'}))
         transitions = mock.get('https://example.atlassian.net/rest/api/3/issue/SEC-7/transitions').mock(
@@ -114,16 +114,16 @@ async def test_jira_create_then_comment_and_transition():
 @pytest.mark.asyncio
 async def test_servicenow_create_then_update():
     config = {'instance_url': 'https://dev0000.service-now.com', 'assignment_group': 'SecOps'}
-    secrets = {'username': 'sentinel', 'password': 'snow-pass'}
+    secrets = {'username': 'argus', 'password': 'snow-pass'}
     with respx.mock() as mock:
         lookup = mock.get('https://dev0000.service-now.com/api/now/table/incident').mock(return_value=httpx.Response(200, json={'result': []}))
         create = mock.post('https://dev0000.service-now.com/api/now/table/incident').mock(return_value=httpx.Response(201, json={'result': {'sys_id': 'abc123', 'number': 'INC0010001'}}))
         result = await registry.get('servicenow').send(make_event(), config, secrets)
         assert result.ok and result.external_ref == 'INC0010001'
-        assert lookup.calls[0].request.url.params['sysparm_query'] == 'correlation_id=sentinel:finding:f-1'
+        assert lookup.calls[0].request.url.params['sysparm_query'] == 'correlation_id=argus:finding:f-1'
         assert lookup.calls[0].request.headers['Authorization'].startswith('Basic ')
         body = json.loads(create.calls[0].request.content)
-        assert body['correlation_id'] == 'sentinel:finding:f-1' and (body['impact'], body['urgency']) == ('2', '1') and body['assignment_group'] == 'SecOps'
+        assert body['correlation_id'] == 'argus:finding:f-1' and (body['impact'], body['urgency']) == ('2', '1') and body['assignment_group'] == 'SecOps'
         assert body['short_description'].startswith('[High] Public bucket')
         lookup.mock(return_value=httpx.Response(200, json={'result': [{'sys_id': 'abc123', 'number': 'INC0010001', 'state': '2'}]}))
         patch = mock.patch('https://dev0000.service-now.com/api/now/table/incident/abc123').mock(return_value=httpx.Response(200, json={'result': {'number': 'INC0010001'}}))
@@ -136,12 +136,12 @@ async def test_servicenow_create_then_update():
 @pytest.mark.asyncio
 async def test_pagerduty_trigger_and_resolve():
     with respx.mock() as mock:
-        route = mock.post('https://events.pagerduty.com/v2/enqueue').mock(return_value=httpx.Response(202, json={'status': 'success', 'dedup_key': 'sentinel-finding-f-1'}))
-        result = await registry.get('pagerduty').send(make_event(), {'source': 'sentinel-prod'}, {'routing_key': 'R0UT1NGKEY'})
-        assert result.ok and result.external_ref == 'sentinel-finding-f-1'
+        route = mock.post('https://events.pagerduty.com/v2/enqueue').mock(return_value=httpx.Response(202, json={'status': 'success', 'dedup_key': 'argus-finding-f-1'}))
+        result = await registry.get('pagerduty').send(make_event(), {'source': 'argus-prod'}, {'routing_key': 'R0UT1NGKEY'})
+        assert result.ok and result.external_ref == 'argus-finding-f-1'
         body = json.loads(route.calls[0].request.content)
-        assert body['routing_key'] == 'R0UT1NGKEY' and body['event_action'] == 'trigger' and body['dedup_key'] == 'sentinel-finding-f-1'
-        assert body['payload']['severity'] == 'error' and body['payload']['source'] == 'sentinel-prod' and body['payload']['custom_details']['finding_id'] == 'f-1'
+        assert body['routing_key'] == 'R0UT1NGKEY' and body['event_action'] == 'trigger' and body['dedup_key'] == 'argus-finding-f-1'
+        assert body['payload']['severity'] == 'error' and body['payload']['source'] == 'argus-prod' and body['payload']['custom_details']['finding_id'] == 'f-1'
         assert body['links'][0]['href'].endswith('/#/findings/f-1')
         resolved = await registry.get('pagerduty').send(make_event(topic='finding.resolved', status='resolved'), {}, {'routing_key': 'R0UT1NGKEY'})
         assert resolved.ok and json.loads(route.calls[1].request.content)['event_action'] == 'resolve' and 'payload' not in json.loads(route.calls[1].request.content)
@@ -179,16 +179,16 @@ async def test_email_channel_with_monkeypatched_smtp(monkeypatch):
             sent['message'] = message
 
     monkeypatch.setattr(smtplib, 'SMTP', FakeSMTP)
-    config = {'host': 'smtp.example.test', 'port': 587, 'from': 'sentinel@example.test', 'to': ['soc@example.test', 'oncall@example.test'], 'subject_prefix': '[SOC]'}
+    config = {'host': 'smtp.example.test', 'port': 587, 'from': 'argus@example.test', 'to': ['soc@example.test', 'oncall@example.test'], 'subject_prefix': '[SOC]'}
     result = await registry.get('email').send(make_event(), config, {'username': 'mailer', 'password': 'mail-pass'})
     assert result.ok and result.status_code == 250 and result.external_ref.startswith('<') and result.detail['recipients'] == config['to']
     assert (sent['host'], sent['port']) == ('smtp.example.test', 587) and sent['calls'] == ['ehlo', 'starttls', 'ehlo', 'login', 'send'] and sent['tls_context']
     assert sent['login'] == ('mailer', 'mail-pass') and sent['closed']
     message = sent['message']
-    assert message['To'] == 'soc@example.test, oncall@example.test' and message['From'] == 'sentinel@example.test'
-    assert message['Subject'] == '[SOC] High: Public bucket marketing-assets-public' and message['X-Sentinel-Topic'] == 'finding.created'
+    assert message['To'] == 'soc@example.test, oncall@example.test' and message['From'] == 'argus@example.test'
+    assert message['Subject'] == '[SOC] High: Public bucket marketing-assets-public' and message['X-Argus-Topic'] == 'finding.created'
     parts = [p.get_content_type() for p in message.walk()]
-    assert 'text/plain' in parts and 'text/html' in parts and 'Open in Sentinel' in message.get_body(('plain',)).get_content()
+    assert 'text/plain' in parts and 'text/html' in parts and 'Open in Argus' in message.get_body(('plain',)).get_content()
 
     class AuthFail(FakeSMTP):
         def login(self, user, password):

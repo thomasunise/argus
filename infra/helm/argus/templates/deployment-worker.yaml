@@ -2,9 +2,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sentinel.fullname" . }}-worker
+  name: {{ include "argus.fullname" . }}-worker
   labels:
-    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- include "argus.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicas }}
@@ -16,20 +16,20 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+      {{- include "argus.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
-        {{- include "sentinel.selectorLabels" . | nindent 8 }}
+        {{- include "argus.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
       annotations:
-        checksum/config: {{ include "sentinel.configChecksum" . }}
+        checksum/config: {{ include "argus.configChecksum" . }}
         {{- with .Values.worker.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "sentinel.serviceAccountName" . }}
+      serviceAccountName: {{ include "argus.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
       terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
@@ -40,7 +40,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: worker
-          image: {{ include "sentinel.image" . }}
+          image: {{ include "argus.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["worker"]
           securityContext:
@@ -56,7 +56,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           envFrom:
-            {{- include "sentinel.envFrom" . | nindent 12 }}
+            {{- include "argus.envFrom" . | nindent 12 }}
           # The worker has no HTTP port. Liveness: the python process is alive and can import
           # the app; Redis lease expiry (reaper) handles a wedged worker by requeueing jobs.
           livenessProbe:
@@ -68,12 +68,12 @@ spec:
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           volumeMounts:
-            {{- include "sentinel.volumeMounts" . | nindent 12 }}
+            {{- include "argus.volumeMounts" . | nindent 12 }}
             {{- with .Values.worker.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
-        {{- include "sentinel.volumes" . | nindent 8 }}
+        {{- include "argus.volumes" . | nindent 8 }}
         {{- with .Values.worker.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

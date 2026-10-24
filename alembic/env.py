@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault('SENTINEL_LAZY_APP', '1')
+os.environ.setdefault('ARGUS_LAZY_APP', '1')
 
 import app.models  # noqa: E402,F401  (imports every model module so metadata is complete)
 from app.models import Base  # noqa: E402

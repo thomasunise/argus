@@ -26,7 +26,7 @@ from ..models import dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
 from .base import Collector, CollectorContext, CollectorResult, registry
 
-log = logging.getLogger('sentinel.collectors')
+log = logging.getLogger('argus.collectors')
 
 JOB_KIND = 'collectors.run'
 SCHEDULER_INTERVAL_SECONDS = 60
@@ -158,7 +158,7 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
         since = config.last_success_at
         collector_name, source = collector.name, collector.source
     # Secrets live only in this frame and the collector context.
-    ctx = CollectorContext(tenant_id=tenant_id, config=merged, settings=settings, logger=logging.getLogger(f'sentinel.collectors.{collector_name}'),
+    ctx = CollectorContext(tenant_id=tenant_id, config=merged, settings=settings, logger=logging.getLogger(f'argus.collectors.{collector_name}'),
                            heartbeat=heartbeat, since=since, config_id=config_id, run_id=run_id)
     warnings = [f'secret reference for {name} resolved to an empty value' for name in missing]
     error = ''

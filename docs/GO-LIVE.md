@@ -1,13 +1,13 @@
 # Go-live: production rollout in monitoring-only mode
 
-This is the ordered, command-level checklist for putting Sentinel into production for a new
+This is the ordered, command-level checklist for putting Argus into production for a new
 customer estate with **no automated change**: kill switch engaged, intrusive testing off, AI
 provider deliberately chosen (`none` is fine), collectors read-only. Everything here was
 executed against the compose stack on 2026-10-23 with the current image; where a step was
 verified by `scripts/smoke_test.py` it says so. Tick every box in order. Background and
 rationale live in `docs/DEPLOYMENT.md`; incident procedures in `docs/RUNBOOKS.md`.
 
-Conventions: `$BASE` is the public HTTPS origin (`https://sentinel.example.com`), `$JAR` a
+Conventions: `$BASE` is the public HTTPS origin (`https://argus.example.com`), `$JAR` a
 curl cookie jar, `$CSRF` the token returned by login. Compose commands run in the directory that
 holds `compose.yaml` and `.env`; Kubernetes/ECS/Container Apps equivalents are noted inline.
 
@@ -40,8 +40,8 @@ Verification after boot (step 3.4): `GET /api/v1/actions/kill-switch` returns
 ## 1. Prerequisites (owned by the platform team, done before the change window)
 
 ### 1.1 PostgreSQL 16
-- [ ] Managed instance or `postgres:16` with TLS; connection string `postgresql+psycopg://sentinel:<pw>@<host>:5432/sentinel?sslmode=require`.
-- [ ] Database `sentinel`, role `sentinel` owning it; no superuser.
+- [ ] Managed instance or `postgres:16` with TLS; connection string `postgresql+psycopg://argus:<pw>@<host>:5432/argus?sslmode=require`.
+- [ ] Database `argus`, role `argus` owning it; no superuser.
 - [ ] Automated backups + PITR on; restore rehearsed (section 7).
 - [ ] Compose shape: the `postgres` service in `compose.yaml` (`--data-checksums`, named volume). Set a strong `POSTGRES_PASSWORD`.
 
@@ -51,7 +51,7 @@ Verification after boot (step 3.4): `GET /api/v1/actions/kill-switch` returns
 - [ ] Compose shape: the `redis` service already runs with `--appendonly yes --maxmemory-policy noeviction`.
 
 ### 1.3 TLS and ingress
-- [ ] Compose: `compose.prod.yaml` adds Caddy with ACME. Needs inbound 80/443 (443 UDP for h3) and outbound 443 to the ACME CA; set `SENTINEL_DOMAIN` and `ACME_EMAIL` (both required; `up` refuses to start without them). DNS A/AAAA for `SENTINEL_DOMAIN` must resolve before `up`.
+- [ ] Compose: `compose.prod.yaml` adds Caddy with ACME. Needs inbound 80/443 (443 UDP for h3) and outbound 443 to the ACME CA; set `ARGUS_DOMAIN` and `ACME_EMAIL` (both required; `up` refuses to start without them). DNS A/AAAA for `ARGUS_DOMAIN` must resolve before `up`.
 - [ ] Kubernetes: ingress-nginx + cert-manager (`ingress.annotations` in `values.yaml`). The chart does not block `/metrics` (ingress-nginx 1.12+ rejects `server-snippet`); block it at the edge or set `config.METRICS_ENABLED="false"` as described in `docs/DEPLOYMENT.md` section 4.
 - [ ] AWS/Azure Terraform: ALB TLS1.3 / Front Door Premium already block `/metrics`.
 - [ ] `/metrics` and `/health` must not be reachable from the internet. Prometheus scrapes on the internal network.
@@ -74,11 +74,11 @@ Outbound from the API and worker containers, nothing else:
 Nothing inbound to the worker. With `AI_PROVIDER=none` and no collectors, the worker needs only Postgres and Redis.
 
 ### 1.5 Image
-- [ ] Pin by digest: `SENTINEL_IMAGE=ghcr.io/<owner>/sentinel@sha256:<digest>` in `.env` (Helm: `image.digest`; Terraform: `image` variable).
+- [ ] Pin by digest: `ARGUS_IMAGE=ghcr.io/<owner>/argus@sha256:<digest>` in `.env` (Helm: `image.digest`; Terraform: `image` variable).
 - [ ] Verify the signature before pulling anywhere near production:
   ```bash
-  cosign verify "ghcr.io/<owner>/sentinel@sha256:<digest>" \
-    --certificate-identity-regexp 'https://github.com/<owner>/sentinel-agentic-security/.github/workflows/release.yml@refs/tags/.*' \
+  cosign verify "ghcr.io/<owner>/argus@sha256:<digest>" \
+    --certificate-identity-regexp 'https://github.com/<owner>/argus/.github/workflows/release.yml@refs/tags/.*' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
 - [ ] Record the digest and the previous production digest in the change ticket (section 8 needs it).
@@ -106,7 +106,7 @@ Then set these by hand. Every one of them is enforced by `assert_safe_config` at
 | Variable | Value for monitoring-only production | How to generate / notes |
 |---|---|---|
 | `APP_ENV` | `production` | |
-| `BASE_URL` | `https://<SENTINEL_DOMAIN>` | must start with `https://` |
+| `BASE_URL` | `https://<ARGUS_DOMAIN>` | must start with `https://` |
 | `COOKIE_SECURE` | `true` | |
 | `SESSION_SECRET` | 64 random chars | `python -c 'import secrets;print(secrets.token_urlsafe(48))'` |
 | `SESSION_MAX_AGE` | `3600` (or your policy) | seconds |
@@ -133,8 +133,8 @@ Then set these by hand. Every one of them is enforced by `assert_safe_config` at
 | `RUN_MIGRATIONS` | `true` on the API | compose and Helm set it; the worker never migrates |
 | `FORWARDED_ALLOW_IPS` | `*` behind Caddy/ingress/ALB on an isolated network | compose.prod.yaml sets it |
 | `POSTGRES_PASSWORD` | 32 random chars | compose `postgres` service only |
-| `SENTINEL_DOMAIN`, `ACME_EMAIL` | public hostname, ops mailbox | compose.prod.yaml only |
-| `SENTINEL_IMAGE` | `ghcr.io/<owner>/sentinel@sha256:<digest>` | from 1.5 |
+| `ARGUS_DOMAIN`, `ACME_EMAIL` | public hostname, ops mailbox | compose.prod.yaml only |
+| `ARGUS_IMAGE` | `ghcr.io/<owner>/argus@sha256:<digest>` | from 1.5 |
 | `GITHUB_WEBHOOK_SECRET`, `OKTA_HOOK_SECRET` | random 32+ chars | only if you connect those webhooks (4.4/4.5); referenced as `env:NAME` |
 
 Kubernetes: the same keys go in the `existingSecret` (`SESSION_SECRET ADMIN_PASSWORD INGEST_API_KEY AUDIT_SIGNING_KEY DATA_ENCRYPTION_KEY DATABASE_URL REDIS_URL`, optional `OIDC_CLIENT_SECRET` ...) and `values.config`. AWS/Azure Terraform generate all of them except the OIDC/model keys.
@@ -142,7 +142,7 @@ Kubernetes: the same keys go in the `existingSecret` (`SESSION_SECRET ADMIN_PASS
 Quick check before starting anything (no containers needed):
 
 ```bash
-docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localhost/x -e REDIS_URL=rediss://localhost/0 -e AUDIT_JSONL_PATH=/app/data/audit.jsonl "$SENTINEL_IMAGE" \
+docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localhost/x -e REDIS_URL=rediss://localhost/0 -e AUDIT_JSONL_PATH=/app/data/audit.jsonl "$ARGUS_IMAGE" \
   python -c "from app.core.config import get_settings, assert_safe_config; assert_safe_config(get_settings()); print('config ok')"
 ```
 
@@ -168,7 +168,7 @@ docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localho
   ```bash
   curl -fsS "$BASE/health"      # {"status":"healthy","version":"1.0.0"}
   curl -fsS "$BASE/ready"       # {"status":"ready","queue":"redis","provider":"none"}
-  docker compose logs --tail=50 api worker   # "Sentinel 1.0.0 started (env=production, provider=none, queue=redis)" and "worker started with 12 handlers"
+  docker compose logs --tail=50 api worker   # "Argus 1.0.0 started (env=production, provider=none, queue=redis)" and "worker started with 12 handlers"
   ```
   `queue` must say `redis`; `memory` means `REDIS_URL` is not set and the worker is idle.
 - [ ] **3.5 Log in as the bootstrap owner** (`ADMIN_EMAIL` / `ADMIN_PASSWORD`). With `TOTP_REQUIRED=true` and no enrolment yet the response carries `"mfa_required": true`; that session may only enrol TOTP:
@@ -182,7 +182,7 @@ docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localho
 - [ ] **3.6 Enrol TOTP for the bootstrap owner**, then verify:
   ```bash
   curl -fsS -c "$JAR" -b "$JAR" -X POST "$BASE/api/v1/auth/totp/enroll"
-  # {"secret":"<base32>","uri":"otpauth://totp/Sentinel:admin@...?secret=...&issuer=Sentinel&digits=6&period=30"}
+  # {"secret":"<base32>","uri":"otpauth://totp/Argus:admin@...?secret=...&issuer=Argus&digits=6&period=30"}
   #   -> load the uri into the team's hardware/soft token; store the secret in the vault as the break-glass seed
   curl -fsS -c "$JAR" -b "$JAR" -X POST "$BASE/api/v1/auth/totp/verify" -H 'Content-Type: application/json' -d '{"code":"123456"}'
   # {"ok":true,"csrf":"<token>"}        <- export CSRF=<token>; every mutating call below needs -H "X-CSRF-Token: $CSRF"
@@ -217,7 +217,7 @@ docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localho
   ```bash
   curl -fsS -b "$JAR" -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/v1/auth/api-keys" -H 'Content-Type: application/json' \
     -d '{"name":"wazuh-<site>","role":"viewer","scopes":["ingest"]}'
-  # {"id":"...","name":"wazuh-<site>","prefix":"53e90648","role":"viewer","scopes":["ingest"],"key":"snt_53e90648_..."}   <- "key" is shown once
+  # {"id":"...","name":"wazuh-<site>","prefix":"53e90648","role":"viewer","scopes":["ingest"],"key":"argus_53e90648_..."}   <- "key" is shown once
   ```
   One key each for `wazuh-<site>`, `falco-<cluster>`, `cloudtrail-<account>`, `okta-<org>`, `github-<org>`. Put each in the sensor's own secret store. Revocation: `DELETE /api/v1/auth/api-keys/{id}` (RUNBOOKS.md "Revoking a compromised API key"). If `INGEST_API_KEY` was ever set in `.env`, revoke the `bootstrap-ingest` key listed by `GET /api/v1/auth/api-keys` **and** remove the variable, or it comes back on the next boot.
 - [ ] **3.11 Audit chain baseline** per tenant and attach to the ticket:
@@ -239,14 +239,14 @@ Accepts a raw alert, an indexer hit (`_source`), or a whole search response (`hi
 curl -fsS -X POST "$BASE/api/v1/ingest/wazuh" -H "X-API-Key: $WAZUH_KEY" -H 'Content-Type: application/json' \
   --data-binary @examples/wazuh-alert.json
 ```
-Manager side: a custom integration (`/var/ossec/integrations/custom-sentinel`) that POSTs each alert JSON line to that URL with the header; or set `WAZUH_INDEXER_URL`/`WAZUH_INDEXER_USER`/`WAZUH_INDEXER_PASSWORD`/`WAZUH_CA_BUNDLE` for the read-only indexer poll (`integrations.wazuh_sync` job).
+Manager side: a custom integration (`/var/ossec/integrations/custom-argus`) that POSTs each alert JSON line to that URL with the header; or set `WAZUH_INDEXER_URL`/`WAZUH_INDEXER_USER`/`WAZUH_INDEXER_PASSWORD`/`WAZUH_CA_BUNDLE` for the read-only indexer poll (`integrations.wazuh_sync` job).
 
 ### 4.2 Falco (falcosidekick webhook)
 ```bash
 curl -fsS -X POST "$BASE/api/v1/ingest/falco" -H "X-API-Key: $FALCO_KEY" -H 'Content-Type: application/json' \
   --data-binary @examples/falco-alert.json
 ```
-falcosidekick config: `webhook.address: https://<SENTINEL_DOMAIN>/api/v1/ingest/falco`, `webhook.customHeaders: "X-API-Key:<key>"`, `webhook.minimumpriority: notice`.
+falcosidekick config: `webhook.address: https://<ARGUS_DOMAIN>/api/v1/ingest/falco`, `webhook.customHeaders: "X-API-Key:<key>"`, `webhook.minimumpriority: notice`.
 
 ### 4.3 AWS CloudTrail (EventBridge API destination, or a forwarder reading the S3 trail)
 Body is `{"Records":[...]}`, a single record, or the EventBridge "AWS API Call via CloudTrail" envelope. This exact record trips `cloud.public_exposure_change` (verified; use it in step 5):
@@ -263,7 +263,7 @@ curl -fsS -X POST "$BASE/api/v1/ingest/aws_cloudtrail" -H "X-API-Key: $CLOUDTRAI
   }]
 }'
 ```
-EventBridge: rule on `detail-type: AWS API Call via CloudTrail` -> API destination `https://<SENTINEL_DOMAIN>/api/v1/ingest/aws_cloudtrail`, connection auth type *API key*, header name `X-API-Key`.
+EventBridge: rule on `detail-type: AWS API Call via CloudTrail` -> API destination `https://<ARGUS_DOMAIN>/api/v1/ingest/aws_cloudtrail`, connection auth type *API key*, header name `X-API-Key`.
 
 ### 4.4 Okta (event hook with signature, or System Log pull)
 Preferred: the verified webhook path, which authenticates Okta's static header instead of an API key. Put the shared secret in the API container's environment (`.env`: `OKTA_HOOK_SECRET=<32+ random chars>`), then create an inbound integration in the customer tenant:
@@ -272,7 +272,7 @@ curl -fsS -b "$JAR" -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/v1/integrations"
   -d '{"name":"okta-<org>","kind":"okta_logs","config":{"auth_header_name":"Authorization"},"secret_refs":{"auth_header":"env:OKTA_HOOK_SECRET"}}'
 # {"id":"<integration id>", ...}
 ```
-Okta Admin -> Workflow -> Event Hooks: URL `https://<SENTINEL_DOMAIN>/api/v1/ingest/okta/verify?integration=<integration id>`, authentication field `Authorization`, value `<OKTA_HOOK_SECRET>`; subscribe to `user.session.start`, `user.account.privilege.grant`, `group.privilege.grant`, `user.mfa.factor.*`, `system.api_token.create`, `user.session.impersonation.*`, `policy.*`. Okta's one-time verification (`GET` with `X-Okta-Verification-Challenge`) is answered automatically. `literal:` secret refs are refused in production; use `env:` or `file:`.
+Okta Admin -> Workflow -> Event Hooks: URL `https://<ARGUS_DOMAIN>/api/v1/ingest/okta/verify?integration=<integration id>`, authentication field `Authorization`, value `<OKTA_HOOK_SECRET>`; subscribe to `user.session.start`, `user.account.privilege.grant`, `group.privilege.grant`, `user.mfa.factor.*`, `system.api_token.create`, `user.session.impersonation.*`, `policy.*`. Okta's one-time verification (`GET` with `X-Okta-Verification-Challenge`) is answered automatically. `literal:` secret refs are refused in production; use `env:` or `file:`.
 
 Fallback (API key, System Log array):
 ```bash
@@ -287,7 +287,7 @@ A read-only Okta collector (`POST /api/v1/collectors`, kind `okta`) needs a *Rea
 curl -fsS -b "$JAR" -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/v1/integrations" -H 'Content-Type: application/json' \
   -d '{"name":"github-<org>","kind":"github_webhook","secret_refs":{"webhook_secret":"env:GITHUB_WEBHOOK_SECRET"}}'
 ```
-GitHub org -> Settings -> Webhooks: payload URL `https://<SENTINEL_DOMAIN>/api/v1/ingest/github/verify?integration=<integration id>`, content type `application/json`, secret `<GITHUB_WEBHOOK_SECRET>`, events: *Secret scanning alerts, Code scanning alerts, Dependabot alerts, Repositories, Members, Organizations, Branch protection rules*. Signature is `X-Hub-Signature-256` over the raw body.
+GitHub org -> Settings -> Webhooks: payload URL `https://<ARGUS_DOMAIN>/api/v1/ingest/github/verify?integration=<integration id>`, content type `application/json`, secret `<GITHUB_WEBHOOK_SECRET>`, events: *Secret scanning alerts, Code scanning alerts, Dependabot alerts, Repositories, Members, Organizations, Branch protection rules*. Signature is `X-Hub-Signature-256` over the raw body.
 
 API-key test without GitHub (the event kind comes from the header):
 ```bash
@@ -306,7 +306,7 @@ Collectors never write, and their credentials must not be able to either: AWS `S
 ```bash
 docker compose exec -T api python scripts/seed_demo.py --password '<demo owner pw>'
 ```
-Expected (verified 2026-10-23 against the compose stack): `detections created=3 rules_run=12`, listing `cloud.public_exposure_change`, `swarm.machine_speed_sequence`, `swarm.novel_action_burst`. Then log in as `demo-owner@sentinel.local` / tenant `demo` and read `GET /api/v1/detections`.
+Expected (verified 2026-10-23 against the compose stack): `detections created=3 rules_run=12`, listing `cloud.public_exposure_change`, `swarm.machine_speed_sequence`, `swarm.novel_action_burst`. Then log in as `demo-owner@argus.local` / tenant `demo` and read `GET /api/v1/detections`.
 
 **Production.** Use the synthetic CloudTrail record from 4.3 with the CloudTrail key of the tenant, then run the engine and read back (verified: produces one `cloud.public_exposure_change`, severity `high`, title `golive-synthetic-bucket opened to the internet via s3.put_bucket_policy`):
 ```bash
@@ -330,7 +330,7 @@ The detections scheduler then runs every 60 s per active tenant without further 
 
 ```bash
 # from an operator machine, against the public origin (required in production because of Secure cookies)
-SENTINEL_PASSWORD='<owner password>' SENTINEL_TOTP_SECRET='<base32 seed from 3.6>' \
+ARGUS_PASSWORD='<owner password>' ARGUS_TOTP_SECRET='<base32 seed from 3.6>' \
   python scripts/smoke_test.py --url "$BASE" --email "$ADMIN_EMAIL" --tenant <customer-slug>
 
 # or with a one-time code instead of the seed
@@ -347,11 +347,11 @@ Back up **before** every upgrade and on a schedule. The database chain is the so
 ```bash
 # PostgreSQL (compose)
 TS=$(date -u +%Y%m%dT%H%M%SZ)
-docker compose exec -T postgres pg_dump -U sentinel -Fc sentinel > "sentinel-$TS.dump"
+docker compose exec -T postgres pg_dump -U argus -Fc argus > "argus-$TS.dump"
 # Redis AOF (queue state; losing it only loses queued jobs)
 docker compose exec -T redis redis-cli BGREWRITEAOF
 docker run --rm -v "$(docker compose ps -q redis | xargs docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}')":/data:ro -v "$PWD":/backup alpine tar czf "/backup/redis-$TS.tgz" -C /data .
-# Audit JSONL mirror (sentinel-data volume)
+# Audit JSONL mirror (argus-data volume)
 docker run --rm -v "$(docker compose ps -q api | xargs docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Name}}{{end}}{{end}}')":/data:ro -v "$PWD":/backup alpine tar czf "/backup/audit-$TS.tgz" -C /data .
 # Caddy certificates: caddy-data volume (optional; ACME re-issues)
 ```
@@ -360,7 +360,7 @@ Managed services: RDS automated snapshots / Azure Flexible Server PITR; take a m
 Restore (compose):
 ```bash
 docker compose stop api worker
-docker compose exec -T postgres pg_restore -U sentinel -d sentinel --clean --if-exists --no-owner < sentinel-<TS>.dump
+docker compose exec -T postgres pg_restore -U argus -d argus --clean --if-exists --no-owner < argus-<TS>.dump
 docker compose up -d api worker
 curl -fsS "$BASE/ready"
 curl -fsS -b "$JAR" "$BASE/api/v1/audit/verify"     # expect valid:true; a restore older than the mirror is documented, not repaired (RUNBOOKS)
@@ -375,12 +375,12 @@ Decide **before** the upgrade whether the release is image-only or carries a sch
 
 ```bash
 # compose: pin the previous digest recorded in 1.5
-sed -i 's|^SENTINEL_IMAGE=.*|SENTINEL_IMAGE=ghcr.io/<owner>/sentinel@sha256:<previous digest>|' .env
+sed -i 's|^ARGUS_IMAGE=.*|ARGUS_IMAGE=ghcr.io/<owner>/argus@sha256:<previous digest>|' .env
 docker compose -f compose.yaml -f compose.prod.yaml pull api worker
 docker compose -f compose.yaml -f compose.prod.yaml up -d api worker
 curl -fsS "$BASE/ready" && docker compose logs --tail=30 api
 ```
-Kubernetes: `helm rollback sentinel <previous revision> -n sentinel` (or `helm upgrade --set image.digest=<previous>`). ECS: `aws ecs update-service --task-definition <previous revision> --force-new-deployment` for `api` and `worker`. Container Apps: activate the previous revision.
+Kubernetes: `helm rollback argus <previous revision> -n argus` (or `helm upgrade --set image.digest=<previous>`). ECS: `aws ecs update-service --task-definition <previous revision> --force-new-deployment` for `api` and `worker`. Container Apps: activate the previous revision.
 
 If the new release ran a migration the old code cannot read, the rollback is a **database restore** (section 7) from the pre-upgrade dump, and data since the upgrade is lost; say so in the change ticket. `python scripts/migrate.py --current` shows the schema revision; `alembic downgrade <rev>` is only used when the migration author has confirmed the downgrade is safe for data written since. Note for this release: revision `95936aa8afb2` (encryption at rest, keyed audit signatures) writes `enc:v1:` values and key-id signatures that the previous image cannot interpret; rolling back across it requires the restore path.
 
@@ -394,16 +394,16 @@ Severity scale from `docs/RUNBOOKS.md`: **S1** security control failed or eviden
 
 | Trigger | Severity | Page | Runbook |
 |---|---|---|---|
-| `SentinelApiDown`, `/ready` 503 | S2 | Sentinel platform on-call: ____________ | API unavailable |
-| `SentinelNoJobsCompleting`, `SentinelJobsFailing` | S2 (S1 if detections) | Sentinel platform on-call: ____________ | Lost worker / Redis down |
+| `ArgusApiDown`, `/ready` 503 | S2 | Argus platform on-call: ____________ | API unavailable |
+| `ArgusNoJobsCompleting`, `ArgusJobsFailing` | S2 (S1 if detections) | Argus platform on-call: ____________ | Lost worker / Redis down |
 | `GET /api/v1/audit/verify` -> `valid:false` | S1 | Security lead: ____________ and platform on-call | Audit chain verification failure |
-| `SentinelCanaryTripped` | S1 | Customer SOC lead for the tenant: ____________ | Handling a canary hit |
+| `ArgusCanaryTripped` | S1 | Customer SOC lead for the tenant: ____________ | Handling a canary hit |
 | API key exposure, unexpected `last_used_at` | S1 | Security lead: ____________ | Revoking a compromised API key |
-| `SentinelHigh5xxRate`, `SentinelSlowRequests` | S3 | Platform on-call (business hours) | API unavailable |
-| `SentinelCriticalFindingsOpen` | per tenant SLA | Customer SOC lead for the tenant | n/a |
+| `ArgusHigh5xxRate`, `ArgusSlowRequests` | S3 | Platform on-call (business hours) | API unavailable |
+| `ArgusCriticalFindingsOpen` | per tenant SLA | Customer SOC lead for the tenant | n/a |
 | Any request to lift the kill switch | change approval | Service owner: ____________ + customer sign-off | Disabling actions via the kill switch |
 
-Escalation: platform on-call -> service owner (____________) -> vendor engineering (____________). Alert routing comes from `infra/prometheus/rules/sentinel.yml` (or the CloudWatch / Azure Monitor equivalents created by Terraform); confirm a test alert reaches the pager before go-live.
+Escalation: platform on-call -> service owner (____________) -> vendor engineering (____________). Alert routing comes from `infra/prometheus/rules/argus.yml` (or the CloudWatch / Azure Monitor equivalents created by Terraform); confirm a test alert reaches the pager before go-live.
 
 ---
 
@@ -423,7 +423,7 @@ Escalation: platform on-call -> service owner (____________) -> vendor engineeri
 Every secret used by a collector, integration or action executor is a *reference*, never a value.
 In production the platform only resolves:
 
-- `env:SENTINEL_SECRET_<NAME>` (any name with the `SECRET_ENV_PREFIX` prefix) or an exact name listed in `SECRET_ENV_ALLOWLIST`;
+- `env:ARGUS_SECRET_<NAME>` (any name with the `SECRET_ENV_PREFIX` prefix) or an exact name listed in `SECRET_ENV_ALLOWLIST`;
 - `file:<path>` where the path resolves under `SECRETS_DIR` (default `/run/secrets`, i.e. Kubernetes or Docker secret mounts);
 - `secrets:<key>` from the configured secrets file.
 

@@ -2,7 +2,7 @@ locals {
   prefix = "${var.name}-${var.environment}"
   short  = substr(replace(local.prefix, "-", ""), 0, 20) # storage/key vault names: alphanumeric, <= 24
   tags = merge({
-    Project     = "sentinel"
+    Project     = "argus"
     Environment = var.environment
     ManagedBy   = "terraform"
   }, var.tags)

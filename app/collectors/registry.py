@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover
     from .base import Collector
 
-log = logging.getLogger('sentinel.collectors')
+log = logging.getLogger('argus.collectors')
 
 KINDS = ('cloud', 'identity', 'code', 'endpoint', 'network', 'k8s')
 BUILTIN = ('aws', 'azure', 'gcp', 'kubernetes', 'github', 'okta', 'entra', 'osquery', 'netflow')

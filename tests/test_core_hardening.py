@@ -12,14 +12,14 @@ def _settings(tmp_path, **overrides):
 
 
 def test_sec_secret_refs_restricted_to_prefix_allowlist_and_secrets_dir(tmp_path, monkeypatch):
-    settings = _settings(tmp_path, secret_env_allowlist='SENTINEL_AWS_ROLE')
+    settings = _settings(tmp_path, secret_env_allowlist='ARGUS_AWS_ROLE')
     monkeypatch.setenv('SESSION_SECRET', 'the-session-secret')
-    monkeypatch.setenv('SENTINEL_SECRET_GH', 'gh-token')
-    monkeypatch.setenv('SENTINEL_AWS_ROLE', 'arn:aws:iam::1:role/x')
+    monkeypatch.setenv('ARGUS_SECRET_GH', 'gh-token')
+    monkeypatch.setenv('ARGUS_AWS_ROLE', 'arn:aws:iam::1:role/x')
     assert resolve_secret('env:SESSION_SECRET', settings) == ''
     assert resolve_secret('env:DATABASE_URL', settings) == ''
-    assert resolve_secret('env:SENTINEL_SECRET_GH', settings) == 'gh-token'
-    assert resolve_secret('env:SENTINEL_AWS_ROLE', settings) == 'arn:aws:iam::1:role/x'
+    assert resolve_secret('env:ARGUS_SECRET_GH', settings) == 'gh-token'
+    assert resolve_secret('env:ARGUS_AWS_ROLE', settings) == 'arn:aws:iam::1:role/x'
     (tmp_path / 'secrets').mkdir()
     (tmp_path / 'secrets' / 'db').write_text('pw', encoding='utf-8')
     (tmp_path / 'outside').write_text('nope', encoding='utf-8')

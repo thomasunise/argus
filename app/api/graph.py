@@ -81,9 +81,9 @@ def patch_attack_path(path_id: str, body: PathPatch, db: Session = Depends(get_d
     if not path:
         raise NotFound('Attack path not found')
     if body.status not in ATTACK_PATH_STATUSES:
-        from ..core.errors import SentinelError
+        from ..core.errors import ArgusError
 
-        raise SentinelError(f'status must be one of {", ".join(ATTACK_PATH_STATUSES)}', code='invalid_status')
+        raise ArgusError(f'status must be one of {", ".join(ATTACK_PATH_STATUSES)}', code='invalid_status')
     previous = path.status
     path.status = body.status
     path.computed_at = path.computed_at or utcnow()

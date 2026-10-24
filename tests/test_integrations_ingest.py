@@ -32,7 +32,7 @@ def test_ingest_auth_matrix(owner, ingest_key, api_key):
     assert ingest(client, api_key, 'falco', payload).status_code == 200
     assert client.post('/api/v1/ingest/falco', json=payload, headers=headers).status_code == 401          # session user
     assert client.post('/api/v1/ingest/falco', json=payload).status_code == 401                           # anonymous
-    assert client.post('/api/v1/ingest/falco', json=payload, headers={'X-API-Key': 'snt_deadbeef_notarealkey'}).status_code == 401
+    assert client.post('/api/v1/ingest/falco', json=payload, headers={'X-API-Key': 'argus_deadbeef_notarealkey'}).status_code == 401
     viewer = client.post('/api/v1/auth/api-keys', json={'name': 'ro', 'role': 'viewer', 'scopes': ['findings:read']}, headers=headers).json()['key']
     assert ingest(client, viewer, 'falco', payload).status_code == 403                                     # viewer key without ingest scope
 
@@ -175,7 +175,7 @@ def test_okta_challenge_and_shared_header(owner, db, monkeypatch):
 
 def test_wazuh_sync_job_pulls_since_last_run(owner, db, default_tenant_id, monkeypatch):
     client, headers = owner
-    monkeypatch.setenv('WZ_USER', 'sentinel-ro')
+    monkeypatch.setenv('WZ_USER', 'argus-ro')
     monkeypatch.setenv('WZ_PASS', 'indexer-password-1')
     created = client.post('/api/v1/integrations', json={'name': 'wazuh indexer', 'kind': 'wazuh',
                                                         'config': {'indexer_url': 'https://indexer.test:9200', 'lookback_minutes': 30, 'page_size': 200},

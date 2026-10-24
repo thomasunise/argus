@@ -26,7 +26,7 @@ from ..models.inventory import ASSET_KINDS, ENVIRONMENTS
 from ._common import BadRequest, active_authorizations, asset_to_dict, authorization_to_dict, like
 from .deps import Page, get_db, get_settings, require
 
-log = logging.getLogger('sentinel.api.assets')
+log = logging.getLogger('argus.api.assets')
 
 router = APIRouter(prefix='/api/v1/assets', tags=['assets'])
 

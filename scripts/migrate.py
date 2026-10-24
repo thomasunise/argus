@@ -1,4 +1,4 @@
-"""Apply the database schema for Sentinel.
+"""Apply the database schema for Argus.
 
 Order of preference:
   1. Alembic, when `alembic.ini` and `alembic/env.py` exist (the normal path; see docs/MIGRATIONS.md).
@@ -23,9 +23,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault('SENTINEL_LAZY_APP', '1')
+os.environ.setdefault('ARGUS_LAZY_APP', '1')
 
-log = logging.getLogger('sentinel.migrate')
+log = logging.getLogger('argus.migrate')
 
 
 def _alembic_available() -> bool:

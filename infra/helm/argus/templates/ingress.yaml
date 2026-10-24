@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "sentinel.fullname" . }}
+  name: {{ include "argus.fullname" . }}
   labels:
-    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- include "argus.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -27,7 +27,7 @@ spec:
             pathType: {{ .Values.ingress.pathType }}
             backend:
               service:
-                name: {{ include "sentinel.fullname" . }}
+                name: {{ include "argus.fullname" . }}
                 port:
                   name: http
 {{- end }}

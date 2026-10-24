@@ -1,7 +1,7 @@
 variable "name" {
   description = "Resource name prefix."
   type        = string
-  default     = "sentinel"
+  default     = "argus"
 }
 
 variable "environment" {
@@ -29,7 +29,7 @@ variable "az_count" {
 }
 
 variable "image" {
-  description = "Sentinel container image, digest-pinned in production (ghcr.io/eekosystems/sentinel@sha256:...). Use the `<tag>-extras` image: the S3 audit sink configured here needs boto3."
+  description = "Argus container image, digest-pinned in production (ghcr.io/thomasunise/argus@sha256:...). Use the `<tag>-extras` image: the S3 audit sink configured here needs boto3."
   type        = string
 }
 

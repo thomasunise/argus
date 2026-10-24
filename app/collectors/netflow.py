@@ -23,7 +23,7 @@ from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, is_private_ip, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.netflow')
+log = logging.getLogger('argus.collectors.netflow')
 
 SENSITIVE_PORTS = {22: 'ssh', 23: 'telnet', 3389: 'rdp', 445: 'smb', 1433: 'mssql', 3306: 'mysql', 5432: 'postgres', 6379: 'redis', 27017: 'mongodb', 4444: 'metasploit',
                    1337: 'leet', 6667: 'irc', 9001: 'tor', 9030: 'tor', 25: 'smtp', 53: 'dns', 443: 'https', 80: 'http'}

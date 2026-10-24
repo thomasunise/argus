@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 
-class SentinelError(Exception):
+class ArgusError(Exception):
     status = 400
     code = 'error'
 
@@ -17,17 +17,17 @@ class SentinelError(Exception):
             self.status = status
 
 
-class NotFound(SentinelError):
+class NotFound(ArgusError):
     status = 404
     code = 'not_found'
 
 
-class Conflict(SentinelError):
+class Conflict(ArgusError):
     status = 409
     code = 'conflict'
 
 
-class PolicyDenied(SentinelError):
+class PolicyDenied(ArgusError):
     status = 403
     code = 'policy_denied'
 
@@ -36,27 +36,27 @@ class ScopeDenied(PolicyDenied):
     code = 'scope_denied'
 
 
-class Forbidden(SentinelError):
+class Forbidden(ArgusError):
     status = 403
     code = 'forbidden'
 
 
-class Unauthorized(SentinelError):
+class Unauthorized(ArgusError):
     status = 401
     code = 'unauthorized'
 
 
-class RateLimited(SentinelError):
+class RateLimited(ArgusError):
     status = 429
     code = 'rate_limited'
 
 
-class Unavailable(SentinelError):
+class Unavailable(ArgusError):
     status = 503
     code = 'unavailable'
 
 
 def install_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(SentinelError)
-    async def _handle(request: Request, exc: SentinelError):
+    @app.exception_handler(ArgusError)
+    async def _handle(request: Request, exc: ArgusError):
         return JSONResponse(status_code=exc.status, content={'detail': exc.message, 'code': exc.code})

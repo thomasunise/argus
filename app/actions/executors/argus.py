@@ -1,4 +1,4 @@
-"""Internal actions that change Sentinel's own records. Low risk, reversible, no network.
+"""Internal actions that change Argus's own records. Low risk, reversible, no network.
 They still go through the broker so the change is proposed, approved and audited like any other."""
 from __future__ import annotations
 
@@ -19,14 +19,14 @@ def _db(ctx: ExecContext):
 
 @register
 class UpdateFindingStatus(ActionType):
-    name = 'sentinel.finding.update_status'
-    description = 'Change the status of a Sentinel finding (open, investigating, resolved, accepted, false_positive).'
+    name = 'argus.finding.update_status'
+    description = 'Change the status of a Argus finding (open, investigating, resolved, accepted, false_positive).'
     params_schema = {'properties': {'finding_id': _ID, 'status': {'type': 'string', 'enum': list(FINDING_STATUSES)},
                                     'note': {'type': 'string', 'maxLength': 2000, 'default': ''}},
                      'required': ['finding_id', 'status']}
     risk = 'low'
     reversible = True
-    platforms = ['sentinel']
+    platforms = ['argus']
     category = 'internal'
 
     @staticmethod
@@ -74,14 +74,14 @@ class UpdateFindingStatus(ActionType):
 
 @register
 class RevokeAssetAuthorization(ActionType):
-    name = 'sentinel.asset.revoke_authorization'
+    name = 'argus.asset.revoke_authorization'
     description = 'Revoke the active testing authorization(s) of an asset so no further active tests can run against it.'
     params_schema = {'properties': {'asset_id': _ID, 'authorization_id': {'type': 'string', 'maxLength': 36},
                                     'reason': {'type': 'string', 'maxLength': 1000, 'default': ''}},
                      'required': ['asset_id']}
     risk = 'low'
     reversible = True
-    platforms = ['sentinel']
+    platforms = ['argus']
     category = 'internal'
 
     @staticmethod

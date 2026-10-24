@@ -16,7 +16,7 @@ from . import engine
 from .engine import DetectionDraft, DetectionRule, RuleContext, registry, run, update_baselines  # noqa: F401
 from .util import aware
 
-log = logging.getLogger('sentinel.detections')
+log = logging.getLogger('argus.detections')
 
 DEFAULT_INTERVAL_SECONDS = 60
 MIN_INTERVAL_SECONDS = 15

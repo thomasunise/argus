@@ -1,4 +1,4 @@
-"""ServiceNow Table API: create an incident per subject (correlation_id = sentinel subject id) and
+"""ServiceNow Table API: create an incident per subject (correlation_id = argus subject id) and
 update it (work notes, state) on later events."""
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ STATE_RESOLVED = '6'
 
 
 def correlation_id(event: OutboundEvent) -> str:
-    return f'sentinel:{event.subject_kind or "event"}:{event.subject_id or event.delivery_id}'[:100]
+    return f'argus:{event.subject_kind or "event"}:{event.subject_id or event.delivery_id}'[:100]
 
 
 def build_incident(event: OutboundEvent, config: dict[str, Any]) -> dict[str, Any]:
     impact, urgency = _IMPACT_URGENCY.get(event.severity, ('3', '3'))
     description = '\n'.join(x for x in [event.summary, f'Topic: {event.topic}', f'Severity: {severity_label(event.severity)}',
-                                        f'Sentinel {event.subject_kind} id: {event.subject_id}', f'Link: {event.url}' if event.url else ''] if x)
+                                        f'Argus {event.subject_kind} id: {event.subject_id}', f'Link: {event.url}' if event.url else ''] if x)
     body: dict[str, Any] = {'short_description': f'[{severity_label(event.severity)}] {event.title}'[:160], 'description': description[:4000],
                             'impact': impact, 'urgency': urgency, 'correlation_id': correlation_id(event), 'category': str(config.get('category') or 'security')}
     for key in ('assignment_group', 'caller_id', 'business_service', 'cmdb_ci'):
@@ -72,9 +72,9 @@ class ServiceNowChannel(Channel):
             rows = []
         if rows:
             sys_id, number = str(rows[0].get('sys_id') or ''), str(rows[0].get('number') or '')
-            patch: dict[str, Any] = {'work_notes': f'Sentinel update ({event.topic}): {event.title}' + (f' - status {event.status}' if event.status else '')}
+            patch: dict[str, Any] = {'work_notes': f'Argus update ({event.topic}): {event.title}' + (f' - status {event.status}' if event.status else '')}
             if event.is_resolution:
-                patch.update({'state': STATE_RESOLVED, 'close_code': 'Solved (Permanently)', 'close_notes': f'Resolved in Sentinel: {event.title}'[:4000]})
+                patch.update({'state': STATE_RESOLVED, 'close_code': 'Solved (Permanently)', 'close_notes': f'Resolved in Argus: {event.title}'[:4000]})
             response, error = await request_with_retry(lambda c: c.patch(f'{base}/api/now/table/{table}/{sys_id}', json=patch, headers=headers, auth=auth),
                                                        attempts=2, timeout=timeout)
             return result_from_response(response, error, external_ref=number or sys_id)

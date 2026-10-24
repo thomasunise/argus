@@ -22,9 +22,13 @@ from ..core.security import redact
 from . import scope as scope_module
 from .ratelimit import RateLimiter, limiter_for
 
-log = logging.getLogger('sentinel.testing')
+log = logging.getLogger('argus.testing')
 
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024  # 2 MB per stream
+
+# A run that finds its scope at max_concurrency waits and tries again instead of starting.
+CONCURRENCY_RETRY_SECONDS = 15
+MAX_CONCURRENCY_DEFERRALS = 240  # about an hour of waiting before the run is failed
 
 
 @dataclass
@@ -141,12 +145,15 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
-async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbeat=None, job_tenant_id: str = '') -> dict:
+async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbeat=None, job_tenant_id: str = '',
+                      deferrals: int = 0) -> dict:
     """Load a TestRun, re-check scope at execution time, rate limit, run the adapter under a
     timeout, upsert findings and write TestResult rows. Returns a small status dict.
 
     All DB access uses short session_scope blocks so the long adapter call holds no session.
     `heartbeat` is the queue job's ctx.heartbeat (extends the lease / observes cancellation).
+    When the scope already has `max_concurrency` runs in progress the run stays queued and is
+    re-enqueued after CONCURRENCY_RETRY_SECONDS; `deferrals` counts how often that happened.
     """
     from ..core.audit import record_audit
     from ..core.db import session_scope
@@ -172,15 +179,20 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
         scope = db.get(TestScope, run.scope_id) if run.scope_id else None
         if scope is not None and scope.tenant_id != tenant_id:
             scope = None
+        if scope is not None and run.status == 'queued' and _scope_at_capacity(db, scope, run_id, settings):
+            busy = True
+        else:
+            busy = False
         authorization = None
-        if asset is not None:
+        if asset is not None and not busy:
             authorization = db.execute(
                 select(AssetAuthorization)
                 .where(AssetAuthorization.tenant_id == tenant_id, AssetAuthorization.asset_id == asset.id,
                        AssetAuthorization.revoked_at.is_(None))
                 .order_by(AssetAuthorization.created_at.desc())
             ).scalars().first()
-        run.status, run.started_at = 'running', utcnow()
+        if not busy:
+            run.status, run.started_at = 'running', utcnow()
         run_tier = run.tier
         # Detach the values we need before the session closes.
         asset_snapshot = _AssetSnapshot.of(asset) if asset else None
@@ -188,6 +200,10 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
         auth_snapshot = _AuthSnapshot.of(authorization) if authorization else None
 
     principal = system_principal(tenant_id)
+
+    if busy:
+        return await _defer_for_concurrency(app, db_factory, settings, principal, run_id, tenant_id, scope_snapshot,
+                                            deferrals)
 
     # 2) re-check scope at execution time
     now = datetime.now(timezone.utc)
@@ -269,6 +285,59 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
                      {'adapter': adapter.name, 'asset_id': run.asset_id, 'tier': run.tier, 'findings': written})
     log.info('run %s (%s) completed: %d findings', run_id, adapter.name, written)
     return {'run_id': run_id, 'status': 'completed', 'result_count': written}
+
+
+def _scope_at_capacity(db, scope, run_id: str, settings: Settings) -> bool:
+    """True when the scope already has max_concurrency runs in progress. Runs started longer ago than the tool
+    timeout plus a margin are treated as dead (a crashed worker) so they cannot hold a slot forever. On PostgreSQL a
+    transaction-scoped lock per scope makes the count and the switch to 'running' atomic across workers and
+    replicas; SQLite (development only) serializes writers anyway."""
+    from datetime import timedelta
+
+    from sqlalchemy import func, select, text
+
+    from ..models import utcnow
+    from ..models.testing import TestRun
+
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == 'postgresql':
+        db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:key))'), {'key': f'testing.scope:{scope.id}'})
+    alive_since = utcnow() - timedelta(seconds=settings.test_tool_timeout_seconds + 120)
+    running = db.execute(
+        select(func.count()).select_from(TestRun)
+        .where(TestRun.tenant_id == scope.tenant_id, TestRun.scope_id == scope.id, TestRun.status == 'running',
+               TestRun.id != run_id, TestRun.started_at >= alive_since)
+    ).scalar_one()
+    return running >= max(1, int(scope.max_concurrency or 1))
+
+
+async def _defer_for_concurrency(app, db_factory, settings: Settings, principal, run_id: str, tenant_id: str,
+                                 scope_snapshot, deferrals: int) -> dict:
+    from ..core.audit import record_audit
+    from ..core.db import session_scope
+    from ..models import utcnow
+    from ..models.testing import TestRun
+
+    limit = scope_snapshot.max_concurrency if scope_snapshot else 1
+    if deferrals >= MAX_CONCURRENCY_DEFERRALS:
+        reason = f'scope stayed at max_concurrency ({limit}) for {deferrals} retries'
+        with session_scope(db_factory) as db:
+            run = db.get(TestRun, run_id)
+            run.status, run.error, run.finished_at = 'failed', reason, utcnow()
+            record_audit(db, principal, 'testing.run.failed', run_id, {'adapter': run.adapter, 'error': 'concurrency_wait'})
+        log.warning('run %s failed: %s', run_id, reason)
+        return {'run_id': run_id, 'status': 'failed', 'error': 'concurrency_wait'}
+    from .service import _lease_seconds
+
+    job = await app.state.queue.enqueue('testing.run', {'run_id': run_id, 'deferrals': deferrals + 1},
+                                        tenant_id=tenant_id, lease_seconds=_lease_seconds(settings),
+                                        delay_seconds=CONCURRENCY_RETRY_SECONDS)
+    with session_scope(db_factory) as db:
+        run = db.get(TestRun, run_id)
+        if run is not None:
+            run.job_id = job.id
+    log.info('run %s deferred: scope at max_concurrency %s (retry %d)', run_id, limit, deferrals + 1)
+    return {'run_id': run_id, 'status': 'deferred', 'job_id': job.id}
 
 
 def precheck(db, adapter: TestAdapter, asset, scope, settings: Settings, *, tier: str | None = None) -> str:

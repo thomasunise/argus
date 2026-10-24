@@ -1,7 +1,7 @@
 # Runbooks
 
 Each runbook: symptoms, impact, diagnosis, action, verification, follow-up. Commands assume
-the compose stack (`docker compose exec api ...`) or Kubernetes (`kubectl -n sentinel ...`);
+the compose stack (`docker compose exec api ...`) or Kubernetes (`kubectl -n argus ...`);
 adapt for ECS (`aws ecs execute-command` is disabled by default; use CloudWatch logs) or
 Container Apps (`az containerapp logs show`). API calls need an operator or admin session or
 API key (`X-API-Key`), and session calls need `X-CSRF-Token`.
@@ -28,7 +28,7 @@ S2 (platform degraded), S3 (single feature degraded).
 
 ## API unavailable
 
-**Symptoms.** `up{job="sentinel-api"} == 0`, load balancer health checks failing, 5xx from the edge. S2.
+**Symptoms.** `up{job="argus-api"} == 0`, load balancer health checks failing, 5xx from the edge. S2.
 
 **Diagnosis.**
 
@@ -42,7 +42,7 @@ Common causes: a config violation at startup (`SESSION_SECRET`, `ADMIN_PASSWORD`
 requirements), database unreachable or credentials rotated, migrations failing
 (`RUN_MIGRATIONS=true` runs `scripts/migrate.py` before uvicorn), disk full on SQLite volumes.
 
-**Action.** Fix the cause and restart (`docker compose up -d api`, `kubectl rollout restart deploy/sentinel-api`). If a new image is the cause, roll back to the previous digest.
+**Action.** Fix the cause and restart (`docker compose up -d api`, `kubectl rollout restart deploy/argus-api`). If a new image is the cause, roll back to the previous digest.
 
 **Verification.** `/ready` returns 200 with `{"status":"ready"}`; the Grafana "API up" stat is 1.
 
@@ -50,13 +50,13 @@ requirements), database unreachable or credentials rotated, migrations failing
 
 ## Lost worker
 
-**Symptoms.** `sentinel_jobs_total{status="queued"}` grows while `completed` is flat
-(`SentinelNoJobsCompleting`), `GET /api/v1/ops/jobs?status=running` shows jobs whose
+**Symptoms.** `argus_jobs_total{status="queued"}` grows while `completed` is flat
+(`ArgusNoJobsCompleting`), `GET /api/v1/ops/jobs?status=running` shows jobs whose
 `started_at` is older than their lease, worker logs stopped. S2 (S1 if detection or action
 jobs are affected).
 
 **How the system self-heals.** With Redis, each running job holds a lease key
-(`sentinel:lease:<id>`, TTL `lease_seconds`, default 600). Handlers extend it with
+(`argus:lease:<id>`, TTL `lease_seconds`, default 600). Handlers extend it with
 `ctx.heartbeat()`. The reaper loop (runs in every process with the queue started, every 5 s)
 requeues jobs whose lease expired with `error="lease expired; worker lost"`, up to
 `max_attempts`; beyond that the job is `failed`.
@@ -65,18 +65,18 @@ requeues jobs whose lease expired with `error="lease expired; worker lost"`, up 
 
 ```bash
 docker compose ps worker; docker compose logs --tail=200 worker
-kubectl -n sentinel get pods -l app.kubernetes.io/component=worker
+kubectl -n argus get pods -l app.kubernetes.io/component=worker
 curl -s -H "X-API-Key: $KEY" 'http://127.0.0.1:8080/api/v1/ops/jobs?status=running'
-redis-cli -u "$REDIS_URL" SCARD sentinel:running; redis-cli -u "$REDIS_URL" LLEN sentinel:q:5
+redis-cli -u "$REDIS_URL" SCARD argus:running; redis-cli -u "$REDIS_URL" LLEN argus:q:5
 ```
 
 **Action.**
 
-1. Restart or scale the worker (`docker compose up -d worker`, `kubectl scale deploy/sentinel-worker --replicas=2`).
+1. Restart or scale the worker (`docker compose up -d worker`, `kubectl scale deploy/argus-worker --replicas=2`).
 2. Wait one reaper cycle plus the lease time for orphaned jobs to be reclaimed. To force a specific stuck job: `POST /api/v1/ops/jobs/{id}/cancel` (admin) and re-trigger the originating action (collector run, detection run, test plan run).
 3. If the worker crash-loops on a specific job kind, check the handler error in `GET /api/v1/ops/jobs/{id}` (`error` field, truncated to 1000 chars) and the worker log; cancel the job if it is the cause.
 
-**Verification.** `completed` rate recovers; `SCARD sentinel:running` matches the number of genuinely running jobs.
+**Verification.** `completed` rate recovers; `SCARD argus:running` matches the number of genuinely running jobs.
 
 **Follow-up.** Idempotency is a handler requirement; if a job produced duplicate side effects after reclaim, file it against the owning package.
 
@@ -111,8 +111,8 @@ redis-cli -u "$REDIS_URL" SCARD sentinel:running; redis-cli -u "$REDIS_URL" LLEN
 1. Was the signing key rotated without following the rotation runbook? A `signature` failure on every entry up to a point in time means the key changed; see below.
 2. Was the database restored from a backup, migrated, or edited? Compare the entry with the mirror:
    - JSONL: `grep '"id": <broken_at>' /app/data/audit.jsonl`
-   - S3: `aws s3 cp s3://<bucket>/sentinel-audit/<tenant>/<id padded to 12>.json -`
-   - Azure: `az storage blob download --container-name sentinel-audit --name <tenant>/<id>.json`
+   - S3: `aws s3 cp s3://<bucket>/argus-audit/<tenant>/<id padded to 12>.json -`
+   - Azure: `az storage blob download --container-name argus-audit --name <tenant>/<id>.json`
    The mirror record carries `entry_hash`, `previous_hash`, `signature` and the detail text as written at the time.
 3. Check the database audit logs (RDS `postgresql` log export, Azure diagnostic logs) for writes to the `audit` table from anything other than the application role.
 
@@ -132,7 +132,7 @@ redis-cli -u "$REDIS_URL" SCARD sentinel:running; redis-cli -u "$REDIS_URL" LLEN
 
 **Action.**
 
-1. Identify the key by prefix: the plaintext is `snt_<8 hex prefix>_<body>`; `GET /api/v1/auth/api-keys` lists `prefix`, `name`, `role`, `scopes`, `last_used_at`.
+1. Identify the key by prefix: the plaintext is `argus_<8 hex prefix>_<body>`; `GET /api/v1/auth/api-keys` lists `prefix`, `name`, `role`, `scopes`, `last_used_at`.
 2. Revoke: `DELETE /api/v1/auth/api-keys/{key_id}` (admin, `admin:api_keys`). Revocation is immediate: `_principal_from_api_key` ignores rows with `revoked_at` set. The audit entry `auth.api_key_revoked` is recorded.
 3. If the compromised key is the bootstrap `INGEST_API_KEY`: revoke it as above and also remove or change `INGEST_API_KEY` in the environment, because `bootstrap()` re-creates a key for that value on the next start if its hash is absent.
 4. Issue a replacement with the least role and scopes (`POST /api/v1/auth/api-keys` with `{"name": ..., "role": "viewer", "scopes": ["ingest"]}`) and deliver it out of band.
@@ -183,7 +183,7 @@ A code change that stores a key id per entry and verifies segments with the matc
 # compose
 sed -i 's/^ACTIONS_KILL_SWITCH=.*/ACTIONS_KILL_SWITCH=true/' .env && docker compose up -d api worker
 # kubernetes
-kubectl -n sentinel set env deploy/sentinel-api deploy/sentinel-worker ACTIONS_KILL_SWITCH=true
+kubectl -n argus set env deploy/argus-api deploy/argus-worker ACTIONS_KILL_SWITCH=true
 # ECS: update the task definition environment and force a new deployment; Container Apps: az containerapp update --set-env-vars ACTIONS_KILL_SWITCH=true
 ```
 
@@ -199,8 +199,8 @@ kubectl -n sentinel set env deploy/sentinel-api deploy/sentinel-worker ACTIONS_K
 
 ## Handling a canary hit
 
-**Symptoms.** `sentinel_detections_total{rule="canary.tripwire"}` increments
-(`SentinelCanaryTripped` alert, critical), a `Detection` with `entity_kind=canary`, a `Finding`
+**Symptoms.** `argus_detections_total{rule="canary.tripwire"}` increments
+(`ArgusCanaryTripped` alert, critical), a `Detection` with `entity_kind=canary`, a `Finding`
 from source `detections`, and `CanaryHit` rows under `GET /api/v1/canaries/{id}/hits`. S1:
 a canary is used only by someone who found it where it was planted.
 
@@ -232,7 +232,7 @@ a canary is used only by someone who found it where it was planted.
 3. If rollback fails, the run records the error; the estate may be partially reverted. Follow the action type's manual reversal notes (`GET /api/v1/actions/catalog` includes the description) and record the manual steps in the audit log through an admin action.
 4. If the action should never have executed, apply the kill switch (above) while you review policy settings (`ACTIONS_AUTO_APPROVE_LOW`, thresholds, maintenance window) and the approvals on the request.
 
-**Verification.** The original run shows `rolled_back`; `sentinel_actions_total{status="rolled_back"}` increments; the target resource is in its previous state (verify out of band, Sentinel does not re-inspect automatically unless a collector runs).
+**Verification.** The original run shows `rolled_back`; `argus_actions_total{status="rolled_back"}` increments; the target resource is in its previous state (verify out of band, Argus does not re-inspect automatically unless a collector runs).
 
 ---
 

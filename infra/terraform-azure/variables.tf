@@ -1,7 +1,7 @@
 variable "name" {
   description = "Resource name prefix (lowercase, letters and digits)."
   type        = string
-  default     = "sentinel"
+  default     = "argus"
 }
 
 variable "environment" {
@@ -17,7 +17,7 @@ variable "location" {
 }
 
 variable "image" {
-  description = "Sentinel container image, digest-pinned in production. Use the `<tag>-extras` image: the Azure Blob audit sink configured here needs azure-storage-blob."
+  description = "Argus container image, digest-pinned in production. Use the `<tag>-extras` image: the Azure Blob audit sink configured here needs azure-storage-blob."
   type        = string
 }
 

@@ -1,1 +1,1 @@
-"""Sentinel: constrained, evidence-first security monitoring platform."""
+"""Argus: constrained, evidence-first security monitoring platform."""

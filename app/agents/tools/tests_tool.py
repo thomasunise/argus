@@ -81,7 +81,7 @@ def adapter_catalog() -> list[dict] | None:
     return None
 
 
-@registry.tool('available_test_adapters', 'Test adapters Sentinel can run (name, tier passive/active/intrusive, target kinds, installed or not). Agents cannot run them.',
+@registry.tool('available_test_adapters', 'Test adapters Argus can run (name, tier passive/active/intrusive, target kinds, installed or not). Agents cannot run them.',
                {'properties': {}, 'required': []}, tags=('testing',))
 def available_test_adapters(args: dict, ctx: ToolContext) -> dict:
     adapters = adapter_catalog()

@@ -39,7 +39,7 @@ Authentication and sessions (`app/core/security.py`, `app/api/auth.py`, `app/api
 - Login throttling per client IP (`LOGIN_MAX_ATTEMPTS` in `LOGIN_WINDOW_SECONDS`).
 - TOTP (RFC 6238, six digits, one-step window); `TOTP_REQUIRED` enforces it.
 - OIDC authorization code with PKCE (S256), state and nonce, ID token verified against the JWKS with issuer and audience, optional email-domain allowlist and auto-provisioning with a default role.
-- API keys: `snt_<prefix>_<body>`, SHA-256 hash stored, revocation, last-used tracking, role plus optional scopes; ingest keys use `require_scope('ingest')`.
+- API keys: `argus_<prefix>_<body>`, SHA-256 hash stored, revocation, last-used tracking, role plus optional scopes; ingest keys use `require_scope('ingest')`.
 - RBAC: five cumulative roles; every endpoint declares its permission.
 - Rate limits: per principal (`API_RATE_LIMIT_PER_MINUTE`) and per ingest key (`INGEST_RATE_LIMIT_PER_MINUTE`), in-process sliding window.
 
@@ -57,7 +57,7 @@ Audit (`app/core/audit.py`)
 
 Data handling
 
-- `redact()` patterns cover AWS keys, bearer tokens, `key=value` secrets, private key blocks, OpenAI-style keys, Sentinel API keys, GitHub and Slack tokens.
+- `redact()` patterns cover AWS keys, bearer tokens, `key=value` secrets, private key blocks, OpenAI-style keys, Argus API keys, GitHub and Slack tokens.
 - Finding evidence capped at 6 KB, event metadata at 8 KB, audit detail at 4 KB, tool results at `AGENT_TOOL_RESULT_LIMIT`.
 - Collector and integration credentials are `secret_ref` strings resolved at run time (`env:`, `file:`, `secrets:`).
 
@@ -67,7 +67,7 @@ Target policy and testing (`app/core/policy.py`, `app/testing/`)
 - Repo targets: must resolve under `SCAN_ROOT`.
 - `scope.check()` enforces scope validity, asset membership, environment, tier (scope and authorization), intrusive-only-in-staging/lab, time window, target validity, at request and execution.
 - `run_tool()` executes a fixed argv with a timeout, bounded output, redaction and a minimal environment.
-- Per-scope `max_rps` and `max_concurrency`; global `TEST_RATE_LIMIT_RPS` and `TEST_TOOL_TIMEOUT_SECONDS`.
+- Per-scope `max_rps` and `max_concurrency` (runs beyond the limit wait in the queue); global `TEST_RATE_LIMIT_RPS` and `TEST_TOOL_TIMEOUT_SECONDS`.
 
 Agents (`app/agents/`)
 

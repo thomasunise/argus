@@ -18,7 +18,7 @@ from ...core.findings import SEVERITIES, event_to_dict, finding_to_dict
 from ...models import Asset, AssetAuthorization, Finding, SecurityEvent, loads, utcnow
 from .registry import ToolContext
 
-log = logging.getLogger('sentinel.agents.tools')
+log = logging.getLogger('argus.agents.tools')
 
 OPEN_STATUSES = ('open', 'investigating')
 SEVERITY_RANK = {name: index for index, name in enumerate(SEVERITIES)}

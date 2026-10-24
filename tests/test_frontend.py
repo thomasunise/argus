@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault('SENTINEL_LAZY_APP', '1')
+os.environ.setdefault('ARGUS_LAZY_APP', '1')
 os.environ['ADMIN_PASSWORD'] = 'test-password-very-long-123456'
 os.environ['ADMIN_EMAIL'] = 'admin@test.local'
 os.environ['SESSION_SECRET'] = 'session-secret-testing-longer-than-32-characters'
-os.environ['INGEST_API_KEY'] = 'snt_0123abcd_ingest-key-testing-longer-than-24-characters'
+os.environ['INGEST_API_KEY'] = 'argus_0123abcd_ingest-key-testing-longer-than-24-characters'
 os.environ.pop('AI_PROVIDER', None)
 os.environ.pop('REDIS_URL', None)
 
@@ -135,7 +135,7 @@ def boot_server(tmp_dir: Path) -> dict:
                         actions_kill_switch=False, base_url=f'http://127.0.0.1:{port}')
     app = create_app(settings)
     server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=port, log_level='warning', lifespan='on'))
-    thread = threading.Thread(target=server.run, daemon=True, name='sentinel-frontend-test')
+    thread = threading.Thread(target=server.run, daemon=True, name='argus-frontend-test')
     thread.start()
     import urllib.request
 
@@ -350,13 +350,13 @@ def test_action_request_approved_by_second_user_and_executed(browser, server):
         admin.page.wait_for_function("() => document.querySelector('#kill-banner').classList.contains('hidden')")
         admin.page.wait_for_timeout(500)  # the API commits after responding; let the tenant flag land before requesting
         admin.goto(f'actions/requests/new?finding_id={server["finding_id"]}')
-        admin.page.select_option('#main form [name=action_type]', 'sentinel.finding.update_status')
+        admin.page.select_option('#main form [name=action_type]', 'argus.finding.update_status')
         admin.page.wait_for_selector('#main form [name="params.status"]')
         admin.page.select_option('#main form [name="params.status"]', 'investigating')
         admin.page.fill('#main form [name=reason]', 'Browser test: move the public bucket finding into investigation')
         admin.page.click('#main form button[type=submit]')
         try:
-            admin.page.wait_for_selector('#main .page-heading h1:has-text("sentinel.finding.update_status")', timeout=15000)
+            admin.page.wait_for_selector('#main .page-heading h1:has-text("argus.finding.update_status")', timeout=15000)
         except Exception:  # noqa: BLE001
             raise AssertionError(f'request was not created: form error={admin.page.inner_text("#main [data-form-error]")!r}; '
                                  f'toasts={[t.inner_text() for t in admin.page.locator("#toast-area .toast").all()]}; errors={admin.errors[:4]}') from None
@@ -398,7 +398,7 @@ def test_theme_toggle_persists_across_reload(session):
     s.page.reload()
     wait_overview(s)
     assert s.page.evaluate('document.documentElement.dataset.theme') == 'dark'
-    assert s.page.evaluate('localStorage.getItem("sentinel-theme")') == '"dark"'
+    assert s.page.evaluate('localStorage.getItem("argus-theme")') == '"dark"'
     s.page.click('#theme-toggle')
     assert s.page.evaluate('document.documentElement.dataset.theme') is None
 
@@ -457,12 +457,12 @@ def test_screenshots_both_themes(session, server):
     shots = [('overview', 'overview'), ('findings', 'findings'), (f'graph/nodes/{server["portal_node_id"]}', 'graph'), ('actions/requests', 'actions')]
     for theme in ('light', 'dark'):
         s.page.goto(f'{s.url}/#/overview')
-        s.page.evaluate(f"""() => {{ localStorage.setItem('sentinel-theme', JSON.stringify('{theme}')); }}""")
+        s.page.evaluate(f"""() => {{ localStorage.setItem('argus-theme', JSON.stringify('{theme}')); }}""")
         s.page.reload()
         wait_overview(s)
         assert (s.page.evaluate('document.documentElement.dataset.theme') == 'dark') == (theme == 'dark')
         for route, name in shots:
             s.goto(route, settle=0.8)
             s.page.screenshot(path=str(SCREENSHOTS / f'{name}-{theme}.png'), full_page=False)
-    s.page.evaluate("() => localStorage.removeItem('sentinel-theme')")
+    s.page.evaluate("() => localStorage.removeItem('argus-theme')")
     assert not s.errors, s.errors

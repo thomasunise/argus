@@ -145,7 +145,7 @@ class CollectorContext:
     tenant_id: str
     config: dict[str, Any]
     settings: Settings
-    logger: logging.Logger = field(default_factory=lambda: logging.getLogger('sentinel.collectors'))
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger('argus.collectors'))
     heartbeat: Callable[[], Awaitable[None]] = _noop_heartbeat
     since: datetime | None = None
     config_id: str = ''

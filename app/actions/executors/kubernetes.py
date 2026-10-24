@@ -10,8 +10,8 @@ from ..catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecRe
 from ._common import is_not_found, run_blocking
 
 _DNS = {'type': 'string', 'minLength': 1, 'maxLength': 253, 'pattern': r'^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$'}
-LABEL_KEY = 'sentinel.io/isolated'
-MANAGED_BY = {'app.kubernetes.io/managed-by': 'sentinel'}
+LABEL_KEY = 'argus.io/isolated'
+MANAGED_BY = {'app.kubernetes.io/managed-by': 'argus'}
 
 
 def _clients(ctx: ExecContext) -> SimpleNamespace:
@@ -52,9 +52,9 @@ def _owner(pod) -> str:
 
 
 def _policy_name(pod: str) -> str:
-    name = f'sentinel-isolate-{pod}'
+    name = f'argus-isolate-{pod}'
     if len(name) > 63:
-        name = f'sentinel-isolate-{hashlib.sha256(pod.encode()).hexdigest()[:16]}'
+        name = f'argus-isolate-{hashlib.sha256(pod.encode()).hexdigest()[:16]}'
     return name
 
 
@@ -88,7 +88,7 @@ class IsolatePod(ActionType):
         if pod is None:
             return DryRunResult(ok=False, summary='pod not found', blast_radius=plan['blast_radius'])
         existing = await _maybe(k8s.networking.read_namespaced_network_policy, plan['policy_name'], params['namespace'])
-        warnings = ['a Sentinel isolation policy already exists for this pod'] if existing is not None else []
+        warnings = ['a Argus isolation policy already exists for this pod'] if existing is not None else []
         warnings.append('isolation requires a CNI that enforces NetworkPolicy (Calico, Cilium, etc.)')
         return DryRunResult(ok=True, summary=f'isolate pod {params["namespace"]}/{params["pod"]} with deny-all NetworkPolicy {plan["policy_name"]}',
                             blast_radius=dict(plan['blast_radius'], owner=_owner(pod)), warnings=warnings, details={'manifest': plan['manifest']})

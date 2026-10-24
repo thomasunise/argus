@@ -84,7 +84,7 @@ def rule_catalog() -> list[dict] | None:
     return None
 
 
-@registry.tool('detection_rules', 'Catalog of detection rules Sentinel evaluates (id, name, severity, description), including swarm/coordinated-activity rules.',
+@registry.tool('detection_rules', 'Catalog of detection rules Argus evaluates (id, name, severity, description), including swarm/coordinated-activity rules.',
                {'properties': {}, 'required': []}, tags=('detections',))
 def detection_rules(args: dict, ctx: ToolContext) -> dict:
     rules = rule_catalog()

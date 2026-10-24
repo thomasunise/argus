@@ -155,7 +155,7 @@ async def test_aws_collect_with_fake_boto3(settings, monkeypatch):
     raw = fixture('aws')
     module, state = build_fake_boto3(raw)
     monkeypatch.setitem(sys.modules, 'boto3', module)
-    ctx = make_ctx(settings, {'regions': ['us-east-1'], 'role_arn': 'arn:aws:iam::123456789012:role/SentinelAudit', 'external_id': 'ext-1',
+    ctx = make_ctx(settings, {'regions': ['us-east-1'], 'role_arn': 'arn:aws:iam::123456789012:role/ArgusAudit', 'external_id': 'ext-1',
                               'access_key_id': 'AKIAFAKEKEY', 'secret_access_key': 'fake'})
     result = await registry.get('aws').collect(ctx)
     expected = registry.get('aws')._normalize(raw)
@@ -166,7 +166,7 @@ async def test_aws_collect_with_fake_boto3(settings, monkeypatch):
     # assume-role path: first session uses the static key, the second the STS credentials
     assert state['sessions'][0]['aws_access_key_id'] == 'AKIAFAKEKEY' and state['sessions'][1]['aws_session_token'] == 'fake-token'
     assume = next(kw for op, kw in state['clients']['sts'].calls if op == 'assume_role')
-    assert assume['RoleArn'].endswith('SentinelAudit') and assume['ExternalId'] == 'ext-1'
+    assert assume['RoleArn'].endswith('ArgusAudit') and assume['ExternalId'] == 'ext-1'
     ops = {op for client in state['clients'].values() for op, _ in client.calls}
     assert {'list_users', 'list_roles', 'list_policies', 'describe_instances', 'describe_security_groups', 'describe_db_instances', 'list_functions',
             'list_clusters', 'describe_cluster', 'list_buckets', 'get_public_access_block', 'get_bucket_policy_status', 'get_login_profile'} <= ops

@@ -8,7 +8,7 @@ from ..core import events
 from .service import (EdgeDraft, NodeDraft, apply, attack_paths, edge_to_dict, exposure_score, link_asset, neighbors, node_to_dict,  # noqa: F401
                       path_to_dict, query, recompute, stats, upsert_edge, upsert_node)
 
-log = logging.getLogger('sentinel.graph')
+log = logging.getLogger('argus.graph')
 
 RECOMPUTE_DELAY_SECONDS = 2.0
 

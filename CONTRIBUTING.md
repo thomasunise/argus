@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to Sentinel. The codebase is a set of packages, each with a small,
+Thanks for contributing to Argus. The codebase is a set of packages, each with a small,
 documented interface; the contract between them is `docs/ARCHITECTURE.md`. This file
 summarizes what a change must satisfy to be merged.
 
@@ -13,7 +13,7 @@ cp .env.example .env && python scripts/generate_secrets.py --write
 python -m pytest -q
 ```
 
-Set `SENTINEL_LAZY_APP=1` when importing `app.main` outside tests (the conftest does it).
+Set `ARGUS_LAZY_APP=1` when importing `app.main` outside tests (the conftest does it).
 Tests run against a fresh SQLite database per test with the in-memory queue and must never
 touch the network (`respx` for httpx, `monkeypatch` for SDKs).
 
@@ -42,7 +42,7 @@ description. Do not reformat or "tidy" unrelated files in the same change.
 
 ## Code conventions (enforced in review)
 
-- Python 3.11+, `from __future__ import annotations`, type hints, no `print` (use `logging.getLogger('sentinel.<pkg>')`).
+- Python 3.11+, `from __future__ import annotations`, type hints, no `print` (use `logging.getLogger('argus.<pkg>')`).
 - Packages expose `setup(app)` in `__init__.py` for queue handlers, tools, subscribers and startup hooks. Routers are `APIRouter(prefix='/api/v1/<name>', tags=['<name>'])` exporting `router`; discovery is automatic.
 - Every endpoint depends on `Principal` via `require('<perm>')` with a permission string from `app/core/rbac.py`. Lists use `Page` and return `{items, next_cursor}`.
 - Every domain table uses `TenantMixin`; every query uses `scoped()` / `get_scoped()`; objects are fetched by `(id, tenant_id)`.

@@ -26,7 +26,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   auto_grow_enabled             = true
   backup_retention_days         = var.postgres_backup_retention_days
   geo_redundant_backup_enabled  = false
-  administrator_login           = "sentinel"
+  administrator_login           = "argus"
   administrator_password        = random_password.db.result
   delegated_subnet_id           = azurerm_subnet.data.id
   private_dns_zone_id           = azurerm_private_dns_zone.postgres.id
@@ -52,8 +52,8 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 }
 
-resource "azurerm_postgresql_flexible_server_database" "sentinel" {
-  name      = "sentinel"
+resource "azurerm_postgresql_flexible_server_database" "argus" {
+  name      = "argus"
   server_id = azurerm_postgresql_flexible_server.this.id
   charset   = "UTF8"
   collation = "en_US.utf8"

@@ -1,9 +1,9 @@
 {
-  "uid": "sentinel-overview",
-  "title": "Sentinel overview",
-  "description": "Sentinel API, queue, agents, findings, detections and action broker. Metric names from app/core/telemetry.py.",
+  "uid": "argus-overview",
+  "title": "Argus overview",
+  "description": "Argus API, queue, agents, findings, detections and action broker. Metric names from app/core/telemetry.py.",
   "tags": [
-    "sentinel",
+    "argus",
     "security"
   ],
   "timezone": "utc",
@@ -42,7 +42,7 @@
         },
         "enable": true,
         "iconColor": "red",
-        "expr": "sum(increase(sentinel_detections_total{rule=\"canary.tripwire\"}[5m])) > 0",
+        "expr": "sum(increase(argus_detections_total{rule=\"canary.tripwire\"}[5m])) > 0",
         "titleFormat": "Canary tripped",
         "step": "1m"
       }
@@ -52,7 +52,7 @@
     {
       "title": "Runbooks",
       "type": "link",
-      "url": "https://github.com/eekosystems/sentinel-agentic-security/blob/main/docs/RUNBOOKS.md",
+      "url": "https://github.com/thomasunise/argus/blob/main/docs/RUNBOOKS.md",
       "targetBlank": true
     }
   ],
@@ -91,7 +91,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(up{job=\"sentinel-api\"})",
+          "expr": "max(up{job=\"argus-api\"})",
           "legendFormat": "API up",
           "refId": "A",
           "range": false,
@@ -152,7 +152,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(sentinel_http_requests_total[5m]))",
+          "expr": "sum(rate(argus_http_requests_total[5m]))",
           "legendFormat": "Requests / s",
           "refId": "A",
           "range": false,
@@ -209,7 +209,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(sentinel_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(sentinel_http_requests_total[5m])), 0.001)",
+          "expr": "sum(rate(argus_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(argus_http_requests_total[5m])), 0.001)",
           "legendFormat": "5xx ratio",
           "refId": "A",
           "range": false,
@@ -274,7 +274,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sentinel_http_request_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(argus_http_request_seconds_bucket[5m])))",
           "legendFormat": "p95 latency",
           "refId": "A",
           "range": false,
@@ -339,7 +339,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(sentinel_jobs_total{status=\"failed\"}[1h]))",
+          "expr": "sum(increase(argus_jobs_total{status=\"failed\"}[1h]))",
           "legendFormat": "Jobs failed (1h)",
           "refId": "A",
           "range": false,
@@ -404,7 +404,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(sentinel_findings_open{severity=\"critical\"})",
+          "expr": "sum(argus_findings_open{severity=\"critical\"})",
           "legendFormat": "Open critical findings",
           "refId": "A",
           "range": false,
@@ -478,7 +478,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (route) (rate(sentinel_http_requests_total[5m]))",
+          "expr": "sum by (route) (rate(argus_http_requests_total[5m]))",
           "legendFormat": "{{route}}",
           "refId": "A",
           "range": true,
@@ -531,7 +531,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(sentinel_http_request_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(argus_http_request_seconds_bucket[5m])))",
           "legendFormat": "p50",
           "refId": "A",
           "range": true,
@@ -542,7 +542,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(sentinel_http_request_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(argus_http_request_seconds_bucket[5m])))",
           "legendFormat": "p95",
           "refId": "B",
           "range": true,
@@ -553,7 +553,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sentinel_http_request_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(argus_http_request_seconds_bucket[5m])))",
           "legendFormat": "p99",
           "refId": "C",
           "range": true,
@@ -606,7 +606,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (class) (label_replace(rate(sentinel_http_requests_total[5m]), \"class\", \"$1xx\", \"status\", \"(\\\\d)..\"))",
+          "expr": "sum by (class) (label_replace(rate(argus_http_requests_total[5m]), \"class\", \"$1xx\", \"status\", \"(\\\\d)..\"))",
           "legendFormat": "{{class}}",
           "refId": "A",
           "range": true,
@@ -659,7 +659,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(8, histogram_quantile(0.95, sum by (le, route) (rate(sentinel_http_request_seconds_bucket[5m]))))",
+          "expr": "topk(8, histogram_quantile(0.95, sum by (le, route) (rate(argus_http_request_seconds_bucket[5m]))))",
           "legendFormat": "{{route}}",
           "refId": "A",
           "range": true,
@@ -708,7 +708,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "Jobs by status",
-      "description": "sentinel_jobs_total{kind,status}. A flat completed line with growing queued means the worker is lost or Redis is down.",
+      "description": "argus_jobs_total{kind,status}. A flat completed line with growing queued means the worker is lost or Redis is down.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -725,7 +725,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (status) (rate(sentinel_jobs_total[5m]))",
+          "expr": "sum by (status) (rate(argus_jobs_total[5m]))",
           "legendFormat": "{{status}}",
           "refId": "A",
           "range": true,
@@ -778,7 +778,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kind) (rate(sentinel_jobs_total[5m]))",
+          "expr": "sum by (kind) (rate(argus_jobs_total[5m]))",
           "legendFormat": "{{kind}}",
           "refId": "A",
           "range": true,
@@ -831,7 +831,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kind) (increase(sentinel_jobs_total{status=\"failed\"}[24h]))",
+          "expr": "sum by (kind) (increase(argus_jobs_total{status=\"failed\"}[24h]))",
           "legendFormat": "{{kind}}",
           "refId": "A",
           "range": false,
@@ -902,7 +902,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (spec, status) (increase(sentinel_agent_runs_total[1h]))",
+          "expr": "sum by (spec, status) (increase(argus_agent_runs_total[1h]))",
           "legendFormat": "{{spec}} / {{status}}",
           "refId": "A",
           "range": true,
@@ -955,7 +955,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (provider, direction) (rate(sentinel_agent_tokens_total[5m])) * 60",
+          "expr": "sum by (provider, direction) (rate(argus_agent_tokens_total[5m])) * 60",
           "legendFormat": "{{provider}} {{direction}}",
           "refId": "A",
           "range": true,
@@ -1008,7 +1008,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(sentinel_agent_runs_total[24h]))",
+          "expr": "sum(increase(argus_agent_runs_total[24h]))",
           "legendFormat": "Agent runs (24h)",
           "refId": "A",
           "range": false,
@@ -1065,7 +1065,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(sentinel_agent_runs_total{status=~\"refused|budget_exhausted\"}[24h]))",
+          "expr": "sum(increase(argus_agent_runs_total{status=~\"refused|budget_exhausted\"}[24h]))",
           "legendFormat": "Refused / budget exhausted (24h)",
           "refId": "A",
           "range": false,
@@ -1126,7 +1126,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(sentinel_agent_tokens_total{direction=\"input\"}[24h]))",
+          "expr": "sum(increase(argus_agent_tokens_total{direction=\"input\"}[24h]))",
           "legendFormat": "Input tokens (24h)",
           "refId": "A",
           "range": false,
@@ -1183,7 +1183,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(sentinel_agent_tokens_total{direction=\"output\"}[24h]))",
+          "expr": "sum(increase(argus_agent_tokens_total{direction=\"output\"}[24h]))",
           "legendFormat": "Output tokens (24h)",
           "refId": "A",
           "range": false,
@@ -1253,7 +1253,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (severity) (sentinel_findings_open)",
+          "expr": "sum by (severity) (argus_findings_open)",
           "legendFormat": "{{severity}}",
           "refId": "A",
           "range": true,
@@ -1382,7 +1382,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (rule) (increase(sentinel_detections_total[1h]))",
+          "expr": "sum by (rule) (increase(argus_detections_total[1h]))",
           "legendFormat": "{{rule}}",
           "refId": "A",
           "range": true,
@@ -1435,7 +1435,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (severity) (increase(sentinel_detections_total[24h]))",
+          "expr": "sum by (severity) (increase(argus_detections_total[24h]))",
           "legendFormat": "{{severity}}",
           "refId": "A",
           "range": false,
@@ -1569,7 +1569,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (tenant) (sentinel_findings_open)",
+          "expr": "sum by (tenant) (argus_findings_open)",
           "legendFormat": "{{tenant}}",
           "refId": "A",
           "range": false,
@@ -1623,7 +1623,7 @@
       "id": 30,
       "type": "timeseries",
       "title": "Actions by status",
-      "description": "sentinel_actions_total{action,status}. Any failed or rolled_back increment should page the operator on call.",
+      "description": "argus_actions_total{action,status}. Any failed or rolled_back increment should page the operator on call.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1640,7 +1640,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (status) (increase(sentinel_actions_total[1h]))",
+          "expr": "sum by (status) (increase(argus_actions_total[1h]))",
           "legendFormat": "{{status}}",
           "refId": "A",
           "range": true,
@@ -1693,7 +1693,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (action) (increase(sentinel_actions_total[7d]))",
+          "expr": "sum by (action) (increase(argus_actions_total[7d]))",
           "legendFormat": "{{action}}",
           "refId": "A",
           "range": false,

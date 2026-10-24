@@ -23,7 +23,7 @@ from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, jsonable, modules_available, registry
 
-log = logging.getLogger('sentinel.collectors.azure')
+log = logging.getLogger('argus.collectors.azure')
 
 PRIVILEGED_ROLES = {'Owner', 'Contributor', 'User Access Administrator', 'Role Based Access Control Administrator'}
 INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}  # nosec B104

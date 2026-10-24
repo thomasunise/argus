@@ -1,12 +1,12 @@
 {{/*
-Common helpers for the Sentinel chart.
+Common helpers for the Argus chart.
 */}}
 
-{{- define "sentinel.name" -}}
+{{- define "argus.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "sentinel.fullname" -}}
+{{- define "argus.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -19,41 +19,41 @@ Common helpers for the Sentinel chart.
 {{- end -}}
 {{- end -}}
 
-{{- define "sentinel.chart" -}}
+{{- define "argus.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "sentinel.labels" -}}
-helm.sh/chart: {{ include "sentinel.chart" . }}
-app.kubernetes.io/name: {{ include "sentinel.name" . }}
+{{- define "argus.labels" -}}
+helm.sh/chart: {{ include "argus.chart" . }}
+app.kubernetes.io/name: {{ include "argus.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/part-of: sentinel
+app.kubernetes.io/part-of: argus
 {{- end -}}
 
-{{- define "sentinel.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "sentinel.name" . }}
+{{- define "argus.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "argus.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "sentinel.serviceAccountName" -}}
+{{- define "argus.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-{{- default (include "sentinel.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "argus.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "sentinel.secretName" -}}
+{{- define "argus.secretName" -}}
 {{- if .Values.existingSecret -}}
 {{- .Values.existingSecret -}}
 {{- else -}}
-{{- include "sentinel.fullname" . -}}
+{{- include "argus.fullname" . -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "sentinel.image" -}}
+{{- define "argus.image" -}}
 {{- if .Values.image.digest -}}
 {{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
 {{- else -}}
@@ -62,27 +62,27 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/* Checksum of config + secret values so pods roll when they change. */}}
-{{- define "sentinel.configChecksum" -}}
+{{- define "argus.configChecksum" -}}
 {{- print (toYaml .Values.config) (toYaml .Values.secrets) | sha256sum -}}
 {{- end -}}
 
 {{/* envFrom shared by api and worker */}}
-{{- define "sentinel.envFrom" -}}
+{{- define "argus.envFrom" -}}
 - configMapRef:
-    name: {{ include "sentinel.fullname" . }}
+    name: {{ include "argus.fullname" . }}
 - secretRef:
-    name: {{ include "sentinel.secretName" . }}
+    name: {{ include "argus.secretName" . }}
 {{- end -}}
 
 {{/* Volumes shared by api and worker (tmp scratch, optional audit PVC, optional targets) */}}
-{{- define "sentinel.volumes" -}}
+{{- define "argus.volumes" -}}
 - name: tmp
   emptyDir:
     sizeLimit: {{ .Values.tmpVolumeSizeLimit }}
 - name: data
 {{- if .Values.auditVolume.enabled }}
   persistentVolumeClaim:
-    claimName: {{ default (printf "%s-audit" (include "sentinel.fullname" .)) .Values.auditVolume.existingClaim }}
+    claimName: {{ default (printf "%s-audit" (include "argus.fullname" .)) .Values.auditVolume.existingClaim }}
 {{- else }}
   emptyDir: {}
 {{- end }}
@@ -94,7 +94,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end -}}
 
-{{- define "sentinel.volumeMounts" -}}
+{{- define "argus.volumeMounts" -}}
 - name: tmp
   mountPath: /tmp
 - name: data

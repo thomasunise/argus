@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings
-from ..core.errors import NotFound, SentinelError, Unauthorized
+from ..core.errors import NotFound, ArgusError, Unauthorized
 from ..core.rbac import Principal
 from ..integrations.delivery import resolve_secrets
 from ..integrations.inbound import ParseContext, registry
@@ -22,7 +22,7 @@ from .deps import get_db, get_settings, require_scope
 router = APIRouter(prefix='/api/v1/ingest', tags=['ingest'])
 
 
-class VerificationNotSupported(SentinelError):
+class VerificationNotSupported(ArgusError):
     status = 400
     code = 'verification_not_supported'
 

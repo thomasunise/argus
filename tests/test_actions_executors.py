@@ -15,7 +15,7 @@ import respx
 
 from app.actions import catalog, load_executors
 from app.actions.catalog import ActionError, ExecContext
-from app.actions.executors import aws, azure, cloudflare, entra, gcp, github, kubernetes, okta, sentinel
+from app.actions.executors import aws, azure, cloudflare, entra, gcp, github, kubernetes, okta, argus
 from app.models import Asset, AssetAuthorization, Finding
 
 FIX = Path(__file__).parent / 'fixtures' / 'actions'
@@ -213,7 +213,7 @@ async def test_aws_isolate_instance(settings, env, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_aws_attach_deny_all_boundary(settings, env, monkeypatch):
-    arn = 'arn:aws:iam::123456789012:policy/SentinelDenyAll'
+    arn = 'arn:aws:iam::123456789012:policy/ArgusDenyAll'
     params = {'principal_type': 'user', 'principal_name': 'mallory', 'boundary_policy_arn': arn}
     plan = aws.AttachDenyAllBoundary._plan(params)
     assert plan['call'] == 'PutUserPermissionsBoundary' and plan['kwargs'] == {'UserName': 'mallory', 'PermissionsBoundary': arn}
@@ -437,8 +437,8 @@ def _k8s(monkeypatch, core=None, apps=None, networking=None):
 def test_k8s_isolate_pod_plan():
     plan = kubernetes.IsolatePod._plan('prod', 'web-abc12')
     manifest = plan['manifest']
-    assert manifest['kind'] == 'NetworkPolicy' and manifest['metadata']['name'] == 'sentinel-isolate-web-abc12'
-    assert manifest['spec'] == {'podSelector': {'matchLabels': {'sentinel.io/isolated': 'web-abc12'}}, 'policyTypes': ['Ingress', 'Egress']}
+    assert manifest['kind'] == 'NetworkPolicy' and manifest['metadata']['name'] == 'argus-isolate-web-abc12'
+    assert manifest['spec'] == {'podSelector': {'matchLabels': {'argus.io/isolated': 'web-abc12'}}, 'policyTypes': ['Ingress', 'Egress']}
     assert 'ingress' not in manifest['spec'] and 'egress' not in manifest['spec']  # deny-all
     long_name = 'p' * 70
     assert len(kubernetes.IsolatePod._plan('prod', long_name)['policy_name']) <= 63
@@ -454,12 +454,12 @@ async def test_k8s_isolate_pod_lifecycle(settings, env, monkeypatch):
     dry = await action.dry_run(params, ctx(settings, 'kubernetes'))
     assert dry.ok and dry.blast_radius['owner'] == 'ReplicaSet/web-5d4f'
     result = await action.execute(params, ctx(settings, 'kubernetes'))
-    assert core.calls[-1][0] == 'patch_namespaced_pod' and core.calls[-1][1][2] == {'metadata': {'labels': {'sentinel.io/isolated': 'web-abc12'}}}
+    assert core.calls[-1][0] == 'patch_namespaced_pod' and core.calls[-1][1][2] == {'metadata': {'labels': {'argus.io/isolated': 'web-abc12'}}}
     assert networking.names()[-1] == 'create_namespaced_network_policy' and networking.calls[-1][1][0] == 'prod'
     assert result.rollback_payload['created_policy'] is True and result.rollback_payload['previous_label'] is None
     await action.rollback(result.rollback_payload, ctx(settings, 'kubernetes'))
-    assert networking.names()[-1] == 'delete_namespaced_network_policy' and networking.calls[-1][1] == ('sentinel-isolate-web-abc12', 'prod')
-    assert core.calls[-1][1][2] == {'metadata': {'labels': {'sentinel.io/isolated': None}}}
+    assert networking.names()[-1] == 'delete_namespaced_network_policy' and networking.calls[-1][1] == ('argus-isolate-web-abc12', 'prod')
+    assert core.calls[-1][1][2] == {'metadata': {'labels': {'argus.io/isolated': None}}}
     core.responses['read_namespaced_pod'] = SdkError(404)
     assert (await action.dry_run(params, ctx(settings, 'kubernetes'))).ok is False
 
@@ -555,7 +555,7 @@ async def test_github_secret_scanning(settings, env):
 
 
 def test_github_open_fix_pr_plan():
-    params = {'owner': 'acme', 'repo': 'app', 'head_branch': 'sentinel/fix-1', 'title': 'Pin base image',
+    params = {'owner': 'acme', 'repo': 'app', 'head_branch': 'argus/fix-1', 'title': 'Pin base image',
               'files': [{'path': 'Dockerfile', 'content': 'FROM python:3.12-slim\nRUN pip install x\n'},
                         {'path': 'NEW.md', 'content': 'hello\n'},
                         {'path': 'old.txt', 'delete': True}]}
@@ -578,39 +578,39 @@ def test_github_open_fix_pr_plan():
 @pytest.mark.asyncio
 async def test_github_open_fix_pr_lifecycle(settings, env):
     action = catalog.get('github.open_fix_pr')
-    params = action.normalize({'owner': 'acme', 'repo': 'app', 'head_branch': 'sentinel/fix-1', 'title': 'Pin base image', 'body': 'why',
+    params = action.normalize({'owner': 'acme', 'repo': 'app', 'head_branch': 'argus/fix-1', 'title': 'Pin base image', 'body': 'why',
                                'files': [{'path': 'Dockerfile', 'content': 'FROM python:3.12-slim\n'}, {'path': 'docs/NEW.md', 'content': 'hello\n'}]})
     import base64
 
     with respx.mock(base_url='https://api.github.com', assert_all_called=False) as mock:
         mock.get('/repos/acme/app').mock(return_value=httpx.Response(200, json={'default_branch': 'main'}))
         mock.get('/repos/acme/app/branches/main').mock(return_value=httpx.Response(200, json={'commit': {'sha': 'base-sha'}}))
-        mock.get('/repos/acme/app/git/ref/heads/sentinel/fix-1').mock(return_value=httpx.Response(404, json={}))
+        mock.get('/repos/acme/app/git/ref/heads/argus/fix-1').mock(return_value=httpx.Response(404, json={}))
         mock.get('/repos/acme/app/contents/Dockerfile').mock(return_value=httpx.Response(200, json={'sha': 'old-sha', 'encoding': 'base64',
                                                                                                       'content': base64.b64encode(b'FROM python:latest\n').decode()}))
         mock.get('/repos/acme/app/contents/docs/NEW.md').mock(return_value=httpx.Response(404, json={}))
-        ref = mock.post('/repos/acme/app/git/refs').mock(return_value=httpx.Response(201, json={'ref': 'refs/heads/sentinel/fix-1'}))
+        ref = mock.post('/repos/acme/app/git/refs').mock(return_value=httpx.Response(201, json={'ref': 'refs/heads/argus/fix-1'}))
         put_docker = mock.put('/repos/acme/app/contents/Dockerfile').mock(return_value=httpx.Response(200, json={}))
         put_new = mock.put('/repos/acme/app/contents/docs/NEW.md').mock(return_value=httpx.Response(201, json={}))
         pulls = mock.post('/repos/acme/app/pulls').mock(return_value=httpx.Response(201, json={'number': 42, 'html_url': 'https://github.com/acme/app/pull/42'}))
         close = mock.patch('/repos/acme/app/pulls/42').mock(return_value=httpx.Response(200, json={}))
-        del_ref = mock.delete('/repos/acme/app/git/refs/heads/sentinel/fix-1').mock(return_value=httpx.Response(204))
+        del_ref = mock.delete('/repos/acme/app/git/refs/heads/argus/fix-1').mock(return_value=httpx.Response(204))
         dry = await action.dry_run(params, ctx(settings, 'github'))
         assert dry.ok and 'modify Dockerfile (+1/-1)' in dry.summary and 'add docs/NEW.md (+1/-0)' in dry.summary and dry.blast_radius['files'] == 2
         result = await action.execute(params, ctx(settings, 'github'))
-        assert json.loads(ref.calls.last.request.content) == {'ref': 'refs/heads/sentinel/fix-1', 'sha': 'base-sha'}
+        assert json.loads(ref.calls.last.request.content) == {'ref': 'refs/heads/argus/fix-1', 'sha': 'base-sha'}
         docker_body = json.loads(put_docker.calls.last.request.content)
-        assert docker_body['sha'] == 'old-sha' and docker_body['branch'] == 'sentinel/fix-1' and base64.b64decode(docker_body['content']) == b'FROM python:3.12-slim\n'
+        assert docker_body['sha'] == 'old-sha' and docker_body['branch'] == 'argus/fix-1' and base64.b64decode(docker_body['content']) == b'FROM python:3.12-slim\n'
         assert 'sha' not in json.loads(put_new.calls.last.request.content)
-        assert json.loads(pulls.calls.last.request.content) == {'title': 'Pin base image', 'body': 'why', 'head': 'sentinel/fix-1', 'base': 'main'}
+        assert json.loads(pulls.calls.last.request.content) == {'title': 'Pin base image', 'body': 'why', 'head': 'argus/fix-1', 'base': 'main'}
         assert result.rollback_payload['pr_number'] == 42 and '#42' in result.summary
         await action.rollback(result.rollback_payload, ctx(settings, 'github'))
         assert json.loads(close.calls.last.request.content) == {'state': 'closed'} and del_ref.called
         # head branch already exists -> dry run fails
-        mock.get('/repos/acme/app/git/ref/heads/sentinel/fix-1').mock(return_value=httpx.Response(200, json={'ref': 'x'}))
+        mock.get('/repos/acme/app/git/ref/heads/argus/fix-1').mock(return_value=httpx.Response(200, json={'ref': 'x'}))
         assert (await action.dry_run(params, ctx(settings, 'github'))).ok is False
         # a failure after the branch was created cleans the branch up
-        mock.get('/repos/acme/app/git/ref/heads/sentinel/fix-1').mock(return_value=httpx.Response(404, json={}))
+        mock.get('/repos/acme/app/git/ref/heads/argus/fix-1').mock(return_value=httpx.Response(404, json={}))
         mock.post('/repos/acme/app/pulls').mock(return_value=httpx.Response(422, json={'message': 'Validation Failed'}))
         before = del_ref.call_count
         with pytest.raises(ActionError):
@@ -686,11 +686,11 @@ async def test_cloudflare_block_ip_lifecycle(settings, env):
         assert (await action.dry_run(params, ctx(settings, 'cloudflare'))).ok is False
 
 
-# ======================================================================== Sentinel internal
+# ======================================================================== Argus internal
 
 
 @pytest.mark.asyncio
-async def test_sentinel_internal_actions(app, client, settings, default_tenant_id):
+async def test_argus_internal_actions(app, client, settings, default_tenant_id):
     with app.state.db_factory() as db:
         finding = Finding(tenant_id=default_tenant_id, fingerprint='fp1', title='t', description='d', severity='high', source='test', status='open')
         asset = Asset(tenant_id=default_tenant_id, name='a', kind='web', target='https://a.test', approved=True)
@@ -699,9 +699,9 @@ async def test_sentinel_internal_actions(app, client, settings, default_tenant_i
         db.add(AssetAuthorization(tenant_id=default_tenant_id, asset_id=asset.id, authorized_by='u', attestation='ok', allow_active=True))
         db.commit()
         fid, aid = finding.id, asset.id
-    update, revoke = catalog.get('sentinel.finding.update_status'), catalog.get('sentinel.asset.revoke_authorization')
+    update, revoke = catalog.get('argus.finding.update_status'), catalog.get('argus.asset.revoke_authorization')
     with app.state.db_factory() as db:
-        c = ctx(settings, 'sentinel', db=db)
+        c = ctx(settings, 'argus', db=db)
         c.tenant_id = default_tenant_id
         dry = await update.dry_run({'finding_id': fid, 'status': 'resolved'}, c)
         assert dry.ok and dry.blast_radius == {'entities': 1, 'kind': 'finding', 'ids': [fid]}
@@ -711,11 +711,11 @@ async def test_sentinel_internal_actions(app, client, settings, default_tenant_i
         assert db.get(Finding, fid).status == 'open'
         assert (await update.dry_run({'finding_id': 'nope', 'status': 'open'}, c)).ok is False
         # other tenant's finding is invisible
-        other = ctx(settings, 'sentinel', db=db)
+        other = ctx(settings, 'argus', db=db)
         assert other.tenant_id != default_tenant_id
         assert (await update.dry_run({'finding_id': fid, 'status': 'open'}, other)).ok is False
-        assert sentinel.UpdateFindingStatus._plan({'finding_id': fid, 'status': 'open'}, 'open')['warnings']
-        assert sentinel.RevokeAssetAuthorization._plan({'asset_id': aid}, ['x', 'y'])['blast_radius']['entities'] == 2
+        assert argus.UpdateFindingStatus._plan({'finding_id': fid, 'status': 'open'}, 'open')['warnings']
+        assert argus.RevokeAssetAuthorization._plan({'asset_id': aid}, ['x', 'y'])['blast_radius']['entities'] == 2
         dry = await revoke.dry_run({'asset_id': aid}, c)
         assert dry.ok and dry.blast_radius['entities'] == 1
         result = await revoke.execute({'asset_id': aid}, c)
@@ -739,8 +739,8 @@ def test_every_real_action_is_registered_with_a_plan():
         assert action.description and action.platforms and action.category in {'remediation', 'containment', 'internal'}
 
 
-def test_sentinel_actions_available_without_credentials(settings):
-    assert catalog.get('sentinel.finding.update_status').available(settings) is True
+def test_argus_actions_available_without_credentials(settings):
+    assert catalog.get('argus.finding.update_status').available(settings) is True
     assert catalog.get('github.open_fix_pr').available(settings) is False
     assert catalog.get('aws.iam.disable_access_key').available(settings) is False  # boto3 not installed here
 
@@ -751,6 +751,6 @@ async def test_missing_credentials_surface_as_action_error(settings, monkeypatch
     with pytest.raises(ActionError) as excinfo:
         await catalog.get('github.secret_scanning.enable').dry_run({'owner': 'a', 'repo': 'b', 'push_protection': True}, ctx(settings, 'github'))
     assert 'ACTIONS_GITHUB_TOKEN' in str(excinfo.value)
-    sentinel_action = sentinel.UpdateFindingStatus()
+    argus_action = argus.UpdateFindingStatus()
     with pytest.raises(ActionError):  # no database session on the context
-        await sentinel_action.dry_run({'finding_id': 'x', 'status': 'open'}, ctx(settings, 'sentinel'))
+        await argus_action.dry_run({'finding_id': 'x', 'status': 'open'}, ctx(settings, 'argus'))

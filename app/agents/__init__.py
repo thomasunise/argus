@@ -9,7 +9,7 @@ import pkgutil
 from .runtime import SPECS, AgentRuntime, AgentSpec, get_runtime, register_spec  # noqa: F401
 from .tools.registry import registry  # noqa: F401
 
-log = logging.getLogger('sentinel.agents')
+log = logging.getLogger('argus.agents')
 
 
 def _import_all(package_name: str) -> None:

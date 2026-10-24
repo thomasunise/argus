@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # --- app ---
     app_env: str = 'development'  # development, staging, production
-    app_name: str = 'Sentinel'
+    app_name: str = 'Argus'
     base_url: str = 'http://127.0.0.1:8080'
     session_secret: str = ''
     session_max_age: int = 3600  # idle timeout (the cookie is refreshed on every response)
@@ -24,14 +24,14 @@ class Settings(BaseSettings):
     request_id_header: str = 'X-Request-ID'
 
     # --- database / queue ---
-    database_url: str = 'sqlite:///./data/sentinel.db'
+    database_url: str = 'sqlite:///./data/argus.db'
     redis_url: str = ''
     workers_inprocess: bool = True
     worker_concurrency: int = 4
     queue_max_attempts: int = 3
 
     # --- auth ---
-    admin_email: str = 'admin@sentinel.local'
+    admin_email: str = 'admin@argus.local'
     admin_password: str = ''
     admin_password_reset: bool = False  # true: re-apply ADMIN_PASSWORD to the bootstrap owner at startup (recovery)
     default_tenant_slug: str = 'default'
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     audit_signing_key: str = ''
     audit_signing_keys: str = ''  # 'kid=key,kid2=key2'; first signs, all verify
     audit_s3_bucket: str = ''
-    audit_s3_prefix: str = 'sentinel-audit/'
+    audit_s3_prefix: str = 'argus-audit/'
     audit_azure_container: str = ''
     audit_azure_connection_string: str = ''
 
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     log_level: str = 'INFO'
     metrics_enabled: bool = True
     otel_exporter_otlp_endpoint: str = ''
-    otel_service_name: str = 'sentinel'
+    otel_service_name: str = 'argus'
 
     # --- AI / agents ---
     ai_provider: str = 'none'
@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     agent_max_seconds: int = 300
     agent_tool_result_limit: int = 6000
     agent_cost_ceiling_usd: float = 5.0
+    # USD per million tokens for models missing from the built-in table: 'model=input:output,...'.
+    agent_model_prices: str = ''
 
     # --- testing harness ---
     scan_root: Path = Path('./targets')
@@ -109,7 +111,7 @@ class Settings(BaseSettings):
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''
     data_encryption_key: str = ''
-    secret_env_prefix: str = 'SENTINEL_SECRET_'  # env: refs must start with this prefix or be allowlisted
+    secret_env_prefix: str = 'ARGUS_SECRET_'  # env: refs must start with this prefix or be allowlisted
     secret_env_allowlist: str = ''  # comma separated env names; '*' allows any (development only)
     secrets_dir: Path = Path('/run/secrets')  # file: refs must resolve under this directory
     max_request_body_bytes: int = 8 * 1024 * 1024
@@ -153,7 +155,32 @@ class Settings(BaseSettings):
         return self.database_url.startswith('sqlite')
 
 
+def parse_model_prices(raw: str) -> dict[str, tuple[float, float]]:
+    """Parse AGENT_MODEL_PRICES ('gpt-4.1=2:8,my-model=0.5:1.5', USD per million input:output tokens)."""
+    prices: dict[str, tuple[float, float]] = {}
+    for item in (raw or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        name, _, rest = item.partition('=')
+        inp, sep, out = rest.partition(':')
+        try:
+            if not name.strip() or not sep:
+                raise ValueError
+            pair = (float(inp), float(out))
+        except ValueError:
+            raise ValueError(f'AGENT_MODEL_PRICES entry {item!r} must look like model=input:output') from None
+        if pair[0] < 0 or pair[1] < 0:
+            raise ValueError(f'AGENT_MODEL_PRICES entry {item!r} has a negative price')
+        prices[name.strip()] = pair
+    return prices
+
+
 def assert_safe_config(settings: Settings) -> None:
+    try:
+        parse_model_prices(settings.agent_model_prices)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from None
     if len(settings.session_secret) < 32 or settings.session_secret.startswith('REPLACE_'):
         raise RuntimeError('Set SESSION_SECRET to at least 32 random characters in .env')
     if len(settings.admin_password) < 14 or settings.admin_password.startswith('REPLACE_'):
@@ -164,7 +191,7 @@ def assert_safe_config(settings: Settings) -> None:
         from .security import parse_api_key  # local import: security depends on this module
 
         if not parse_api_key(settings.ingest_api_key):
-            raise RuntimeError('INGEST_API_KEY must have the snt_<prefix>_<secret> form; generate one with scripts/generate_secrets.py')
+            raise RuntimeError('INGEST_API_KEY must have the argus_<prefix>_<secret> form; generate one with scripts/generate_secrets.py')
     if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
         raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
     if settings.is_production:

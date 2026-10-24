@@ -92,4 +92,4 @@ def export_jsonl(actor: str | None = None, action: str | None = None, subject: s
             yield json.dumps(record, sort_keys=True, default=str) + '\n'
 
     return StreamingResponse(generate(), media_type='application/x-ndjson',
-                             headers={'Content-Disposition': 'attachment; filename="sentinel-audit.jsonl"', 'X-Row-Count': str(int(total))})
+                             headers={'Content-Disposition': 'attachment; filename="argus-audit.jsonl"', 'X-Row-Count': str(int(total))})

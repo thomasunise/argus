@@ -1,4 +1,4 @@
-# Caddy TLS termination for Sentinel (compose.prod.yaml).
+# Caddy TLS termination for Argus (compose.prod.yaml).
 # Automatic HTTPS via ACME. The application sets most security headers itself
 # (app/core/telemetry.py RequestContextMiddleware); Caddy adds HSTS at the edge,
 # removes server identification and forwards the client IP.
@@ -10,7 +10,7 @@
 	}
 }
 
-{$SENTINEL_DOMAIN} {
+{$ARGUS_DOMAIN} {
 	encode zstd gzip
 
 	header {

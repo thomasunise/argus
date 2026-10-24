@@ -1,6 +1,6 @@
-# Sentinel
+# Argus
 
-Sentinel is a self-hosted, multi-tenant security operations platform in which AI agents
+Argus is a self-hosted, multi-tenant security operations platform in which AI agents
 analyze evidence but never act on the estate. Collectors inventory cloud, identity, code,
 endpoint, network and Kubernetes assets into an evidence graph; a detection engine evaluates
 events for swarm, identity, cloud, code and canary signals; a scope-gated test harness runs
@@ -59,7 +59,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented with fixtures; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
 | Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; tools must be installed separately | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
 | Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
-| Action broker: catalog of 25 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, Sentinel-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
+| Action broker: catalog of 25 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
 | Alembic migrations (initial revision) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
@@ -112,18 +112,18 @@ docker compose logs -f api
 with a read-only root filesystem, no capabilities and no Docker socket, mounts `./targets`
 read-only, and applies the schema at API start (`RUN_MIGRATIONS=true`). Add
 `--profile observability` for an OpenTelemetry collector, Prometheus (scraping `/metrics`) and
-Grafana with the dashboard in `infra/grafana/sentinel.json`.
+Grafana with the dashboard in `infra/grafana/argus.json`.
 
 TLS termination for a single host:
 
 ```bash
-# .env: APP_ENV=production COOKIE_SECURE=true BASE_URL=https://host SENTINEL_DOMAIN=host ACME_EMAIL=ops@example.com
+# .env: APP_ENV=production COOKIE_SECURE=true BASE_URL=https://host ARGUS_DOMAIN=host ACME_EMAIL=ops@example.com
 docker compose -f compose.yaml -f compose.prod.yaml up -d
 ```
 
 ## Production
 
-Kubernetes: `infra/helm/sentinel` (API + worker deployments, HPA, PDB, default-deny
+Kubernetes: `infra/helm/argus` (API + worker deployments, HPA, PDB, default-deny
 NetworkPolicy, ingress with TLS, optional ServiceMonitor). AWS: `infra/terraform` (ECS
 Fargate, RDS, ElastiCache, S3 Object Lock audit bucket, Secrets Manager, ALB + WAF).
 Azure: `infra/terraform-azure` (Container Apps, Flexible Postgres, Azure Cache, immutable
@@ -158,7 +158,8 @@ A `system` principal is used only inside queue handlers.
 
 **Agents** (`app/agents/runtime.py`). A specialist is an `AgentSpec` with a system prompt, a
 list of tool names, an output schema and budgets (`AGENT_MAX_STEPS`, `AGENT_MAX_TOKENS`,
-`AGENT_MAX_SECONDS`, `AGENT_COST_CEILING_USD`). Tools are read-only views over Sentinel data;
+`AGENT_MAX_SECONDS`, `AGENT_COST_CEILING_USD`, with `AGENT_MODEL_PRICES` for models outside
+the built-in Claude price table). Tools are read-only views over Argus data;
 the only `propose` tool creates a pending `ActionRequest` through the broker. Every tool
 result is redacted, truncated and wrapped as `<untrusted_data source=...>`; the guardrail
 prompt tells the model that instructions inside evidence are indicators of injection. Each

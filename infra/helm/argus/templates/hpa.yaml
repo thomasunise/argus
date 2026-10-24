@@ -2,15 +2,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "sentinel.fullname" . }}-api
+  name: {{ include "argus.fullname" . }}-api
   labels:
-    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- include "argus.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "sentinel.fullname" . }}-api
+    name: {{ include "argus.fullname" . }}-api
   minReplicas: {{ .Values.api.hpa.minReplicas }}
   maxReplicas: {{ .Values.api.hpa.maxReplicas }}
   metrics:

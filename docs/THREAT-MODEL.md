@@ -1,6 +1,6 @@
 # Threat model
 
-Scope: the Sentinel application as described in `docs/ARCHITECTURE.md`, deployed per
+Scope: the Argus application as described in `docs/ARCHITECTURE.md`, deployed per
 `docs/DEPLOYMENT.md`. Out of scope: the security of the sensors that feed it, the cloud
 accounts it inventories, and the model providers it calls (those are trust decisions you
 make when you configure them).
@@ -48,8 +48,8 @@ today (with the file), and what remains for the deployer or for later work.
 | Threat | Mitigation in code | Residual / deployer |
 |---|---|---|
 | Spoofing: password guessing | scrypt hashes (`core/security.py`), per-IP login throttle (`api/auth.py` `_throttle`, `LOGIN_MAX_ATTEMPTS`), optional TOTP (`TOTP_REQUIRED`), OIDC with PKCE, nonce, issuer, audience and signature checks (`oidc_exchange_code`) | Edge rate limiting (WAF rules provided), IdP conditional access |
-| Spoofing: forged session | Signed, HttpOnly, SameSite=strict cookie (`SessionMiddleware`), `https_only` when `COOKIE_SECURE` | Short `SESSION_MAX_AGE`; TLS everywhere |
-| Spoofing: API key | `snt_<prefix>_<body>` format, SHA-256 hash stored, constant-time compare, revocation (`revoked_at`), `last_used_at` | Rotate keys; scope them (`ingest`) |
+| Spoofing: forged session | Signed, HttpOnly, SameSite=lax cookie (`SessionMiddleware`; lax so the OIDC callback carries it, while every mutation also needs the CSRF header), `https_only` when `COOKIE_SECURE` | Short `SESSION_MAX_AGE`; TLS everywhere |
+| Spoofing: API key | `argus_<prefix>_<body>` format, SHA-256 hash stored, constant-time compare, revocation (`revoked_at`), `last_used_at` | Rotate keys; scope them (`ingest`) |
 | Tampering: CSRF | `require()` enforces `X-CSRF-Token` equal to the session value for every non-safe method under session auth | |
 | Tampering: forwarded headers | uvicorn `--proxy-headers --forwarded-allow-ips` limited to the proxy | Set `FORWARDED_ALLOW_IPS` correctly |
 | Repudiation | Request id on every response and in logs; audit entries for login, API-key lifecycle, authorization, scope, run, action, settings and role changes | |
@@ -72,8 +72,8 @@ today (with the file), and what remains for the deployer or for later work.
 |---|---|---|
 | Instructions hidden in logs, alerts, commits, page titles | Every tool result is `redact()`ed, truncated to `AGENT_TOOL_RESULT_LIMIT`, and wrapped as `<untrusted_data source=...>` with closing-tag escaping (`runtime.wrap_untrusted`); the guardrail prompt states that evidence is data and injection attempts should be reported | Run the `prompt_injection` eval suite per provider/model before enabling a specialist; keep the suite growing |
 | Model persuaded to act | Agents have no execution tools. `propose_action` creates a pending request only; the broker re-runs policy and requires human approval | Keep `ACTIONS_AUTO_APPROVE_LOW=false` unless the policy is reviewed |
-| Exfiltration through tool arguments | Tool schemas are closed (`additionalProperties: false`), arguments validated by type (`Tool.validate`); tools read Sentinel's own tenant-scoped records, not arbitrary URLs | |
-| Runaway cost or loops | `max_steps`, `max_tokens`, `max_seconds`, `AGENT_COST_CEILING_USD` enforced by the runtime (priced for Anthropic models; other providers are bounded by tokens and steps only); each step persisted | Budget alerts on `sentinel_agent_tokens_total` |
+| Exfiltration through tool arguments | Tool schemas are closed (`additionalProperties: false`), arguments validated by type (`Tool.validate`); tools read Argus's own tenant-scoped records, not arbitrary URLs | |
+| Runaway cost or loops | `max_steps`, `max_tokens`, `max_seconds`, `AGENT_COST_CEILING_USD` enforced by the runtime for priced models (built-in table for Claude models, Ollama free by default, anything else via `AGENT_MODEL_PRICES`; an unpriced model logs a warning at startup and per run and is bounded by tokens, steps and time only); each step persisted | Budget alerts on `argus_agent_tokens_total` |
 | Secrets reaching the provider | `redact()` on all evidence; collectors store `secret_ref` only; finding evidence capped at 6 KB | Review provider data-retention terms |
 
 ### B4: Agents to action broker
@@ -92,7 +92,7 @@ today (with the file), and what remains for the deployer or for later work.
 | SSRF / internal probing via web targets | `core/policy.py`: HTTPS only, origin only, ports 443/8443, no credentials, localhost rejected, DNS resolution checked against global addresses; private ranges only with `ALLOW_PRIVATE_TARGETS` and an explicit CIDR allowlist; loopback, link-local, multicast always denied | DNS rebinding is not prevented at the application layer: enforce egress filtering and metadata-endpoint blocking at the network (worker security group / NetworkPolicy) |
 | Path traversal via repo targets | `validate_repo_target` resolves under `SCAN_ROOT` and rejects escapes; `SCAN_ROOT` mounted read-only | |
 | Command injection into tools | `run_tool(argv, timeout, cwd)` uses `create_subprocess_exec` with a fixed list, never a shell; output bounded to 2 MB and redacted; minimal environment (no inherited secrets) | Pin tool versions; run workers in their own network segment |
-| Rate or load damage to targets | Per-scope `max_rps`, global `TEST_RATE_LIMIT_RPS`, tool timeouts | `max_concurrency` is recorded on the scope but not yet enforced (roadmap) |
+| Rate or load damage to targets | Per-scope `max_rps` and `max_concurrency` (a run that finds its scope full stays queued and retries, under a per-scope PostgreSQL lock so replicas cannot overshoot), global `TEST_RATE_LIMIT_RPS`, tool timeouts | A worker that dies mid-run holds its slot until `TEST_TOOL_TIMEOUT_SECONDS` plus two minutes have passed |
 
 ### B6: Tenant isolation
 

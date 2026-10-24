@@ -17,7 +17,7 @@ from ..core.audit import verify_chain
 from ..core.config import Settings
 from ..models import AgentRun, ApiKey, Asset, Finding, Investigation, Membership, SecurityEvent, Tenant, User, loads
 
-log = logging.getLogger('sentinel.reports')
+log = logging.getLogger('argus.reports')
 
 OPEN_STATES = ('open', 'investigating')
 API_KEY_MAX_AGE_DAYS = 90

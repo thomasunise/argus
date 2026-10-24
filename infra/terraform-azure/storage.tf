@@ -36,7 +36,7 @@ resource "azurerm_storage_account" "audit" {
 }
 
 resource "azurerm_storage_container" "audit" {
-  name                  = "sentinel-audit"
+  name                  = "argus-audit"
   storage_account_id    = azurerm_storage_account.audit.id
   container_access_type = "private"
 }

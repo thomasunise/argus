@@ -18,7 +18,7 @@ from . import schema as schema_module
 if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.orm import Session
 
-log = logging.getLogger('sentinel.actions')
+log = logging.getLogger('argus.actions')
 
 RISKS = ('low', 'medium', 'high', 'critical')
 RISK_RANK = {name: index for index, name in enumerate(RISKS)}
@@ -147,7 +147,7 @@ class ActionType:
 
             if importlib.util.find_spec(self.sdk.split('.')[0]) is None:
                 return False
-        if not self.platform or self.platform == 'sentinel':
+        if not self.platform or self.platform == 'argus':
             return True
         from .credentials import configured
 

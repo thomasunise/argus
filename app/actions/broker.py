@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings, get_settings
 from ..core.db import get_scoped, scoped, session_scope
-from ..core.errors import Conflict, Forbidden, NotFound, PolicyDenied, SentinelError
+from ..core.errors import Conflict, Forbidden, NotFound, PolicyDenied, ArgusError
 from ..core.events import publish, publish_soon
 from ..core.rbac import Principal, Role, has
 from ..core.security import redact
@@ -28,7 +28,7 @@ from ..models.actions import EXECUTABLE_STATUSES, ActionApproval, ActionRequest,
 from . import catalog, policy
 from .catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecResult
 
-log = logging.getLogger('sentinel.actions')
+log = logging.getLogger('argus.actions')
 
 DRY_RUN_TIMEOUT = 60
 EXECUTE_TIMEOUT = 600
@@ -46,7 +46,7 @@ def _cfg(settings: Settings | None = None) -> Settings:
     return settings or _settings or get_settings()
 
 
-class InvalidParams(SentinelError):
+class InvalidParams(ArgusError):
     status = 422
     code = 'invalid_params'
 

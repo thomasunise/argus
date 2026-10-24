@@ -31,7 +31,7 @@ class BlockIp(ActionType):
     name = 'cloudflare.waf.block_ip'
     description = 'Create an IP Access Rule in block mode for an IP or CIDR on a zone or account (POST firewall/access_rules/rules). Rollback deletes the rule.'
     params_schema = {'properties': {'zone_id': _ID, 'account_id': _ID, 'ip': {'type': 'string', 'minLength': 7, 'maxLength': 64},
-                                    'note': {'type': 'string', 'maxLength': 500, 'default': 'Blocked by Sentinel action broker'}},
+                                    'note': {'type': 'string', 'maxLength': 500, 'default': 'Blocked by Argus action broker'}},
                      'required': ['ip']}
     risk = 'medium'
     reversible = True

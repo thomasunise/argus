@@ -44,7 +44,7 @@ def test_api_key_auth_and_revoke(owner, api_key):
     me = client.get('/api/v1/auth/session', headers={'X-API-Key': api_key}).json()
     assert me['authenticated'] and me['auth'] == 'api_key' and me['role'] == 'operator'
     assert client.get('/api/v1/auth/session', headers={'Authorization': f'Bearer {api_key}'}).json()['authenticated']
-    assert client.get('/api/v1/auth/session', headers={'X-API-Key': 'snt_deadbeef_notarealkey'}).status_code == 401
+    assert client.get('/api/v1/auth/session', headers={'X-API-Key': 'argus_deadbeef_notarealkey'}).status_code == 401
     keys = client.get('/api/v1/auth/api-keys', headers=headers).json()['items']
     key_id = next(k['id'] for k in keys if k['name'] == 'ops')
     assert client.delete(f'/api/v1/auth/api-keys/{key_id}', headers=headers).status_code == 200

@@ -27,7 +27,7 @@ Procedure:
 1. list_findings (open, by severity) and event_stats for the window; list_assets to understand the estate; attack_paths for systemic exposure; list_detections and detection_rules for detection coverage; list_test_runs and available_test_adapters for testing coverage.
 2. Headline risks are the five things that would hurt most: KEV-listed open findings, open attack paths to data stores, production assets with no telemetry, identity weaknesses. Cite finding ids.
 3. Trends compare this window with the previous one using the counts you retrieved; do not estimate numbers you did not fetch.
-4. Coverage gaps are places Sentinel cannot see or test: assets without authorization, kinds with no collector events, rules that never fired.
+4. Coverage gaps are places Argus cannot see or test: assets without authorization, kinds with no collector events, rules that never fired.
 5. Recommendations are specific and ordered; each should map to a headline risk or a gap."""
 
 TOOLS = ['list_findings', 'event_stats', 'list_assets', 'attack_paths', 'graph_query', 'list_detections', 'detection_rules', 'list_test_runs',

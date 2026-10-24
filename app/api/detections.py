@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
-from ..core.errors import NotFound, SentinelError
+from ..core.errors import NotFound, ArgusError
 from ..core.rbac import Principal
 from ..detections import engine
 from ..detections.engine import detection_to_dict, effective_params, registry, rule_states, validate_params
@@ -90,7 +90,7 @@ def patch_rule(rule_id: str, body: PatchRuleBody, db: Session = Depends(get_db),
         try:
             cleaned = validate_params(rule, body.params)
         except ValueError as exc:
-            raise SentinelError(str(exc), code='invalid_params', status=400)
+            raise ArgusError(str(exc), code='invalid_params', status=400)
         state.params_json = dumps(cleaned, limit=8000)
         changes['params'] = cleaned
     state.updated_at = utcnow()
@@ -125,7 +125,7 @@ def stats(db: Session = Depends(get_db), principal: Principal = Depends(require(
 async def trigger_run(body: RunBody, request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require('detections:run'))):
     unknown = [r for r in body.rule_ids if registry.get(r) is None]
     if unknown:
-        raise SentinelError(f'Unknown rule ids: {", ".join(unknown)}', code='invalid_params', status=400)
+        raise ArgusError(f'Unknown rule ids: {", ".join(unknown)}', code='invalid_params', status=400)
     since = (utcnow() - timedelta(minutes=body.since_minutes)).isoformat() if body.since_minutes else None
     payload = {'tenant_id': principal.tenant_id, 'since': since, 'rule_ids': body.rule_ids, 'requested_by': principal.actor}
     job = await request.app.state.queue.enqueue('detections.run', payload, tenant_id=principal.tenant_id, lease_seconds=600)
@@ -148,7 +148,7 @@ def patch_detection(detection_id: str, body: PatchDetectionBody, db: Session = D
     if detection is None:
         raise NotFound('Detection not found')
     if body.status not in DETECTION_STATUSES:
-        raise SentinelError('Invalid status', code='invalid_status', status=400)
+        raise ArgusError('Invalid status', code='invalid_status', status=400)
     previous = detection.status
     detection.status = body.status
     detection.updated_at = utcnow()

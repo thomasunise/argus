@@ -1,4 +1,4 @@
-"""Day-1 smoke test for a running Sentinel instance.
+"""Day-1 smoke test for a running Argus instance.
 
 Logs in as a human user, creates a throwaway asset, ingests one synthetic event through the
 real ingest path (API key with the `ingest` scope), confirms the event is queryable, runs the
@@ -9,18 +9,18 @@ Every step prints PASS or FAIL; the process exits 1 on the first failure and 0 w
 Standard library only, so it runs from the image (`docker compose exec api python scripts/smoke_test.py`),
 from CI, or from an operator laptop.
 
-    python scripts/smoke_test.py --url https://sentinel.example.com --email admin@sentinel.local
-    SENTINEL_PASSWORD=... SENTINEL_TOTP_SECRET=... python scripts/smoke_test.py --tenant default
+    python scripts/smoke_test.py --url https://argus.example.com --email admin@argus.local
+    ARGUS_PASSWORD=... ARGUS_TOTP_SECRET=... python scripts/smoke_test.py --tenant default
 
 Environment (flags override):
-    SENTINEL_URL           base URL (default http://127.0.0.1:8080)
-    SENTINEL_EMAIL         login email (default admin@sentinel.local)
-    SENTINEL_PASSWORD      login password (required; prompted on a TTY when missing)
-    SENTINEL_TENANT        tenant slug (optional; defaults to the user's first membership)
-    SENTINEL_TOTP_SECRET   base32 TOTP secret of the user; a code is computed per login (optional)
-    SENTINEL_TOTP          a current 6-digit code instead of the secret (optional)
-    SENTINEL_INGEST_KEY    an existing ingest API key; when absent a temporary key is minted and revoked
-    SENTINEL_INSECURE      "1" disables TLS certificate verification (lab only)
+    ARGUS_URL           base URL (default http://127.0.0.1:8080)
+    ARGUS_EMAIL         login email (default admin@argus.local)
+    ARGUS_PASSWORD      login password (required; prompted on a TTY when missing)
+    ARGUS_TENANT        tenant slug (optional; defaults to the user's first membership)
+    ARGUS_TOTP_SECRET   base32 TOTP secret of the user; a code is computed per login (optional)
+    ARGUS_TOTP          a current 6-digit code instead of the secret (optional)
+    ARGUS_INGEST_KEY    an existing ingest API key; when absent a temporary key is minted and revoked
+    ARGUS_INSECURE      "1" disables TLS certificate verification (lab only)
 
 Nothing here scans, calls a model, or executes an action. The asset, event and detections it
 creates are labelled SMOKE and the asset is deleted at the end (events are kept as evidence,
@@ -48,7 +48,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 DEFAULT_URL = 'http://127.0.0.1:8080'
-DEFAULT_EMAIL = 'admin@sentinel.local'
+DEFAULT_EMAIL = 'admin@argus.local'
 JOB_TIMEOUT_SECONDS = 180
 REQUEST_TIMEOUT_SECONDS = 30
 
@@ -91,7 +91,7 @@ class Client:
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header('Accept', 'application/json')
-        req.add_header('User-Agent', 'sentinel-smoke-test/1.0')
+        req.add_header('User-Agent', 'argus-smoke-test/1.0')
         if data is not None:
             req.add_header('Content-Type', 'application/json')
         if self.csrf and method not in {'GET', 'HEAD', 'OPTIONS'}:
@@ -189,7 +189,7 @@ class Smoke:
         return f'user={session["user"]["email"]} role={role} tenant={tenant.get("slug")} mfa={payload.get("mfa")}'
 
     def create_asset(self) -> str:
-        body = {'name': f'SMOKE - smoke test host {self.run_id}', 'kind': 'host', 'target': f'smoke-{self.run_id}.sentinel.invalid',
+        body = {'name': f'SMOKE - smoke test host {self.run_id}', 'kind': 'host', 'target': f'smoke-{self.run_id}.argus.invalid',
                 'environment': 'lab', 'criticality': 'low', 'owner': 'smoke-test', 'tags': ['smoke', 'synthetic']}
         _, asset = self.client.call('POST', '/api/v1/assets', body, expect=(201,))
         self.asset_id = asset.get('id')
@@ -202,7 +202,7 @@ class Smoke:
 
     def ensure_ingest_key(self) -> str:
         if self.ingest_key:
-            return 'using provided SENTINEL_INGEST_KEY'
+            return 'using provided ARGUS_INGEST_KEY'
         body = {'name': f'smoke-test-{self.run_id}', 'role': 'viewer', 'scopes': ['ingest']}
         _, key = self.client.call('POST', '/api/v1/auth/api-keys', body, expect=(201,))
         self.key_id, self.ingest_key = key.get('id'), key.get('key', '')
@@ -214,7 +214,7 @@ class Smoke:
         external_id = f'smoke-{self.run_id}'
         now = datetime.now(timezone.utc).isoformat()
         event = {'id': external_id, 'title': f'[SMOKE] synthetic event {self.run_id}', 'severity': 'low', 'category': 'smoke',
-                 'actor': 'smoke-test@sentinel.local', 'entity': f'host:smoke-{self.run_id}', 'action': 'smoke.test',
+                 'actor': 'smoke-test@argus.local', 'entity': f'host:smoke-{self.run_id}', 'action': 'smoke.test',
                  'occurred_at': now, 'source': 'smoke-test', 'ip': '203.0.113.7', 'metadata': {'smoke': True, 'run': self.run_id}}
         headers = {'X-API-Key': self.ingest_key}
         if self.asset_id:
@@ -291,7 +291,7 @@ class Smoke:
     # ------------------------------------------------------------ run
 
     def run(self) -> int:
-        _out(f'Sentinel smoke test {self.run_id} against {self.client.base_url} as {self.args.email}')
+        _out(f'Argus smoke test {self.run_id} against {self.client.base_url} as {self.args.email}')
         self.step('health and readiness', self.check_health)
         self.step('login', self.login)
         self.step('create asset', self.create_asset)
@@ -311,23 +311,23 @@ class Smoke:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Sentinel day-1 smoke test (login, asset, ingest, detections, audit chain).')
-    parser.add_argument('--url', default=os.getenv('SENTINEL_URL', DEFAULT_URL))
-    parser.add_argument('--email', default=os.getenv('SENTINEL_EMAIL', DEFAULT_EMAIL))
-    parser.add_argument('--password', default=os.getenv('SENTINEL_PASSWORD', ''))
-    parser.add_argument('--tenant', default=os.getenv('SENTINEL_TENANT', ''), help='tenant slug')
-    parser.add_argument('--totp', default=os.getenv('SENTINEL_TOTP', ''), help='current 6-digit TOTP code')
-    parser.add_argument('--totp-secret', default=os.getenv('SENTINEL_TOTP_SECRET', ''), help='base32 TOTP secret (code computed locally)')
-    parser.add_argument('--ingest-key', default=os.getenv('SENTINEL_INGEST_KEY', ''), help='existing ingest API key (else a temporary one is minted)')
-    parser.add_argument('--job-timeout', type=int, default=int(os.getenv('SENTINEL_SMOKE_JOB_TIMEOUT', JOB_TIMEOUT_SECONDS)))
+    parser = argparse.ArgumentParser(description='Argus day-1 smoke test (login, asset, ingest, detections, audit chain).')
+    parser.add_argument('--url', default=os.getenv('ARGUS_URL', DEFAULT_URL))
+    parser.add_argument('--email', default=os.getenv('ARGUS_EMAIL', DEFAULT_EMAIL))
+    parser.add_argument('--password', default=os.getenv('ARGUS_PASSWORD', ''))
+    parser.add_argument('--tenant', default=os.getenv('ARGUS_TENANT', ''), help='tenant slug')
+    parser.add_argument('--totp', default=os.getenv('ARGUS_TOTP', ''), help='current 6-digit TOTP code')
+    parser.add_argument('--totp-secret', default=os.getenv('ARGUS_TOTP_SECRET', ''), help='base32 TOTP secret (code computed locally)')
+    parser.add_argument('--ingest-key', default=os.getenv('ARGUS_INGEST_KEY', ''), help='existing ingest API key (else a temporary one is minted)')
+    parser.add_argument('--job-timeout', type=int, default=int(os.getenv('ARGUS_SMOKE_JOB_TIMEOUT', JOB_TIMEOUT_SECONDS)))
     parser.add_argument('--keep', action='store_true', help='leave the smoke asset in place')
-    parser.add_argument('--insecure', action='store_true', default=os.getenv('SENTINEL_INSECURE') == '1', help='skip TLS verification (lab only)')
+    parser.add_argument('--insecure', action='store_true', default=os.getenv('ARGUS_INSECURE') == '1', help='skip TLS verification (lab only)')
     args = parser.parse_args(argv)
     if not args.password:
         if sys.stdin.isatty():
             args.password = getpass.getpass(f'Password for {args.email}: ')
         else:
-            parser.error('set SENTINEL_PASSWORD or pass --password')
+            parser.error('set ARGUS_PASSWORD or pass --password')
     return args
 
 

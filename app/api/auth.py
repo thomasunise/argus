@@ -293,13 +293,13 @@ def create_api_key(body: ApiKeyBody, db: Session = Depends(get_db), principal: P
     for scope in body.scopes:
         ok = scope == 'ingest' or scope in ALL_PERMISSIONS or (scope.endswith(':*') and scope[:-2] in valid_domains)
         if not ok:
-            from ..core.errors import SentinelError
+            from ..core.errors import ArgusError
 
-            raise SentinelError(f'Unknown scope {scope!r}', code='invalid_scope', status=400)
+            raise ArgusError(f'Unknown scope {scope!r}', code='invalid_scope', status=400)
     if len(body.scopes) > 32:
-        from ..core.errors import SentinelError
+        from ..core.errors import ArgusError
 
-        raise SentinelError('Too many scopes', code='invalid_scope', status=400)
+        raise ArgusError('Too many scopes', code='invalid_scope', status=400)
     plaintext, prefix, key_hash = generate_api_key()
     key = ApiKey(tenant_id=principal.tenant_id, name=body.name, prefix=prefix, key_hash=key_hash, role=body.role,
                  scopes=','.join(sorted(set(body.scopes))), created_by=principal.user_id or '')

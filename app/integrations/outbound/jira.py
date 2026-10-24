@@ -1,4 +1,4 @@
-"""Jira Cloud REST v3: create one issue per finding (deduped by a `sentinel-finding-<id>` label),
+"""Jira Cloud REST v3: create one issue per finding (deduped by a `argus-finding-<id>` label),
 comment on later events for the same finding, and transition to a done-like status on resolution."""
 from __future__ import annotations
 
@@ -17,16 +17,16 @@ def adf(text: str) -> dict[str, Any]:
 
 
 def label_for(event: OutboundEvent) -> str:
-    return f'sentinel-{event.subject_kind or "event"}-{event.subject_id}'[:255].replace(' ', '-')
+    return f'argus-{event.subject_kind or "event"}-{event.subject_id}'[:255].replace(' ', '-')
 
 
 def build_issue(event: OutboundEvent, config: dict[str, Any]) -> dict[str, Any]:
     description = '\n\n'.join(x for x in [event.summary, f'Topic: {event.topic}', f'Severity: {severity_label(event.severity)}',
-                                           f'Sentinel {event.subject_kind} id: {event.subject_id}', f'Link: {event.url}' if event.url else ''] if x)
+                                           f'Argus {event.subject_kind} id: {event.subject_id}', f'Link: {event.url}' if event.url else ''] if x)
     fields: dict[str, Any] = {
         'project': {'key': str(config.get('project_key'))}, 'issuetype': {'name': str(config.get('issue_type') or 'Task')},
         'summary': f'[{severity_label(event.severity)}] {event.title}'[:250], 'description': adf(description),
-        'labels': [str(config.get('label_prefix') or 'sentinel'), label_for(event)],
+        'labels': [str(config.get('label_prefix') or 'argus'), label_for(event)],
     }
     if config.get('set_priority', True) is not False:
         fields['priority'] = {'name': _PRIORITY.get(event.severity, 'Medium')}
@@ -52,7 +52,7 @@ class JiraChannel(Channel):
         'properties': {
             'base_url': {'type': 'string', 'pattern': '^https://', 'description': 'https://your-site.atlassian.net'},
             'project_key': {'type': 'string', 'maxLength': 20}, 'issue_type': {'type': 'string', 'default': 'Task'},
-            'label_prefix': {'type': 'string', 'default': 'sentinel'}, 'components': {'type': 'array', 'items': {'type': 'string'}},
+            'label_prefix': {'type': 'string', 'default': 'argus'}, 'components': {'type': 'array', 'items': {'type': 'string'}},
             'set_priority': {'type': 'boolean', 'default': True}, 'transition_on_resolve': {'type': 'boolean', 'default': True},
             'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 60, 'default': 20},
         },
@@ -101,7 +101,7 @@ class JiraChannel(Channel):
         return result
 
     async def _update(self, key: str, event: OutboundEvent, config: dict[str, Any], headers: dict[str, str], base: str, timeout: float) -> DeliveryResult:
-        comment = f'Sentinel update ({event.topic}): {event.title}' + (f'\n\nStatus: {event.status}' if event.status else '') + (f'\n\n{event.summary}' if event.summary else '')
+        comment = f'Argus update ({event.topic}): {event.title}' + (f'\n\nStatus: {event.status}' if event.status else '') + (f'\n\n{event.summary}' if event.summary else '')
         response, error = await request_with_retry(lambda c: c.post(f'{base}/rest/api/3/issue/{key}/comment', json={'body': adf(comment)}, headers=headers),
                                                    attempts=2, timeout=timeout)
         result = result_from_response(response, error, ok_codes=(200, 201), external_ref=key)

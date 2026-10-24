@@ -1,4 +1,4 @@
-# Sentinel dev / pilot stack.
+# Argus dev / pilot stack.
 #
 #   cp .env.example .env && python scripts/generate_secrets.py --write
 #   docker compose up --build -d                                # api + worker + postgres + redis
@@ -9,22 +9,22 @@
 # overlay for TLS termination. No Docker socket or host paths are mounted into the API or
 # worker; ./targets is the only host directory and it is read-only.
 
-x-sentinel-env: &sentinel-env
-  DATABASE_URL: postgresql+psycopg://sentinel:${POSTGRES_PASSWORD:-sentinel-dev-password}@postgres:5432/sentinel
+x-argus-env: &argus-env
+  DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus
   REDIS_URL: redis://redis:6379/0
   SCAN_ROOT: /app/targets
   AUDIT_JSONL_PATH: /app/data/audit.jsonl
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
-x-sentinel-common: &sentinel-common
-  image: ${SENTINEL_IMAGE:-sentinel:local}
+x-argus-common: &argus-common
+  image: ${ARGUS_IMAGE:-argus:local}
   build:
     context: .
     args:
-      EXTRAS: ${SENTINEL_EXTRAS:-0}
+      EXTRAS: ${ARGUS_EXTRAS:-0}
   env_file: .env
   volumes:
-    - sentinel-data:/app/data
+    - argus-data:/app/data
     - ./targets:/app/targets:ro
   read_only: true
   tmpfs:
@@ -36,14 +36,14 @@ x-sentinel-common: &sentinel-common
   pids_limit: 256
   restart: unless-stopped
   networks:
-    - sentinel
+    - argus
 
 services:
   api:
-    <<: *sentinel-common
+    <<: *argus-common
     command: ["api"]
     environment:
-      <<: *sentinel-env
+      <<: *argus-env
       RUN_MIGRATIONS: "true"
       WORKERS_INPROCESS: "false"   # the worker service owns job execution
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
@@ -64,10 +64,10 @@ services:
       start_period: 20s
 
   worker:
-    <<: *sentinel-common
+    <<: *argus-common
     command: ["worker"]
     environment:
-      <<: *sentinel-env
+      <<: *argus-env
       RUN_MIGRATIONS: "false"
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
     depends_on:
@@ -85,14 +85,14 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: sentinel
-      POSTGRES_USER: sentinel
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel-dev-password}
+      POSTGRES_DB: argus
+      POSTGRES_USER: argus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-argus-dev-password}
       POSTGRES_INITDB_ARGS: "--data-checksums"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      test: ["CMD-SHELL", "pg_isready -U argus -d argus"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -101,7 +101,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - sentinel
+      - argus
 
   redis:
     image: redis:7-alpine
@@ -117,7 +117,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - sentinel
+      - argus
 
   # ---------------------------------------------------------------- observability (optional)
   otel-collector:
@@ -128,7 +128,7 @@ services:
       - ./infra/otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     restart: unless-stopped
     networks:
-      - sentinel
+      - argus
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -144,7 +144,7 @@ services:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
     networks:
-      - sentinel
+      - argus
 
   grafana:
     image: grafana/grafana:11.2.2
@@ -157,7 +157,7 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infra/grafana/sentinel.json:/var/lib/grafana/dashboards/sentinel.json:ro
+      - ./infra/grafana/argus.json:/var/lib/grafana/dashboards/argus.json:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "127.0.0.1:3000:3000"
@@ -165,15 +165,15 @@ services:
       - prometheus
     restart: unless-stopped
     networks:
-      - sentinel
+      - argus
 
 volumes:
-  sentinel-data:
+  argus-data:
   postgres-data:
   redis-data:
   prometheus-data:
   grafana-data:
 
 networks:
-  sentinel:
+  argus:
     driver: bridge

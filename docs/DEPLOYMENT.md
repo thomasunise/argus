@@ -73,20 +73,20 @@ Properties of the stack:
 
 TLS for a single host: `compose.prod.yaml` adds Caddy (ACME certificates, HSTS, `/metrics`
 blocked), sets `APP_ENV=production`, `COOKIE_SECURE=true`, `LOG_JSON=true`,
-`BASE_URL=https://$SENTINEL_DOMAIN` and `TOTP_REQUIRED=true` on both `api` and `worker`
+`BASE_URL=https://$ARGUS_DOMAIN` and `TOTP_REQUIRED=true` on both `api` and `worker`
 (each process runs `assert_safe_config`), `FORWARDED_ALLOW_IPS=*` on the API (Caddy is the
 only client on the internal network), `restart: always` and log rotation.
 
 Required in `.env` for this overlay; `up` refuses to start without the first two:
 
-- `SENTINEL_DOMAIN` - public hostname; DNS must resolve to the host before `up`.
+- `ARGUS_DOMAIN` - public hostname; DNS must resolve to the host before `up`.
 - `ACME_EMAIL` - ACME account contact (an empty value is a Caddyfile parse error).
 - `SESSION_SECRET`, `ADMIN_PASSWORD`, `INGEST_API_KEY`, `DATA_ENCRYPTION_KEY`, `AUDIT_SIGNING_KEY` - from `python scripts/generate_secrets.py --write`.
 
 Optional: `TOTP_REQUIRED=false` only together with `OIDC_ISSUER`, `OIDC_CLIENT_ID` and
 `OIDC_CLIENT_SECRET` (single sign-on); `AUDIT_S3_BUCKET` or `AUDIT_AZURE_CONTAINER` for an
-object-lock mirror, which needs the `<tag>-extras` image (`SENTINEL_IMAGE=ghcr.io/<owner>/sentinel:<tag>-extras`,
-or `SENTINEL_EXTRAS=1` when building locally).
+object-lock mirror, which needs the `<tag>-extras` image (`ARGUS_IMAGE=ghcr.io/<owner>/argus:<tag>-extras`,
+or `ARGUS_EXTRAS=1` when building locally).
 
 ```bash
 docker compose -f compose.yaml -f compose.prod.yaml up -d
@@ -97,22 +97,22 @@ start. Back up the Postgres volume first (`pg_dump` from the `postgres` containe
 
 ## 4. Kubernetes (Helm)
 
-Chart: `infra/helm/sentinel`.
+Chart: `infra/helm/argus`.
 
 ```bash
-kubectl create namespace sentinel
-kubectl -n sentinel create secret generic sentinel-secrets \
+kubectl create namespace argus
+kubectl -n argus create secret generic argus-secrets \
   --from-literal=SESSION_SECRET="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
   --from-literal=ADMIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(24))')" \
-  --from-literal=INGEST_API_KEY="$(python -c 'import secrets;print(f"snt_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}")')" \
+  --from-literal=INGEST_API_KEY="$(python -c 'import secrets;print(f"argus_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}")')" \
   --from-literal=AUDIT_SIGNING_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')"   --from-literal=DATA_ENCRYPTION_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')" \
-  --from-literal=DATABASE_URL='postgresql+psycopg://sentinel:...@postgres:5432/sentinel?sslmode=require' \
+  --from-literal=DATABASE_URL='postgresql+psycopg://argus:...@postgres:5432/argus?sslmode=require' \
   --from-literal=REDIS_URL='rediss://:...@redis:6379/0'
-helm upgrade --install sentinel infra/helm/sentinel -n sentinel \
-  --set existingSecret=sentinel-secrets \
+helm upgrade --install argus infra/helm/argus -n argus \
+  --set existingSecret=argus-secrets \
   --set image.digest=sha256:... \
-  --set ingress.host=sentinel.example.com \
-  --set config.BASE_URL=https://sentinel.example.com
+  --set ingress.host=argus.example.com \
+  --set config.BASE_URL=https://argus.example.com
 ```
 
 What the chart renders:
@@ -129,7 +129,7 @@ What the chart renders:
 Database and Redis are not part of the chart; use managed services or your own operators.
 
 `image.tag` defaults to `Chart.AppVersion` (`1.0.0`). Images are published by
-`.github/workflows/release.yml` on a `v*` tag, so `ghcr.io/eekosystems/sentinel:1.0.0` exists
+`.github/workflows/release.yml` on a `v*` tag, so `ghcr.io/thomasunise/argus:1.0.0` exists
 only after the first `v1.0.0` release; pin `image.digest` from the release notes. When
 `config.AUDIT_S3_BUCKET` or `config.AUDIT_AZURE_CONTAINER` is set, use the `<tag>-extras`
 image (it carries `boto3` / `azure-storage-blob`); the base image logs a sink failure instead.
@@ -198,15 +198,15 @@ Audit sinks: `AUDIT_JSONL_PATH` (local append-only file), `AUDIT_S3_BUCKET` +
 `AUDIT_S3_PREFIX` (needs `boto3` from `requirements-optional.txt` and an IAM principal),
 `AUDIT_AZURE_CONTAINER` + `AUDIT_AZURE_CONNECTION_STRING` (needs `azure-storage-blob`).
 Both SDKs ship only in the `<tag>-extras` image (`Dockerfile` `EXTRAS=1`, released as
-`ghcr.io/<owner>/sentinel:<tag>-extras`), so run that image wherever an object-lock sink is configured.
+`ghcr.io/<owner>/argus:<tag>-extras`), so run that image wherever an object-lock sink is configured.
 A sink failure is logged and never blocks the operation; the database chain remains the
 source of truth and `GET /api/v1/audit/verify` recomputes it.
 
 ## 8. Observability
 
-- Metrics: `/metrics` with `sentinel_http_requests_total`, `sentinel_http_request_seconds`, `sentinel_jobs_total`, `sentinel_agent_tokens_total`, `sentinel_agent_runs_total`, `sentinel_findings_open`, `sentinel_actions_total`, `sentinel_detections_total`.
+- Metrics: `/metrics` with `argus_http_requests_total`, `argus_http_request_seconds`, `argus_jobs_total`, `argus_agent_tokens_total`, `argus_agent_runs_total`, `argus_findings_open`, `argus_actions_total`, `argus_detections_total`.
 - Prometheus config and alert rules: `infra/prometheus/`.
-- Grafana dashboard: `infra/grafana/sentinel.json` (provisioned automatically in the compose profile).
+- Grafana dashboard: `infra/grafana/argus.json` (provisioned automatically in the compose profile).
 - Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP/HTTP, e.g. `http://otel-collector:4318/v1/traces`); requires the `opentelemetry-*` extras (`EXTRAS=1` image). Collector config: `infra/otel/otel-collector.yaml`.
 - Logs: `LOG_JSON=true` emits one JSON object per line with `request_id`, `tenant_id`, `job_id`, `run_id` when present. Secrets are redacted before persistence; do not log request bodies at the proxy.
 
@@ -249,6 +249,6 @@ Agents, testing, actions
 
 Operations
 
-- [ ] Alerts from `infra/prometheus/rules/sentinel.yml` (or the CloudWatch / Azure Monitor equivalents) routed to a pager.
+- [ ] Alerts from `infra/prometheus/rules/argus.yml` (or the CloudWatch / Azure Monitor equivalents) routed to a pager.
 - [ ] Runbooks read by the on-call team; a dry run of "lost worker" and "revoke API key" performed.
 - [ ] Log retention and PII handling agreed; logs contain no secrets by construction, but event payloads may contain personal data from your sensors.

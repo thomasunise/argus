@@ -7,7 +7,7 @@ import logging
 
 from .runner import eval_to_dict, list_suites, load_suite, run_case, run_suite  # noqa: F401
 
-log = logging.getLogger('sentinel.agents.evals')
+log = logging.getLogger('argus.agents.evals')
 
 JOB_KIND = 'agents.eval'
 

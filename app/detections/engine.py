@@ -30,7 +30,7 @@ from ..models import SecurityEvent, dumps, loads, utcnow
 from ..models.detections import Baseline, Detection, DetectionRuleState, DetectionRun
 from .util import aware, bucket_start, event_time, window_bucket
 
-log = logging.getLogger('sentinel.detections')
+log = logging.getLogger('argus.detections')
 
 CATEGORIES = ('swarm', 'identity', 'canary', 'anomaly', 'cloud', 'k8s', 'code', 'agentic')
 DEFAULT_LOOKBACK_MINUTES = 60

@@ -16,7 +16,7 @@ terraform {
   #   resource_group_name  = "tfstate-rg"
   #   storage_account_name = "tfstateaccount"
   #   container_name       = "tfstate"
-  #   key                  = "sentinel.tfstate"
+  #   key                  = "argus.tfstate"
   # }
 }
 

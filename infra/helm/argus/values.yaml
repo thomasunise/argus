@@ -1,15 +1,15 @@
-# Default values for the Sentinel chart. Every key under `config` becomes an environment
+# Default values for the Argus chart. Every key under `config` becomes an environment
 # variable (upper-cased) in a ConfigMap; every key under `secrets` becomes a Secret entry,
 # unless `existingSecret` names a Secret you manage outside Helm (recommended).
 
 nameOverride: ""
 fullnameOverride: ""
 
-# Images are published by .github/workflows/release.yml on a `v*` tag (ghcr.io/<owner>/sentinel:<version>
+# Images are published by .github/workflows/release.yml on a `v*` tag (ghcr.io/<owner>/argus:<version>
 # plus `<version>-extras` with boto3 / azure-storage-blob for the S3 / Azure audit sinks). The tag
-# must exist in the registry: ghcr.io/eekosystems/sentinel:1.0.0 exists after the first v1.0.0 release.
+# must exist in the registry: ghcr.io/thomasunise/argus:1.0.0 exists after the first v1.0.0 release.
 image:
-  repository: ghcr.io/eekosystems/sentinel
+  repository: ghcr.io/thomasunise/argus
   tag: ""            # defaults to .Chart.AppVersion (1.0.0); use "<version>-extras" when AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER is set; pin a digest in production
   digest: ""         # e.g. sha256:...; when set it overrides tag
   pullPolicy: IfNotPresent
@@ -96,12 +96,12 @@ service:
 ingress:
   enabled: true
   className: nginx
-  host: sentinel.example.com
+  host: argus.example.com
   path: /
   pathType: Prefix
   tls:
     enabled: true
-    secretName: sentinel-tls
+    secretName: argus-tls
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -165,15 +165,15 @@ auditVolume:
 # Keys map to app/core/config.py settings. Values are strings.
 config:
   APP_ENV: production
-  APP_NAME: Sentinel
-  BASE_URL: https://sentinel.example.com
+  APP_NAME: Argus
+  BASE_URL: https://argus.example.com
   COOKIE_SECURE: "true"
   DB_AUTO_CREATE: "false"
   SESSION_MAX_AGE: "3600"
   WORKERS_INPROCESS: "false"
   WORKER_CONCURRENCY: "4"
   QUEUE_MAX_ATTEMPTS: "3"
-  ADMIN_EMAIL: admin@sentinel.local
+  ADMIN_EMAIL: admin@argus.local
   DEFAULT_TENANT_SLUG: default
   DEFAULT_TENANT_NAME: Default
   TOTP_REQUIRED: "true"        # production requires TOTP_REQUIRED=true or OIDC_ISSUER; OIDC deployments set this "false" and fill OIDC_ISSUER / OIDC_CLIENT_ID (+ OIDC_CLIENT_SECRET)
@@ -184,13 +184,13 @@ config:
   OIDC_AUTO_PROVISION: "true"
   AUDIT_JSONL_PATH: ""
   AUDIT_S3_BUCKET: ""
-  AUDIT_S3_PREFIX: sentinel-audit/
+  AUDIT_S3_PREFIX: argus-audit/
   AUDIT_AZURE_CONTAINER: ""
   LOG_JSON: "true"
   LOG_LEVEL: INFO
   METRICS_ENABLED: "true"      # set "false" when /metrics is neither scraped nor blocked at the ingress (see ingress.annotations)
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
-  OTEL_SERVICE_NAME: sentinel
+  OTEL_SERVICE_NAME: argus
   AI_PROVIDER: none
   ANTHROPIC_MODEL: claude-opus-5-5
   ANTHROPIC_EFFORT: high
@@ -201,6 +201,7 @@ config:
   AGENT_MAX_TOKENS: "150000"
   AGENT_MAX_SECONDS: "300"
   AGENT_COST_CEILING_USD: "5.0"
+  AGENT_MODEL_PRICES: ""
   SCAN_ROOT: /app/targets
   ENABLE_TRIVY: "false"
   TEST_RATE_LIMIT_RPS: "5.0"
@@ -230,7 +231,7 @@ secrets:
   ingestApiKey: ""
   auditSigningKey: ""
   dataEncryptionKey: ""   # encryption at rest for stored secrets; required when config.APP_ENV=production
-  databaseUrl: ""          # postgresql+psycopg://user:pass@host:5432/sentinel
+  databaseUrl: ""          # postgresql+psycopg://user:pass@host:5432/argus
   redisUrl: ""             # redis://:pass@host:6379/0  or rediss://
   oidcClientSecret: ""
   anthropicApiKey: ""

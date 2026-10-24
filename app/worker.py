@@ -7,12 +7,12 @@ import logging
 import os
 import signal
 
-os.environ.setdefault('SENTINEL_LAZY_APP', '1')
+os.environ.setdefault('ARGUS_LAZY_APP', '1')
 
 from .core.config import get_settings  # noqa: E402
 from .main import create_app  # noqa: E402
 
-log = logging.getLogger('sentinel.worker')
+log = logging.getLogger('argus.worker')
 
 
 async def main() -> None:

@@ -19,7 +19,7 @@ from ..models.testing import TestPlan, TestRun, TestScope
 from . import harness
 from .scope import TIER_RANK
 
-log = logging.getLogger('sentinel.testing')
+log = logging.getLogger('argus.testing')
 
 
 def _lease_seconds(settings) -> int:

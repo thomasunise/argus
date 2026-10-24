@@ -11,7 +11,7 @@ from datetime import timedelta
 from ..core.db import session_scope
 from ..models import utcnow
 
-log = logging.getLogger('sentinel.testing')
+log = logging.getLogger('argus.testing')
 
 
 async def scheduler_loop(app) -> None:

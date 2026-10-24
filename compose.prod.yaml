@@ -4,24 +4,24 @@
 #   docker compose -f compose.yaml -f compose.prod.yaml up -d
 #
 # Required in .env for this overlay:
-#   SENTINEL_DOMAIN=<host>          public hostname; also becomes BASE_URL=https://<host> (Caddy obtains a certificate via ACME)
+#   ARGUS_DOMAIN=<host>          public hostname; also becomes BASE_URL=https://<host> (Caddy obtains a certificate via ACME)
 #   ACME_EMAIL=<ops@example.com>    ACME account contact; Caddy fails to parse its config when empty
 #   SESSION_SECRET / ADMIN_PASSWORD / INGEST_API_KEY / DATA_ENCRYPTION_KEY / AUDIT_SIGNING_KEY   (python scripts/generate_secrets.py --write)
 # Set by this overlay for api AND worker (assert_safe_config enforces them in production):
-#   APP_ENV=production   COOKIE_SECURE=true   LOG_JSON=true   BASE_URL=https://${SENTINEL_DOMAIN}   TOTP_REQUIRED=true
+#   APP_ENV=production   COOKIE_SECURE=true   LOG_JSON=true   BASE_URL=https://${ARGUS_DOMAIN}   TOTP_REQUIRED=true
 # Optional in .env:
 #   TOTP_REQUIRED=false             only together with OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET (single sign-on)
 #   AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER   object-lock mirror; needs the `<tag>-extras` image (boto3 / azure-storage-blob).
 #   AUDIT_JSONL_PATH is set by compose.yaml.
-# Pin SENTINEL_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).
+# Pin ARGUS_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).
 
-# Production settings shared by every Sentinel process; both api and worker call
+# Production settings shared by every Argus process; both api and worker call
 # assert_safe_config at startup, so the worker needs the full set too.
 x-production-env: &production-env
   APP_ENV: production
   COOKIE_SECURE: "true"
   LOG_JSON: "true"
-  BASE_URL: https://${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+  BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN}
   TOTP_REQUIRED: ${TOTP_REQUIRED:-true}   # OIDC deployments set TOTP_REQUIRED=false in .env together with OIDC_ISSUER
 
 services:
@@ -56,7 +56,7 @@ services:
     image: caddy:2.8-alpine
     restart: always
     environment:
-      SENTINEL_DOMAIN: ${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN}
+      ARGUS_DOMAIN: ${ARGUS_DOMAIN:?set ARGUS_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}   # Caddyfile `email {$ACME_EMAIL}` does not parse when empty
     ports:
       - "80:80"
@@ -77,7 +77,7 @@ services:
       - NET_BIND_SERVICE
     logging: *json-logging
     networks:
-      - sentinel
+      - argus
 
 volumes:
   caddy-data:

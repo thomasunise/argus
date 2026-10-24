@@ -1,13 +1,13 @@
-name        = "sentinel"
+name        = "argus"
 environment = "production"
 location    = "eastus2"
 
 # Pin a digest from a signed release (see .github/workflows/release.yml). This stack always
 # configures the object-lock audit sink (AUDIT_AZURE_CONTAINER), which needs the `<tag>-extras` image
 # (boto3 / azure-storage-blob); use the "Extras image" digest from the release notes, not the base one.
-image = "ghcr.io/eekosystems/sentinel@sha256:REPLACE_WITH_RELEASE_EXTRAS_DIGEST"
+image = "ghcr.io/thomasunise/argus@sha256:REPLACE_WITH_RELEASE_EXTRAS_DIGEST"
 
-domain_name = "sentinel.example.com"
+domain_name = "argus.example.com"
 
 api_min_replicas = 2
 api_max_replicas = 6

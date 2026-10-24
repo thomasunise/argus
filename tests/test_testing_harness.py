@@ -252,3 +252,45 @@ def test_adapter_cannot_run_below_its_nominal_tier(settings):
     # Requesting the adapter's own tier (or higher) is still subject to the normal checks.
     out = scope_mod.check(_Intrusive(), _asset(env='staging'), permissive, _auth(active=True, intrusive=True), NOW, settings, tier='intrusive')
     assert out == 'acct-123'
+
+
+@pytest.mark.asyncio
+async def test_execute_run_respects_scope_max_concurrency(app, settings, default_tenant_id):
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    harness.register(_FakeRepoAdapter())
+    factory = app.state.db_factory
+    with factory() as db:
+        asset_id, scope_id = _seed(db, default_tenant_id, scan_root=settings.scan_root)
+        db.get(TestScope, scope_id).max_concurrency = 1
+        busy = TestRun(tenant_id=default_tenant_id, scope_id=scope_id, adapter='fake_repo', asset_id=asset_id,
+                       tier='passive', status='running', started_at=utcnow())
+        run = TestRun(tenant_id=default_tenant_id, scope_id=scope_id, adapter='fake_repo', asset_id=asset_id,
+                      tier='passive', status='queued')
+        db.add_all([busy, run])
+        db.commit()
+        busy_id, run_id = busy.id, run.id
+
+    # The scope's only slot is taken: the run waits (stays queued, re-enqueued with a delay) instead of starting.
+    result = await harness.execute_run(run_id, factory, settings, app)
+    assert result['status'] == 'deferred' and result['job_id']
+    with factory() as db:
+        run = db.get(TestRun, run_id)
+        assert run.status == 'queued' and run.started_at is None and run.job_id == result['job_id']
+    job = await app.state.queue.status(result['job_id'])
+    assert job.payload == {'run_id': run_id, 'deferrals': 1}
+
+    # Waiting has a limit.
+    result = await harness.execute_run(run_id, factory, settings, app, deferrals=harness.MAX_CONCURRENCY_DEFERRALS)
+    assert result == {'run_id': run_id, 'status': 'failed', 'error': 'concurrency_wait'}
+
+    # A run stuck in 'running' past the tool timeout (crashed worker) does not hold the slot forever.
+    with factory() as db:
+        db.get(TestRun, busy_id).started_at = utcnow() - timedelta(seconds=settings.test_tool_timeout_seconds + 600)
+        run = db.get(TestRun, run_id)
+        run.status, run.error, run.finished_at = 'queued', '', None
+        db.commit()
+    result = await harness.execute_run(run_id, factory, settings, app)
+    assert result['status'] == 'completed'

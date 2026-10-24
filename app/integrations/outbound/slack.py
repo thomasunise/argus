@@ -23,9 +23,9 @@ def build_blocks(event: OutboundEvent) -> list[dict[str, Any]]:
     ]
     if event.summary:
         blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': event.summary[:2900]}})
-    context = [{'type': 'mrkdwn', 'text': f'Sentinel · {event.tenant_name or event.tenant_id[:8]}'}]
+    context = [{'type': 'mrkdwn', 'text': f'Argus · {event.tenant_name or event.tenant_id[:8]}'}]
     if event.url:
-        context.append({'type': 'mrkdwn', 'text': f'<{event.url}|Open in Sentinel>'})
+        context.append({'type': 'mrkdwn', 'text': f'<{event.url}|Open in Argus>'})
     blocks.append({'type': 'context', 'elements': context})
     return blocks
 
@@ -38,7 +38,7 @@ class SlackChannel(Channel):
         'properties': {
             'mode': {'type': 'string', 'enum': ['webhook', 'bot'], 'default': 'webhook'},
             'channel': {'type': 'string', 'description': 'Channel id or #name (bot mode)'},
-            'username': {'type': 'string', 'default': 'Sentinel'},
+            'username': {'type': 'string', 'default': 'Argus'},
             'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 60, 'default': 15},
         },
     }

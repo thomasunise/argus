@@ -69,7 +69,7 @@ async function route() {
   }
   $$('.nav-item').forEach((node) => node.classList.toggle('active', node.dataset.page === page));
   $('#breadcrumb').innerHTML = `Security / <strong>${esc(PAGE_LABELS[page] || nice(page))}</strong>`;
-  document.title = `${PAGE_LABELS[page] || nice(page)} — Sentinel`;
+  document.title = `${PAGE_LABELS[page] || nice(page)} — Argus`;
   $('#sidebar').classList.remove('is-open');
   closeDrawer();
   closeModal();
@@ -207,11 +207,11 @@ function showLogin(step = 'password', context = {}) {
   const card = $('#login-card');
   const foot = '<div class="login-foot"><span class="status-led"></span> Self-hosted · Restricted access</div>';
   if (step === 'totp') {
-    card.innerHTML = `<h1>Sentinel</h1><p>Two-factor verification</p><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Verify</button><div class="login-error" id="login-error"></div></form><button class="ghost-link" data-act="restart">Start over</button>${foot}`;
+    card.innerHTML = `<h1>Argus</h1><p>Two-factor verification</p><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Verify</button><div class="login-error" id="login-error"></div></form><button class="ghost-link" data-act="restart">Start over</button>${foot}`;
   } else if (step === 'enroll') {
-    card.innerHTML = `<h1>Sentinel</h1><p>Set up an authenticator to continue</p>${qrSvg(context.uri)}<div class="secret-box">${esc(context.secret)}</div><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Six-digit code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Confirm</button><div class="login-error" id="login-error"></div></form>${foot}`;
+    card.innerHTML = `<h1>Argus</h1><p>Set up an authenticator to continue</p>${qrSvg(context.uri)}<div class="secret-box">${esc(context.secret)}</div><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Six-digit code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Confirm</button><div class="login-error" id="login-error"></div></form>${foot}`;
   } else {
-    card.innerHTML = `<h1>Sentinel</h1><p>Security operations</p><form id="login-form" class="form-stack">${fields([
+    card.innerHTML = `<h1>Argus</h1><p>Security operations</p><form id="login-form" class="form-stack">${fields([
       { name: 'email', label: 'Email', type: 'email', required: true, autocomplete: 'username', value: context.email || '' },
       { name: 'password', label: 'Password', type: 'password', required: true, autocomplete: 'current-password' },
       ...(context.needTotp ? [{ name: 'totp', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }] : []),

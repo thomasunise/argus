@@ -15,14 +15,14 @@ from sqlalchemy import select
 
 from ..core.config import Settings
 from ..core.db import session_scope
-from ..core.errors import SentinelError
+from ..core.errors import ArgusError
 from ..core.rbac import system_principal
 from ..models import Tenant, dumps, loads, utcnow
 from ..models.integrations import IntegrationConfig
 from .delivery import resolve_secrets
 from .ingest import ingest, publish_deferred
 
-log = logging.getLogger('sentinel.integrations.wazuh')
+log = logging.getLogger('argus.integrations.wazuh')
 
 DEFAULT_INDEX = 'wazuh-alerts-*'
 DEFAULT_LOOKBACK_MINUTES = 30
@@ -31,7 +31,7 @@ MAX_PAGES = 10
 SCHEDULER_INTERVAL_SECONDS = 60
 
 
-class WazuhSyncError(SentinelError):
+class WazuhSyncError(ArgusError):
     status = 502
     code = 'wazuh_sync_failed'
 

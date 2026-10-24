@@ -23,7 +23,7 @@ from ..runtime import SPECS, AgentRuntime, AgentSpec
 from .graders import GRADERS, GradeResult, resolve
 from .schema import validate
 
-log = logging.getLogger('sentinel.agents.evals')
+log = logging.getLogger('argus.agents.evals')
 
 SUITES_DIR = Path(__file__).parent / 'suites'
 

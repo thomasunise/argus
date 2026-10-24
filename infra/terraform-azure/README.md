@@ -1,4 +1,4 @@
-# Sentinel on Azure (Terraform)
+# Argus on Azure (Terraform)
 
 A production-shaped skeleton parallel to `infra/terraform` (AWS): Azure Container Apps (API +
 worker), Azure Database for PostgreSQL Flexible Server, Azure Cache for Redis, an immutable

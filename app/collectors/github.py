@@ -24,7 +24,7 @@ import httpx
 
 from .base import Collector, CollectorContext, CollectorResult, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.github')
+log = logging.getLogger('argus.collectors.github')
 
 API_VERSION = '2022-11-28'
 SEVERITY_MAP = {'critical': 'critical', 'high': 'high', 'medium': 'medium', 'moderate': 'medium', 'low': 'low', 'error': 'high', 'warning': 'medium', 'note': 'low'}
@@ -189,7 +189,7 @@ async def _fetch(ctx: CollectorContext) -> dict[str, Any]:
     config = ctx.config
     org = config['org']
     base = (config.get('api_url') or 'https://api.github.com').rstrip('/')
-    headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': API_VERSION, 'User-Agent': 'sentinel-collector'}
+    headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': API_VERSION, 'User-Agent': 'argus-collector'}
     if config.get('token'):
         headers['Authorization'] = f"Bearer {config['token']}"
     warnings: list[str] = []

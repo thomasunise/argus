@@ -13,7 +13,7 @@ from ..models.graph import AttackPath, GraphNode
 from .queries import build_index
 from .scoring import REACH_RELS, VULN_REL, GraphIndex, NodeView, is_internet_facing, path_score, vuln_weight
 
-log = logging.getLogger('sentinel.graph')
+log = logging.getLogger('argus.graph')
 
 MAX_EXPANSIONS_PER_SOURCE = 20_000
 MAX_EXPANSIONS_TOTAL = 400_000

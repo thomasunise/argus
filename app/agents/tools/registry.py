@@ -1,6 +1,6 @@
 """Tool registry for the agent runtime.
 
-Tools are read-only views over Sentinel data, except tools with risk='propose' which may
+Tools are read-only views over Argus data, except tools with risk='propose' which may
 create pending ActionRequest rows. No tool may execute anything against the estate.
 """
 from __future__ import annotations

@@ -8,11 +8,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.errors import SentinelError
+from ..core.errors import ArgusError
 from ..models import Asset, AssetAuthorization, loads, utcnow
 
 
-class BadRequest(SentinelError):
+class BadRequest(ArgusError):
     status = 400
     code = 'bad_request'
 

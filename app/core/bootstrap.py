@@ -11,7 +11,7 @@ from .audit import record_audit
 from .config import Settings
 from .security import hash_api_key, hash_password, parse_api_key, verify_password
 
-log = logging.getLogger('sentinel.bootstrap')
+log = logging.getLogger('argus.bootstrap')
 
 
 def bootstrap(db: Session, settings: Settings) -> Tenant:

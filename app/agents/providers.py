@@ -15,9 +15,9 @@ from typing import Any
 
 import httpx
 
-from ..core.config import Settings
+from ..core.config import Settings, parse_model_prices
 
-log = logging.getLogger('sentinel.agents.providers')
+log = logging.getLogger('argus.agents.providers')
 
 # USD per million tokens, used for budget ceilings. Update when pricing changes.
 PRICES: dict[str, tuple[float, float]] = {
@@ -59,8 +59,16 @@ class Provider:
     async def complete(self, system: str, messages: list[dict], tools: list[dict], max_tokens: int = 16000) -> ModelTurn:  # pragma: no cover
         raise NotImplementedError
 
+    # Overrides from AGENT_MODEL_PRICES, set by get_provider().
+    prices: dict[str, tuple[float, float]] = {}
+
+    def price(self) -> tuple[float, float] | None:
+        """USD per million (input, output) tokens, or None when the model has no known price, in which case
+        AGENT_COST_CEILING_USD cannot trip and only the token, step and time budgets bound a run."""
+        return self.prices.get(self.model) or PRICES.get(self.model)
+
     def cost(self, usage: Usage) -> float:
-        inp, out = PRICES.get(self.model, (0.0, 0.0))
+        inp, out = self.price() or (0.0, 0.0)
         return (usage.input_tokens * inp + usage.output_tokens * out) / 1_000_000
 
 
@@ -68,6 +76,9 @@ class NullProvider(Provider):
     """Used when AI_PROVIDER=none. Agents fall back to rule-based output."""
 
     name = 'none'
+
+    def price(self) -> tuple[float, float] | None:
+        return (0.0, 0.0)
 
     async def complete(self, system, messages, tools, max_tokens=16000) -> ModelTurn:
         return ModelTurn(text='', tool_calls=[], stop_reason='error', model='none')
@@ -206,6 +217,10 @@ class OpenAIProvider(Provider):
 class OllamaProvider(Provider):
     name = 'ollama'
 
+    def price(self) -> tuple[float, float] | None:
+        # Local models cost nothing per token unless AGENT_MODEL_PRICES says otherwise.
+        return self.prices.get(self.model, (0.0, 0.0))
+
     def __init__(self, settings: Settings):
         self.model = settings.ollama_model
         self.url = settings.ollama_url.rstrip('/')
@@ -264,13 +279,30 @@ def _safe_json(text: str) -> dict:
 
 def get_provider(settings: Settings, override: str | None = None) -> Provider:
     name = (override or settings.ai_provider or 'none').lower()
+    provider: Provider
     if name == 'anthropic':
-        return AnthropicProvider(settings)
-    if name == 'openai':
-        return OpenAIProvider(settings)
-    if name == 'ollama':
-        return OllamaProvider(settings)
-    return NullProvider()
+        provider = AnthropicProvider(settings)
+    elif name == 'openai':
+        provider = OpenAIProvider(settings)
+    elif name == 'ollama':
+        provider = OllamaProvider(settings)
+    else:
+        return NullProvider()
+    provider.prices = parse_model_prices(settings.agent_model_prices)
+    return provider
+
+
+def unpriced_model_warning(settings: Settings) -> str:
+    """A warning when the configured provider's model has no price, so the cost ceiling cannot trip."""
+    try:
+        provider = get_provider(settings)
+    except Exception:  # noqa: BLE001 - a missing SDK or key is reported elsewhere
+        return ''
+    if provider.name == 'none' or provider.price() is not None:
+        return ''
+    return (f'no price known for {provider.name} model {provider.model!r}: AGENT_COST_CEILING_USD '
+            f'(${settings.agent_cost_ceiling_usd}) cannot be enforced; set AGENT_MODEL_PRICES='
+            f'"{provider.model}=<input>:<output>" (USD per million tokens). Token, step and time budgets still apply.')
 
 
 def provider_available(settings: Settings) -> bool:

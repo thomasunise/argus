@@ -32,8 +32,8 @@ resource "aws_db_instance" "this" {
   storage_type                          = "gp3"
   storage_encrypted                     = true
   kms_key_id                            = aws_kms_key.data.arn
-  db_name                               = "sentinel"
-  username                              = "sentinel"
+  db_name                               = "argus"
+  username                              = "argus"
   password                              = random_password.db.result
   port                                  = 5432
   multi_az                              = var.db_multi_az

@@ -1,6 +1,6 @@
 # Database migrations
 
-Sentinel has two ways to get a schema, and exactly one of them should be active per environment.
+Argus has two ways to get a schema, and exactly one of them should be active per environment.
 
 | Mode | When | How |
 |---|---|---|
@@ -23,7 +23,7 @@ same `.env` so the only schema changes are reviewed migration files.
 
 ```bash
 # upgrade to the newest revision (what deploy pipelines run)
-D:/venvs/sentinel/Scripts/python.exe scripts/migrate.py
+python scripts/migrate.py
 
 # show where the database is
 python scripts/migrate.py --current

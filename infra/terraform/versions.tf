@@ -15,7 +15,7 @@ terraform {
   # Configure remote state before using this in a team:
   # backend "s3" {
   #   bucket         = "my-tfstate"
-  #   key            = "sentinel/terraform.tfstate"
+  #   key            = "argus/terraform.tfstate"
   #   region         = "us-east-1"
   #   dynamodb_table = "my-tfstate-lock"
   #   encrypt        = true

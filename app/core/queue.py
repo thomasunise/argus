@@ -18,7 +18,7 @@ from typing import Any, Awaitable, Callable
 
 from .config import Settings
 
-log = logging.getLogger('sentinel.queue')
+log = logging.getLogger('argus.queue')
 
 Handler = Callable[['Job', 'JobContext'], Awaitable[Any]]
 
@@ -49,7 +49,7 @@ class Job:
 
 
 def _count(job: 'Job', status: str) -> None:
-    """sentinel_jobs_total{kind,status}; the alert rules in infra/prometheus key on it."""
+    """argus_jobs_total{kind,status}; the alert rules in infra/prometheus key on it."""
     from .telemetry import JOBS  # lazy: telemetry is optional at import time
 
     JOBS.labels(job.kind, status).inc()
@@ -175,8 +175,8 @@ class JobQueue:
             async def bootstrap():
                 try:
                     await self._backend.connect()
-                    self._workers = [asyncio.create_task(self._worker_loop(i), name=f'sentinel-worker-{i}') for i in range(n)]
-                    self._workers.append(asyncio.create_task(self._reaper_loop(), name='sentinel-reaper'))
+                    self._workers = [asyncio.create_task(self._worker_loop(i), name=f'argus-worker-{i}') for i in range(n)]
+                    self._workers.append(asyncio.create_task(self._reaper_loop(), name='argus-reaper'))
                 except BaseException as exc:  # surfaced to start()
                     failure.append(exc)
                 finally:
@@ -194,7 +194,7 @@ class JobQueue:
                 loop.run_until_complete(loop.shutdown_asyncgens())
                 loop.close()
 
-        self._thread = threading.Thread(target=thread_main, name='sentinel-queue', daemon=True)
+        self._thread = threading.Thread(target=thread_main, name='argus-queue', daemon=True)
         self._thread.start()
         await asyncio.to_thread(ready.wait, 30)
         if failure:
@@ -413,8 +413,8 @@ class _MemoryBackend:
 
 
 class _RedisBackend:
-    """Redis layout: hash sentinel:job:{id}; lists sentinel:q:{priority}; set sentinel:running;
-    key sentinel:lease:{id} (EX); hash sentinel:idem."""
+    """Redis layout: hash argus:job:{id}; lists argus:q:{priority}; set argus:running;
+    key argus:lease:{id} (EX); hash argus:idem."""
 
     def __init__(self, url: str):
         self.url = url
@@ -434,7 +434,7 @@ class _RedisBackend:
                 self.redis = None
 
     def _key(self, job_id: str) -> str:
-        return f'sentinel:job:{job_id}'
+        return f'argus:job:{job_id}'
 
     async def _save(self, job: Job):
         await self.redis.set(self._key(job.id), json.dumps(job.to_dict(), default=str), ex=7 * 86400)
@@ -444,26 +444,26 @@ class _RedisBackend:
             await self.connect()
         await self._save(job)
         if job.idempotency_key:
-            await self.redis.hset('sentinel:idem', job.idempotency_key, job.id)
+            await self.redis.hset('argus:idem', job.idempotency_key, job.id)
         if job.not_before:
-            await self.redis.zadd('sentinel:delayed', {job.id: job.not_before})
+            await self.redis.zadd('argus:delayed', {job.id: job.not_before})
         else:
-            await self.redis.rpush(f'sentinel:q:{job.priority}', job.id)
+            await self.redis.rpush(f'argus:q:{job.priority}', job.id)
 
     async def update(self, job: Job):
         await self._save(job)
         if job.status in {'completed', 'failed', 'cancelled'}:
-            await self.redis.srem('sentinel:running', job.id)
-            await self.redis.delete(f'sentinel:lease:{job.id}')
+            await self.redis.srem('argus:running', job.id)
+            await self.redis.delete(f'argus:lease:{job.id}')
 
     async def requeue(self, job: Job):
         await self._save(job)
-        await self.redis.srem('sentinel:running', job.id)
-        await self.redis.delete(f'sentinel:lease:{job.id}')
+        await self.redis.srem('argus:running', job.id)
+        await self.redis.delete(f'argus:lease:{job.id}')
         if job.not_before and job.not_before > time.time():
-            await self.redis.zadd('sentinel:delayed', {job.id: job.not_before})
+            await self.redis.zadd('argus:delayed', {job.id: job.not_before})
         else:
-            await self.redis.rpush(f'sentinel:q:{job.priority}', job.id)
+            await self.redis.rpush(f'argus:q:{job.priority}', job.id)
 
     async def get(self, job_id: str) -> Job | None:
         if self.redis is None:
@@ -474,7 +474,7 @@ class _RedisBackend:
     async def find_by_idempotency(self, key: str) -> Job | None:
         if self.redis is None:
             await self.connect()
-        job_id = await self.redis.hget('sentinel:idem', key)
+        job_id = await self.redis.hget('argus:idem', key)
         return await self.get(job_id) if job_id else None
 
     async def cancel(self, job_id: str) -> bool:
@@ -486,51 +486,51 @@ class _RedisBackend:
         return True
 
     async def claim(self, timeout: float) -> Job | None:
-        keys = [f'sentinel:q:{p}' for p in range(10)]
+        keys = [f'argus:q:{p}' for p in range(10)]
         item = await self.redis.blpop(keys, timeout=max(1, int(timeout)))
         if not item:
             return None
         job = await self.get(item[1])
         if job is None or job.status != 'queued':
             return None
-        await self.redis.sadd('sentinel:running', job.id)
-        await self.redis.set(f'sentinel:lease:{job.id}', '1', ex=job.lease_seconds)
+        await self.redis.sadd('argus:running', job.id)
+        await self.redis.set(f'argus:lease:{job.id}', '1', ex=job.lease_seconds)
         return job
 
     async def extend(self, job: Job):
-        await self.redis.expire(f'sentinel:lease:{job.id}', job.lease_seconds)
+        await self.redis.expire(f'argus:lease:{job.id}', job.lease_seconds)
 
     async def reap(self, settings: Settings):
         now = time.time()
         # Promote delayed jobs whose time has come.
-        ready = await self.redis.zrangebyscore('sentinel:delayed', 0, now)
+        ready = await self.redis.zrangebyscore('argus:delayed', 0, now)
         for job_id in ready:
-            await self.redis.zrem('sentinel:delayed', job_id)
+            await self.redis.zrem('argus:delayed', job_id)
             job = await self.get(job_id)
             if job and job.status == 'queued':
-                await self.redis.rpush(f'sentinel:q:{job.priority}', job_id)
+                await self.redis.rpush(f'argus:q:{job.priority}', job_id)
         # Jobs a worker popped but never marked running (it died between BLPOP and SADD): status queued, due, in no
         # list. Scanned every 20th pass; a duplicate push is harmless because claim() ignores non-queued jobs.
         self._reaps = getattr(self, '_reaps', 0) + 1
         if self._reaps % 20 == 0:
-            async for key in self.redis.scan_iter('sentinel:job:*', count=500):
+            async for key in self.redis.scan_iter('argus:job:*', count=500):
                 raw = await self.redis.get(key)
                 if not raw:
                     continue
                 orphan = Job(**json.loads(raw))
                 if orphan.status != 'queued' or orphan.not_before > now:
                     continue
-                in_list = await self.redis.lpos(f'sentinel:q:{orphan.priority}', orphan.id)
-                delayed = await self.redis.zscore('sentinel:delayed', orphan.id)
+                in_list = await self.redis.lpos(f'argus:q:{orphan.priority}', orphan.id)
+                delayed = await self.redis.zscore('argus:delayed', orphan.id)
                 if in_list is None and delayed is None:
-                    await self.redis.rpush(f'sentinel:q:{orphan.priority}', orphan.id)
+                    await self.redis.rpush(f'argus:q:{orphan.priority}', orphan.id)
         # Requeue running jobs whose lease expired (worker died).
-        for job_id in await self.redis.smembers('sentinel:running'):
-            if await self.redis.exists(f'sentinel:lease:{job_id}'):
+        for job_id in await self.redis.smembers('argus:running'):
+            if await self.redis.exists(f'argus:lease:{job_id}'):
                 continue
             job = await self.get(job_id)
             if not job:
-                await self.redis.srem('sentinel:running', job_id)
+                await self.redis.srem('argus:running', job_id)
                 continue
             if job.status == 'running':
                 job.error = 'lease expired; worker lost'
@@ -543,7 +543,7 @@ class _RedisBackend:
 
     async def list(self, tenant_id, limit, status):
         jobs: list[Job] = []
-        async for key in self.redis.scan_iter('sentinel:job:*', count=500):
+        async for key in self.redis.scan_iter('argus:job:*', count=500):
             raw = await self.redis.get(key)
             if not raw:
                 continue
@@ -554,12 +554,12 @@ class _RedisBackend:
         return jobs[:limit]
 
     async def has_pending(self) -> bool:
-        if await self.redis.scard('sentinel:running'):
+        if await self.redis.scard('argus:running'):
             return True
         for p in range(10):
-            if await self.redis.llen(f'sentinel:q:{p}'):
+            if await self.redis.llen(f'argus:q:{p}'):
                 return True
-        return bool(await self.redis.zcard('sentinel:delayed'))
+        return bool(await self.redis.zcard('argus:delayed'))
 
 
 def iso(ts: float | None) -> str | None:

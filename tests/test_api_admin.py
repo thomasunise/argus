@@ -157,7 +157,7 @@ def test_tenant_settings_whitelist(client, owner, make_user):
     inline = client.patch('/api/v1/admin/settings', json={'action_credentials': {'aws': 'literal:AKIAIOSFODNN7EXAMPLE'}}, headers=headers)
     assert inline.status_code == 400 and inline.json()['code'] == 'inline_secret'
     updated = client.patch('/api/v1/admin/settings', json={'ai_provider': 'ollama', 'retention_days': 365, 'default_min_severity_for_notifications': 'medium',
-                                                           'action_credentials': {'aws': 'env:SENTINEL_AWS_ROLE', 'okta': 'secrets:okta_token'}}, headers=headers)
+                                                           'action_credentials': {'aws': 'env:ARGUS_AWS_ROLE', 'okta': 'secrets:okta_token'}}, headers=headers)
     assert updated.status_code == 200, updated.text
     data = updated.json()
     assert data['effective_ai_provider'] == 'ollama' and data['retention_days'] == 365 and data['action_credentials']['okta'] == 'secrets:okta_token'

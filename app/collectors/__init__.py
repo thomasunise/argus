@@ -14,7 +14,7 @@ from .base import Collector, CollectorContext, CollectorResult, EdgeDraft, Event
 from . import registry  # noqa: F401  (module: register/get/all/has delegate to the singleton)
 from .registry import BUILTIN, Registry, load_builtin  # noqa: F401
 
-log = logging.getLogger('sentinel.collectors')
+log = logging.getLogger('argus.collectors')
 
 
 def setup(app) -> None:

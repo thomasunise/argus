@@ -1,4 +1,4 @@
-"""Sentinel application factory."""
+"""Argus application factory."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ from .core.errors import install_error_handlers
 from .core.queue import JobQueue
 from .core.telemetry import BodySizeLimitMiddleware, RequestContextMiddleware, configure_logging, configure_tracing, install_metrics_endpoint
 
-log = logging.getLogger('sentinel')
+log = logging.getLogger('argus')
 STATIC_DIR = Path(__file__).parent / 'static'
 VERSION = '1.0.0'
 
@@ -50,8 +50,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.queue.start()
         for hook in app.state.startup_hooks:
             await hook(app)
-        log.info('Sentinel %s started (env=%s, provider=%s, queue=%s)', VERSION, settings.app_env, settings.ai_provider,
+        log.info('Argus %s started (env=%s, provider=%s, queue=%s)', VERSION, settings.app_env, settings.ai_provider,
                  'redis' if settings.redis_url else 'memory')
+        from .agents.providers import unpriced_model_warning
+
+        if warning := unpriced_model_warning(settings):
+            log.warning(warning)
         try:
             yield
         finally:
@@ -81,7 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CommitBeforeResponseMiddleware)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware, settings=settings)
-    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie='sentinel_session',
+    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, session_cookie='argus_session',
                        # lax, not strict: the OIDC callback is a cross-site top-level navigation that must carry the cookie
                        # holding the PKCE verifier. State-changing requests are protected by the X-CSRF-Token header.
                        same_site='lax', https_only=settings.cookie_secure, max_age=settings.session_max_age)
@@ -147,4 +151,4 @@ def spawn(app: FastAPI, coro) -> asyncio.Task:
     return task
 
 
-app = create_app() if __name__ != '__main__' and __import__('os').getenv('SENTINEL_LAZY_APP') != '1' else None
+app = create_app() if __name__ != '__main__' and __import__('os').getenv('ARGUS_LAZY_APP') != '1' else None

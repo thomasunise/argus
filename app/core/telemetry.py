@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import Settings
 
-log = logging.getLogger('sentinel')
+log = logging.getLogger('argus')
 
 
 class JsonFormatter(logging.Formatter):
@@ -44,14 +44,14 @@ def configure_logging(settings: Settings) -> None:
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
-    HTTP_REQUESTS = Counter('sentinel_http_requests_total', 'HTTP requests', ['method', 'route', 'status'])
-    HTTP_LATENCY = Histogram('sentinel_http_request_seconds', 'HTTP latency', ['method', 'route'])
-    JOBS = Counter('sentinel_jobs_total', 'Queue jobs', ['kind', 'status'])
-    AGENT_TOKENS = Counter('sentinel_agent_tokens_total', 'Agent tokens', ['provider', 'direction'])
-    AGENT_RUNS = Counter('sentinel_agent_runs_total', 'Agent runs', ['spec', 'status'])
-    FINDINGS_OPEN = Gauge('sentinel_findings_open', 'Open findings', ['tenant', 'severity'])
-    ACTIONS = Counter('sentinel_actions_total', 'Broker actions', ['action', 'status'])
-    DETECTIONS = Counter('sentinel_detections_total', 'Detections', ['rule', 'severity'])
+    HTTP_REQUESTS = Counter('argus_http_requests_total', 'HTTP requests', ['method', 'route', 'status'])
+    HTTP_LATENCY = Histogram('argus_http_request_seconds', 'HTTP latency', ['method', 'route'])
+    JOBS = Counter('argus_jobs_total', 'Queue jobs', ['kind', 'status'])
+    AGENT_TOKENS = Counter('argus_agent_tokens_total', 'Agent tokens', ['provider', 'direction'])
+    AGENT_RUNS = Counter('argus_agent_runs_total', 'Agent runs', ['spec', 'status'])
+    FINDINGS_OPEN = Gauge('argus_findings_open', 'Open findings', ['tenant', 'severity'])
+    ACTIONS = Counter('argus_actions_total', 'Broker actions', ['action', 'status'])
+    DETECTIONS = Counter('argus_detections_total', 'Detections', ['rule', 'severity'])
     METRICS_AVAILABLE = True
 except ImportError:  # pragma: no cover
     METRICS_AVAILABLE = False

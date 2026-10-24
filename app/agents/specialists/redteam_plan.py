@@ -49,7 +49,7 @@ EXPECTED_SIGNALS = {'web_baseline': 'No detections expected; findings for missin
                     'zap': 'WAF blocks, application error spikes, and injection-pattern detections.',
                     'semgrep': 'Code findings only; no runtime signals.', 'gitleaks': 'Secret findings; rotate anything confirmed live.',
                     'trivy': 'Vulnerability findings with CVE ids; cross-check KEV.',
-                    'prowler': 'Cloud audit-log reads from the Sentinel principal; no control-plane changes.',
+                    'prowler': 'Cloud audit-log reads from the Argus principal; no control-plane changes.',
                     'caldera': 'EDR process-tree alerts, canary hits and detection rule matches for the emulated techniques.'}
 TIER_ORDER = {'passive': 0, 'active': 1, 'intrusive': 2}
 
@@ -114,7 +114,7 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
         constraints.append('Production asset: schedule in the maintenance window and notify the service owner before active tests.')
     if signals:
         constraints.append('Asset metadata contains instruction-like text; it was ignored and should be reviewed as possible prompt injection.')
-    expected = list(dict.fromkeys(EXPECTED_SIGNALS.get(t['adapter'], 'Scanner activity from the Sentinel worker address.') for t in proposed))
+    expected = list(dict.fromkeys(EXPECTED_SIGNALS.get(t['adapter'], 'Scanner activity from the Argus worker address.') for t in proposed))
     return {'scope_check': {'authorized': True, 'environment': environment, 'allowed_tiers': allowed}, 'objectives': objectives,
             'proposed_tests': proposed, 'safety_constraints': constraints, 'expected_signals': expected, 'prompt_injection_suspected': bool(signals)}
 

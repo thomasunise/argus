@@ -15,7 +15,7 @@ import httpx
 
 from .registry import ToolContext, registry
 
-log = logging.getLogger('sentinel.agents.tools.intel')
+log = logging.getLogger('argus.agents.tools.intel')
 
 NVD_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0?cveId='
 KEV_URL = 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json'
@@ -31,7 +31,7 @@ _lock = asyncio.Lock()
 async def _fetch_json(url: str) -> Any:
     """Single network choke point. Raises httpx errors; `_cached` turns them into unavailability."""
     async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, trust_env=False, follow_redirects=False,
-                                 headers={'User-Agent': 'Sentinel-Intel/1.0', 'Accept': 'application/json'}) as client:
+                                 headers={'User-Agent': 'Argus-Intel/1.0', 'Accept': 'application/json'}) as client:
         response = await client.get(url)
         response.raise_for_status()
         return response.json()

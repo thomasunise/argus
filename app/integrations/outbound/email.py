@@ -13,26 +13,26 @@ from . import Channel, DeliveryResult, OutboundEvent, registry, severity_label
 
 
 def build_message(event: OutboundEvent, config: dict[str, Any]) -> EmailMessage:
-    prefix = str(config.get('subject_prefix') or '[Sentinel]')
+    prefix = str(config.get('subject_prefix') or '[Argus]')
     message = EmailMessage()
     message['Subject'] = f'{prefix} {severity_label(event.severity)}: {event.title}'[:200]
-    message['From'] = str(config.get('from') or 'sentinel@localhost')
+    message['From'] = str(config.get('from') or 'argus@localhost')
     message['To'] = ', '.join(str(x) for x in (config.get('to') or []))
     message['Date'] = formatdate(localtime=False)
-    message['Message-ID'] = make_msgid(domain=str(config.get('message_id_domain') or 'sentinel.local'))
-    message['X-Sentinel-Topic'] = event.topic
-    message['X-Sentinel-Delivery'] = event.delivery_id
+    message['Message-ID'] = make_msgid(domain=str(config.get('message_id_domain') or 'argus.local'))
+    message['X-Argus-Topic'] = event.topic
+    message['X-Argus-Delivery'] = event.delivery_id
     lines = [f'Topic: {event.topic}', f'Severity: {severity_label(event.severity)}', f'Subject: {event.subject_kind} {event.subject_id}']
     if event.status:
         lines.append(f'Status: {event.status}')
     if event.summary:
         lines += ['', event.summary]
     if event.url:
-        lines += ['', f'Open in Sentinel: {event.url}']
+        lines += ['', f'Open in Argus: {event.url}']
     message.set_content('\n'.join(lines))
     rows = ''.join(f'<tr><th align="left">{escape(k)}</th><td>{escape(str(v))}</td></tr>' for k, v in
                    (('Topic', event.topic), ('Severity', severity_label(event.severity)), ('Subject', f'{event.subject_kind} {event.subject_id}'), ('Status', event.status or '-')))
-    link = f'<p><a href="{escape(event.url)}">Open in Sentinel</a></p>' if event.url else ''
+    link = f'<p><a href="{escape(event.url)}">Open in Argus</a></p>' if event.url else ''
     message.add_alternative(f'<html><body><h2>{escape(event.title)}</h2><table>{rows}</table><p>{escape(event.summary)}</p>{link}</body></html>', subtype='html')
     return message
 
@@ -65,7 +65,7 @@ class EmailChannel(Channel):
             'host': {'type': 'string'}, 'port': {'type': 'integer', 'minimum': 1, 'maximum': 65535, 'default': 587},
             'from': {'type': 'string', 'format': 'email'}, 'to': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
             'use_starttls': {'type': 'boolean', 'default': True}, 'use_ssl': {'type': 'boolean', 'default': False},
-            'subject_prefix': {'type': 'string', 'default': '[Sentinel]'}, 'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 120, 'default': 20},
+            'subject_prefix': {'type': 'string', 'default': '[Argus]'}, 'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 120, 'default': 20},
             'message_id_domain': {'type': 'string'},
         },
     }

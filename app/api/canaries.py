@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
-from ..core.errors import NotFound, SentinelError
+from ..core.errors import NotFound, ArgusError
 from ..core.rbac import Principal
 from ..detections import canaries as svc
 from ..models import utcnow
@@ -26,7 +26,7 @@ MAX_HIT_BODY = 64 * 1024
 _NO_STORE = {'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache'}
 
 
-class HitTooLarge(SentinelError):
+class HitTooLarge(ArgusError):
     status = 413
     code = 'payload_too_large'
 

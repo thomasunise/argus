@@ -1,5 +1,5 @@
 #!/bin/sh
-# Entrypoint for the Sentinel image.
+# Entrypoint for the Argus image.
 #   api     run migrations (if RUN_MIGRATIONS=true) then uvicorn behind a reverse proxy
 #   worker  run migrations (if RUN_MIGRATIONS=true) then the standalone queue worker
 #   migrate run migrations once and exit

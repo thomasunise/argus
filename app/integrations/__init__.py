@@ -19,7 +19,7 @@ from .inbound import registry as inbound_registry  # noqa: F401
 from .ingest import IngestResult, ingest  # noqa: F401
 from .outbound import registry as outbound_registry  # noqa: F401
 
-log = logging.getLogger('sentinel.integrations')
+log = logging.getLogger('argus.integrations')
 
 
 def setup(app) -> None:

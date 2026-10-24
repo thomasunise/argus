@@ -49,7 +49,7 @@ data "aws_iam_policy_document" "task" {
   statement {
     sid       = "AuditWriteOnly"
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.audit.arn}/sentinel-audit/*"]
+    resources = ["${aws_s3_bucket.audit.arn}/argus-audit/*"]
   }
   statement {
     actions   = ["kms:GenerateDataKey", "kms:Encrypt"]

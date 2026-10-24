@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault('SENTINEL_LAZY_APP', '1')
+os.environ.setdefault('ARGUS_LAZY_APP', '1')
 
 from sqlalchemy import select  # noqa: E402
 
@@ -39,7 +39,7 @@ from app.core.security import hash_password  # noqa: E402
 from app.models import AgentRun, AgentStep, Asset, AssetAuthorization, Base, Finding, Membership, Tenant, User, dumps  # noqa: E402
 
 DEMO_SLUG = 'demo'
-DEMO_EMAIL = 'demo-owner@sentinel.local'
+DEMO_EMAIL = 'demo-owner@argus.local'
 DEMO_ACCOUNT = '123456789012'
 DEMO_ACTOR_CI = f'arn:aws:iam::{DEMO_ACCOUNT}:user/demo-ci-deployer'
 DEMO_ACTOR_SWARM = f'arn:aws:iam::{DEMO_ACCOUNT}:role/demo-recon-agent'

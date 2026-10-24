@@ -22,7 +22,7 @@ from .attack_paths import compute_attack_paths
 from .queries import build_index, count_by, expand, query, subgraph_index
 from .scoring import REACH_RELS, VULN_REL, exposure_score_for
 
-log = logging.getLogger('sentinel.graph')
+log = logging.getLogger('argus.graph')
 
 __all__ = ['NodeDraft', 'EdgeDraft', 'GraphResult', 'upsert_node', 'upsert_edge', 'apply', 'mark_stale', 'query', 'neighbors',
            'attack_paths', 'exposure_score', 'recompute_exposure', 'recompute', 'stats', 'link_asset', 'node_to_dict', 'edge_to_dict',

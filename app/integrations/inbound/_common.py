@@ -19,7 +19,7 @@ from ...core.findings import severity as normalize_severity
 from ...core.security import redact
 from ...models import dumps
 
-log = logging.getLogger('sentinel.integrations.inbound')
+log = logging.getLogger('argus.integrations.inbound')
 
 MAX_STRING = 2048           # strings longer than this are raw log bodies: dropped, never stored
 MAX_DEPTH = 4

@@ -5,8 +5,8 @@ name: Release
 # GitHub release with the SBOM and provenance attached.
 #
 # Verify a published image:
-#   cosign verify ghcr.io/<owner>/sentinel:<tag> \
-#     --certificate-identity-regexp 'https://github.com/<owner>/sentinel-agentic-security/.github/workflows/release.yml@refs/tags/.*' \
+#   cosign verify ghcr.io/<owner>/argus:<tag> \
+#     --certificate-identity-regexp 'https://github.com/<owner>/argus/.github/workflows/release.yml@refs/tags/.*' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 on:
@@ -20,7 +20,7 @@ permissions:
   attestations: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/sentinel
+  IMAGE: ghcr.io/${{ github.repository_owner }}/argus
 
 jobs:
   release:
@@ -46,7 +46,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
           labels: |
-            org.opencontainers.image.title=Sentinel
+            org.opencontainers.image.title=Argus
             org.opencontainers.image.licenses=MIT
 
       - id: build
@@ -113,7 +113,7 @@ jobs:
       - name: Write release notes
         run: |
           {
-            echo "## Sentinel ${{ github.ref_name }}"
+            echo "## Argus ${{ github.ref_name }}"
             echo
             echo "Image: \`${IMAGE}@${{ steps.build.outputs.digest }}\`"
             echo "Extras image: \`${IMAGE}@${{ steps.build_extras.outputs.digest }}\`"

@@ -47,8 +47,8 @@ export const store = {
 };
 
 export function prefGet(key, fallback = null) {
-  try { const raw = localStorage.getItem(`sentinel-${key}`); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; }
+  try { const raw = localStorage.getItem(`argus-${key}`); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; }
 }
 export function prefSet(key, value) {
-  try { localStorage.setItem(`sentinel-${key}`, JSON.stringify(value)); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(`argus-${key}`, JSON.stringify(value)); } catch { /* storage unavailable */ }
 }

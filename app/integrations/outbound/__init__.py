@@ -17,7 +17,7 @@ import httpx
 from ...core.config import get_settings
 from ...core.findings import SEVERITIES
 
-log = logging.getLogger('sentinel.integrations.outbound')
+log = logging.getLogger('argus.integrations.outbound')
 
 BUILTIN = ['webhook', 'slack', 'jira', 'servicenow', 'pagerduty', 'email']
 DEFAULT_TIMEOUT = 15.0

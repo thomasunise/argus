@@ -22,7 +22,7 @@ def _session(ctx: ExecContext):
     role_arn = ctx.credential('role_arn')
     if role_arn:
         base = boto3.session.Session(region_name=region)
-        kwargs: dict[str, Any] = {'RoleArn': role_arn, 'RoleSessionName': f'sentinel-actions-{(ctx.request_id or "adhoc")[:24]}', 'DurationSeconds': 900}
+        kwargs: dict[str, Any] = {'RoleArn': role_arn, 'RoleSessionName': f'argus-actions-{(ctx.request_id or "adhoc")[:24]}', 'DurationSeconds': 900}
         external_id = ctx.credential('external_id')
         if external_id:
             kwargs['ExternalId'] = external_id

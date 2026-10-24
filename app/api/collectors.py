@@ -13,7 +13,7 @@ from ..collectors.base import literal_refs_allowed
 from ..collectors.runner import enqueue_run
 from ..core.audit import record_audit
 from ..core.config import Settings
-from ..core.errors import NotFound, SentinelError
+from ..core.errors import NotFound, ArgusError
 from ..integrations.egress import check_url_config
 from ..core.rbac import Principal
 from ..core.security import mask_secret_refs, merge_secret_refs, redact
@@ -24,7 +24,7 @@ from .deps import Page, get_db, get_settings, require
 router = APIRouter(prefix='/api/v1/collectors', tags=['collectors'])
 
 
-class InvalidConfig(SentinelError):
+class InvalidConfig(ArgusError):
     status = 400
     code = 'invalid_config'
 
@@ -201,7 +201,7 @@ async def run_config(config_id: str, request: Request, db: Session = Depends(get
         raise InvalidConfig(f'unknown collector {config.collector!r}')
     collector = registry.get(config.collector)
     if not collector.available():
-        raise SentinelError(f'collector {collector.name} is not available on this server: {collector.install_hint()}', code='unavailable', status=503)
+        raise ArgusError(f'collector {collector.name} is not available on this server: {collector.install_hint()}', code='unavailable', status=503)
     run, created = await enqueue_run(request.app, db, config, principal.user_id or principal.api_key_id or principal.actor)
     if created:
         record_audit(db, principal, 'collectors.run_requested', config.id, {'run_id': run.id, 'collector': config.collector})

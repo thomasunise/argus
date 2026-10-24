@@ -42,7 +42,7 @@ def bucket_start(when: datetime, window_minutes: int) -> datetime:
     return datetime.fromtimestamp((epoch(when) // seconds) * seconds, tz=timezone.utc)
 
 
-_META_CACHE_ATTR = '_sentinel_meta_cache'
+_META_CACHE_ATTR = '_argus_meta_cache'
 
 
 def meta(event: SecurityEvent) -> dict:

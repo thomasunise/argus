@@ -1,4 +1,4 @@
-"""Generic JSON webhook with an HMAC-SHA256 signature (`X-Sentinel-Signature: sha256=<hex>` over the
+"""Generic JSON webhook with an HMAC-SHA256 signature (`X-Argus-Signature: sha256=<hex>` over the
 raw body) and in-call retries with exponential backoff for transient failures."""
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 from . import Channel, DeliveryResult, OutboundEvent, egress_error, registry, request_with_retry, result_from_response
 
-SIGNATURE_HEADER = 'X-Sentinel-Signature'
+SIGNATURE_HEADER = 'X-Argus-Signature'
 
 
 def sign(secret: str, body: bytes) -> str:
@@ -25,7 +25,7 @@ def build_body(event: OutboundEvent, delivery_id: str, sent_at: float | None = N
 
 class WebhookChannel(Channel):
     kind = 'webhook'
-    description = 'HTTPS JSON POST signed with HMAC-SHA256 (X-Sentinel-Signature).'
+    description = 'HTTPS JSON POST signed with HMAC-SHA256 (X-Argus-Signature).'
     config_schema = {
         'type': 'object', 'additionalProperties': False, 'required': ['url'],
         'properties': {
@@ -47,8 +47,8 @@ class WebhookChannel(Channel):
         if denied:
             return DeliveryResult(ok=False, error=f'webhook url refused: {denied}')
         body = build_body(event, event.delivery_id)
-        headers = {'Content-Type': 'application/json', 'User-Agent': 'Sentinel-Webhook/1.0', 'X-Sentinel-Topic': event.topic,
-                   'X-Sentinel-Delivery': event.delivery_id, 'X-Sentinel-Timestamp': str(int(time.time()))}
+        headers = {'Content-Type': 'application/json', 'User-Agent': 'Argus-Webhook/1.0', 'X-Argus-Topic': event.topic,
+                   'X-Argus-Delivery': event.delivery_id, 'X-Argus-Timestamp': str(int(time.time()))}
         extra = config.get('headers') if isinstance(config.get('headers'), dict) else {}
         for key, value in extra.items():
             if str(key).lower() not in {'authorization', 'cookie', 'host', 'content-length'}:

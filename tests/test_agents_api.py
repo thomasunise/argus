@@ -25,7 +25,7 @@ def test_specs_and_tools_listing(owner, make_user, client):
     viewer = login(client, 'viewer@test.local', 'viewer-password-long-1')
     assert client.get('/api/v1/agents/specs', headers=viewer).status_code == 200
     assert client.post('/api/v1/agents/run', json={'spec': 'triage', 'inputs': {}}, headers=viewer).status_code == 403
-    assert c.get('/api/v1/agents/specs', headers={'X-API-Key': 'snt_deadbeef_notarealkey'}).status_code == 401
+    assert c.get('/api/v1/agents/specs', headers={'X-API-Key': 'argus_deadbeef_notarealkey'}).status_code == 401
 
 
 def test_run_triage_via_queue_with_fallback(owner, app, default_tenant_id):

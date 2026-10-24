@@ -30,7 +30,7 @@ class FakeAction(ActionType):
                      'required': ['target']}
     risk = 'high'
     reversible = True
-    platforms = ['sentinel']
+    platforms = ['argus']
     category = 'containment'
     calls: list
 
@@ -179,7 +179,7 @@ def test_credentials_resolution(settings, monkeypatch, tmp_path):
     monkeypatch.setenv('ACTIONS_AZURE_TENANT_ID', 'tid')
     assert credentials.resolve('entra', 'tenant_id', settings) == 'tid'
     assert credentials.configured('aws', settings) is False
-    monkeypatch.setenv('ACTIONS_AWS_ROLE_ARN', 'arn:aws:iam::123456789012:role/sentinel')
+    monkeypatch.setenv('ACTIONS_AWS_ROLE_ARN', 'arn:aws:iam::123456789012:role/argus')
     assert credentials.configured('aws', settings) is True
 
 
@@ -260,12 +260,12 @@ def test_catalog_lists_real_actions(owner):
                 'azure.ad.disable_user', 'gcp.firewall.disable_rule', 'gcp.storage.remove_public_binding', 'gcp.iam.remove_binding',
                 'kubernetes.network_policy.isolate_pod', 'kubernetes.scale_to_zero', 'kubernetes.delete_pod', 'okta.user.suspend', 'okta.user.clear_sessions',
                 'entra.user.disable', 'github.branch_protection.enable', 'github.secret_scanning.enable', 'github.open_fix_pr', 'cloudflare.waf.block_ip',
-                'sentinel.finding.update_status', 'sentinel.asset.revoke_authorization'}
+                'argus.finding.update_status', 'argus.asset.revoke_authorization'}
     assert expected <= names
     by_name = {a['name']: a for a in data['items']}
     assert by_name['aws.iam.attach_deny_all_boundary']['risk'] == 'critical'
     assert by_name['kubernetes.delete_pod']['reversible'] is False and by_name['kubernetes.delete_pod']['risk'] == 'high'
-    assert by_name['sentinel.finding.update_status']['available'] is True
+    assert by_name['argus.finding.update_status']['available'] is True
     assert by_name['aws.iam.disable_access_key']['available'] is False  # no boto3 / credentials in tests
     assert all(a['params_schema']['additionalProperties'] is False for a in data['items'])
 

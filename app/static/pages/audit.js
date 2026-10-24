@@ -40,7 +40,7 @@ export default {
     const apply = () => { pageReset(state); setQuery(navigate, 'audit', [], filters()); list.reload(); };
     bind(root, {
       verify: async () => { await verify.reload(); const v = await get('/audit/verify'); toast(v.valid ? `Audit chain verified (${v.checked} entries)` : `Audit chain broken at ${v.broken_at}`, v.valid ? 'info' : 'error'); },
-      export: async () => { await download('/audit/export.jsonl', 'sentinel-audit.jsonl', filters()); toast('Export downloaded (audited)'); },
+      export: async () => { await download('/audit/export.jsonl', 'argus-audit.jsonl', filters()); toast('Export downloaded (audited)'); },
       open: async (el) => {
         const data = await get('/audit', { ...filters(), limit: 50, cursor: state.cursor });
         const e = data.items.find((x) => String(x.id) === el.dataset.id);

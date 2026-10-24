@@ -24,7 +24,7 @@ from ..models.integrations import IntegrationConfig, WebhookDelivery
 from .outbound import Channel, DeliveryResult, OutboundEvent, registry
 from .schema import severity_at_least, topic_matches
 
-log = logging.getLogger('sentinel.integrations.delivery')
+log = logging.getLogger('argus.integrations.delivery')
 
 SUBSCRIBED_PREFIXES = ('finding.', 'detection.', 'action.', 'testing.', 'agent.')
 RETRY_SCHEDULE_SECONDS = (15, 60, 300, 600)
@@ -128,7 +128,7 @@ def build_event(db: Session, tenant_id: str, topic: str, payload: dict, delivery
         event.url = f'{base_url}/#/agents/runs/{event.subject_id}' if event.subject_id else ''
     elif topic == TEST_TOPIC:
         event.subject_kind, event.subject_id = 'test', delivery_id
-        event.summary = str(payload.get('summary') or 'Synthetic test event from Sentinel.')
+        event.summary = str(payload.get('summary') or 'Synthetic test event from Argus.')
         event.url = f'{base_url}/#/integrations'
     if event.severity not in {'critical', 'high', 'medium', 'low', 'informational'}:
         event.severity = 'low'

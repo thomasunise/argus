@@ -1,4 +1,4 @@
-# Sentinel on AWS (Terraform)
+# Argus on AWS (Terraform)
 
 A production-shaped skeleton: ECS Fargate (API + worker), RDS PostgreSQL 16, ElastiCache
 Redis 7, an S3 audit bucket with Object Lock in compliance mode, Secrets Manager, an ALB with
@@ -31,9 +31,9 @@ terraform apply plan.tfplan
 Then:
 
 1. Populate the external secrets (values are never in Terraform):
-   `aws secretsmanager put-secret-value --secret-id sentinel-production/OIDC_CLIENT_SECRET --secret-string '...'`
+   `aws secretsmanager put-secret-value --secret-id argus-production/OIDC_CLIENT_SECRET --secret-string '...'`
 2. Read the bootstrap owner password:
-   `aws secretsmanager get-secret-value --secret-id sentinel-production/ADMIN_PASSWORD --query SecretString --output text`
+   `aws secretsmanager get-secret-value --secret-id argus-production/ADMIN_PASSWORD --query SecretString --output text`
 3. Log in at `https://<domain_name>` and follow the production checklist in `docs/DEPLOYMENT.md`.
 
 The API task runs `scripts/migrate.py` at start (`RUN_MIGRATIONS=true`). Migrations are

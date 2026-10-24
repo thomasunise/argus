@@ -23,7 +23,7 @@ import httpx
 
 from .base import Collector, CollectorContext, CollectorResult, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.okta')
+log = logging.getLogger('argus.collectors.okta')
 
 LOG_EVENT_TYPES: dict[str, tuple[str, str, str]] = {  # eventType -> (action, severity, category)
     'user.session.start': ('sign_in', 'low', 'auth'),
@@ -194,7 +194,7 @@ async def _fetch(ctx: CollectorContext) -> dict[str, Any]:
     config = ctx.config
     domain = config['domain']
     base = f'https://{domain}'
-    headers = {'Accept': 'application/json', 'User-Agent': 'sentinel-collector'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'argus-collector'}
     if config.get('api_token'):
         headers['Authorization'] = f"SSWS {config['api_token']}"
     warnings: list[str] = []

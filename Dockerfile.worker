@@ -5,7 +5,7 @@
 #
 # compose.yaml and the Helm chart do not need this file: they run the shared image with
 # `command: ["worker"]`. Use it when your platform wants one image per workload.
-ARG BASE_IMAGE=sentinel:local
+ARG BASE_IMAGE=argus:local
 FROM ${BASE_IMAGE}
 HEALTHCHECK NONE
 CMD ["worker"]

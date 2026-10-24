@@ -13,7 +13,7 @@ import pkgutil
 from .harness import ADAPTERS, HarnessContext, NormalizedFinding, TestAdapter, execute_run, run_tool  # noqa: F401
 from . import scope  # noqa: F401
 
-log = logging.getLogger('sentinel.testing')
+log = logging.getLogger('argus.testing')
 
 
 def _import_adapters() -> None:
@@ -33,7 +33,8 @@ def setup(app) -> None:
 
     @queue.handler('testing.run')
     async def _run(job, ctx):
-        return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id)
+        return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id,
+                                 deferrals=int(job.payload.get('deferrals', 0) or 0))
 
     if settings.autoscan_enabled:
         async def _start_scheduler(app) -> None:

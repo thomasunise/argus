@@ -19,7 +19,7 @@ from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, jsonable, registry
 
-log = logging.getLogger('sentinel.collectors.kubernetes')
+log = logging.getLogger('argus.collectors.kubernetes')
 
 SYSTEM_NAMESPACES = {'kube-system', 'kube-public', 'kube-node-lease'}
 SHELL_IMAGES = ('busybox', 'alpine', 'ubuntu', 'debian', 'kali')

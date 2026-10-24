@@ -11,7 +11,7 @@ _SEVERITY = {'critical': 'critical', 'high': 'error', 'medium': 'warning', 'low'
 
 
 def dedup_key(event: OutboundEvent) -> str:
-    return f'sentinel-{event.subject_kind or "event"}-{event.subject_id or event.delivery_id}'[:255]
+    return f'argus-{event.subject_kind or "event"}-{event.subject_id or event.delivery_id}'[:255]
 
 
 def build_payload(event: OutboundEvent, routing_key: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -21,12 +21,12 @@ def build_payload(event: OutboundEvent, routing_key: str, config: dict[str, Any]
         details = {k: v for k, v in (event.payload or {}).items() if isinstance(v, (str, int, float, bool))}
         details.update({'topic': event.topic, 'subject_kind': event.subject_kind, 'subject_id': event.subject_id, 'status': event.status})
         body['payload'] = {'summary': f'[{event.severity.upper()}] {event.title}'[:1024], 'severity': _SEVERITY.get(event.severity, 'warning'),
-                           'source': str(config.get('source') or 'sentinel'), 'component': str(config.get('component') or event.subject_kind or 'sentinel'),
+                           'source': str(config.get('source') or 'argus'), 'component': str(config.get('component') or event.subject_kind or 'argus'),
                            'group': str(config.get('group') or event.tenant_name or ''), 'class': event.topic, 'custom_details': details}
         if event.occurred_at:
             body['payload']['timestamp'] = event.occurred_at.isoformat()
         if event.url:
-            body['links'] = [{'href': event.url, 'text': 'Open in Sentinel'}]
+            body['links'] = [{'href': event.url, 'text': 'Open in Argus'}]
     return body
 
 
@@ -35,7 +35,7 @@ class PagerDutyChannel(Channel):
     description = 'PagerDuty Events API v2 (trigger/resolve with a stable dedup key per subject).'
     config_schema = {
         'type': 'object', 'additionalProperties': False,
-        'properties': {'source': {'type': 'string', 'default': 'sentinel'}, 'component': {'type': 'string'}, 'group': {'type': 'string'},
+        'properties': {'source': {'type': 'string', 'default': 'argus'}, 'component': {'type': 'string'}, 'group': {'type': 'string'},
                        'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 60, 'default': 15}},
     }
     secret_fields = ['routing_key']

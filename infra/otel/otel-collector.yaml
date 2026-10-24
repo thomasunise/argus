@@ -1,4 +1,4 @@
-# OpenTelemetry Collector for Sentinel.
+# OpenTelemetry Collector for Argus.
 # The API exports traces over OTLP/HTTP when OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
 # (app/core/telemetry.py configure_tracing). The collector also scrapes /metrics so one
 # pipeline can forward both to your backend. Replace the `debug` / `otlphttp` exporters with
@@ -14,7 +14,7 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: sentinel-api
+        - job_name: argus-api
           scrape_interval: 30s
           metrics_path: /metrics
           static_configs:
@@ -28,7 +28,7 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 512
-  # Sentinel never puts secrets in spans, but defence in depth: drop common credential attributes.
+  # Argus never puts secrets in spans, but defence in depth: drop common credential attributes.
   attributes/scrub:
     actions:
       - key: http.request.header.authorization

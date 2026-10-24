@@ -113,3 +113,44 @@ def test_tool_schema_normalization():
     assert tool.input_schema['additionalProperties'] is False
     assert tool.validate({'a': 'x', 'b': 'no'}) == ["argument 'b' should be integer"]
     assert tool.validate({'a': 'x', 'c': 1}) == ["unknown argument 'c'"]
+
+
+def test_model_prices_parse_and_reject_bad_entries(settings):
+    from app.core.config import assert_safe_config, parse_model_prices
+
+    assert parse_model_prices(' gpt-4.1=2:8, my-model=0.5:1.5 ,') == {'gpt-4.1': (2.0, 8.0), 'my-model': (0.5, 1.5)}
+    assert parse_model_prices('') == {}
+    for bad in ('gpt-4.1', 'gpt-4.1=2', '=1:2', 'm=a:b', 'm=-1:2'):
+        with pytest.raises(ValueError):
+            parse_model_prices(bad)
+    with pytest.raises(RuntimeError, match='AGENT_MODEL_PRICES'):
+        assert_safe_config(settings.model_copy(update={'agent_model_prices': 'oops'}))
+
+
+def test_unpriced_model_warning_and_overrides(settings):
+    from app.agents.providers import get_provider, unpriced_model_warning
+
+    openai = settings.model_copy(update={'ai_provider': 'openai', 'openai_api_key': 'sk-test', 'openai_model': 'gpt-4.1'})
+    assert get_provider(openai).price() is None
+    assert 'AGENT_COST_CEILING_USD' in unpriced_model_warning(openai)
+    priced = openai.model_copy(update={'agent_model_prices': 'gpt-4.1=2:8'})
+    assert get_provider(priced).price() == (2.0, 8.0) and unpriced_model_warning(priced) == ''
+    assert get_provider(priced).cost(Usage(1_000_000, 1_000_000)) == pytest.approx(10.0)
+    # Built-in Claude prices, local Ollama (free unless overridden) and the null provider never warn.
+    assert unpriced_model_warning(settings.model_copy(update={'ai_provider': 'anthropic', 'anthropic_model': 'claude-opus-5-5'})) == ''
+    assert unpriced_model_warning(settings.model_copy(update={'ai_provider': 'ollama'})) == ''
+    assert unpriced_model_warning(settings.model_copy(update={'ai_provider': 'none'})) == ''
+
+
+@pytest.mark.asyncio
+async def test_runtime_cost_ceiling_trips_for_custom_priced_model(app, settings, default_tenant_id):
+    from app.core.config import parse_model_prices
+
+    principal = Principal(tenant_id=default_tenant_id, role=Role.analyst, user_id='u', email='a@b')
+    turns = [ModelTurn(text='', tool_calls=[ToolCall(f'c{i}', 'lookup', {'key': 'a'})], stop_reason='tool_use',
+                       usage=Usage(1_000_000, 0), model='scripted-1') for i in range(5)]
+    provider = ScriptedProvider(turns)
+    provider.prices = parse_model_prices('scripted-1=1:1')  # $1 per step against a $1.50 ceiling
+    capped = settings.model_copy(update={'agent_cost_ceiling_usd': 1.5, 'agent_max_tokens': 10_000_000})
+    result = await AgentRuntime(capped, make_registry(), provider).run(SPEC, 't', {}, principal, app.state.db_factory)
+    assert result.status == 'budget_exhausted' and 'cost ceiling' in result.error

@@ -8,7 +8,7 @@ import pkgutil
 
 from fastapi import APIRouter
 
-log = logging.getLogger('sentinel.api')
+log = logging.getLogger('argus.api')
 
 
 def discover_routers() -> list[APIRouter]:

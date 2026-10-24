@@ -11,14 +11,14 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.errors import NotFound, SentinelError
+from ..core.errors import NotFound, ArgusError
 from ..core.findings import upsert_event, upsert_finding
 from ..core.rbac import Principal
 from ..models import dumps
 from ..models.integrations import IngestBatch
 from .inbound import ParseContext, registry
 
-log = logging.getLogger('sentinel.integrations.ingest')
+log = logging.getLogger('argus.integrations.ingest')
 
 MAX_BATCH = 500
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -27,12 +27,12 @@ MAX_ERROR_SAMPLES = 20
 ALERT_SEVERITIES = {'high', 'critical'}
 
 
-class BatchTooLarge(SentinelError):
+class BatchTooLarge(ArgusError):
     status = 413
     code = 'batch_too_large'
 
 
-class InvalidPayload(SentinelError):
+class InvalidPayload(ArgusError):
     status = 400
     code = 'invalid_payload'
 

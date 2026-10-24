@@ -1,36 +1,36 @@
 # Alerting rules. Thresholds are starting points for a pilot; tune per deployment.
 groups:
-  - name: sentinel
+  - name: argus
     rules:
-      - alert: SentinelApiDown
-        expr: up{job="sentinel-api"} == 0
+      - alert: ArgusApiDown
+        expr: up{job="argus-api"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Sentinel API is not being scraped"
+          summary: "Argus API is not being scraped"
           runbook: "docs/RUNBOOKS.md#api-unavailable"
 
-      - alert: SentinelHigh5xxRate
+      - alert: ArgusHigh5xxRate
         expr: |
-          sum(rate(sentinel_http_requests_total{status=~"5.."}[5m]))
-            / clamp_min(sum(rate(sentinel_http_requests_total[5m])), 0.001) > 0.05
+          sum(rate(argus_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(argus_http_requests_total[5m])), 0.001) > 0.05
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "More than 5% of HTTP requests are failing"
 
-      - alert: SentinelSlowRequests
-        expr: histogram_quantile(0.95, sum by (le) (rate(sentinel_http_request_seconds_bucket[5m]))) > 2
+      - alert: ArgusSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(argus_http_request_seconds_bucket[5m]))) > 2
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: "p95 HTTP latency above 2s"
 
-      - alert: SentinelJobsFailing
-        expr: sum(increase(sentinel_jobs_total{status="failed"}[15m])) > 5
+      - alert: ArgusJobsFailing
+        expr: sum(increase(argus_jobs_total{status="failed"}[15m])) > 5
         for: 0m
         labels:
           severity: warning
@@ -38,8 +38,8 @@ groups:
           summary: "Queue jobs are failing"
           runbook: "docs/RUNBOOKS.md#lost-worker"
 
-      - alert: SentinelNoJobsCompleting
-        expr: sum(increase(sentinel_jobs_total{status="completed"}[30m])) == 0 and sum(increase(sentinel_jobs_total{status="queued"}[30m])) > 0
+      - alert: ArgusNoJobsCompleting
+        expr: sum(increase(argus_jobs_total{status="completed"}[30m])) == 0 and sum(increase(argus_jobs_total{status="queued"}[30m])) > 0
         for: 10m
         labels:
           severity: critical
@@ -47,24 +47,24 @@ groups:
           summary: "Jobs are queued but none complete: worker lost or Redis down"
           runbook: "docs/RUNBOOKS.md#lost-worker"
 
-      - alert: SentinelActionsFailing
-        expr: sum(increase(sentinel_actions_total{status=~"failed|rolled_back"}[1h])) > 0
+      - alert: ArgusActionsFailing
+        expr: sum(increase(argus_actions_total{status=~"failed|rolled_back"}[1h])) > 0
         labels:
           severity: warning
         annotations:
           summary: "An action execution failed or was rolled back in the last hour"
           runbook: "docs/RUNBOOKS.md#rolling-back-an-action"
 
-      - alert: SentinelCanaryTripped
-        expr: sum(increase(sentinel_detections_total{rule="canary.tripwire"}[10m])) > 0
+      - alert: ArgusCanaryTripped
+        expr: sum(increase(argus_detections_total{rule="canary.tripwire"}[10m])) > 0
         labels:
           severity: critical
         annotations:
           summary: "A canary was used"
           runbook: "docs/RUNBOOKS.md#handling-a-canary-hit"
 
-      - alert: SentinelCriticalFindingsOpen
-        expr: sum(sentinel_findings_open{severity="critical"}) > 0
+      - alert: ArgusCriticalFindingsOpen
+        expr: sum(argus_findings_open{severity="critical"}) > 0
         for: 1h
         labels:
           severity: warning

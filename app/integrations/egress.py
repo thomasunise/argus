@@ -2,7 +2,7 @@
 hooks, SIEM indexers, fleet servers).
 
 Operators configure these destinations through the API, so a compromised or careless admin
-account must not be able to point Sentinel at the cloud metadata service, loopback, link-local
+account must not be able to point Argus at the cloud metadata service, loopback, link-local
 or RFC 1918 space. The check is applied when a configuration is saved (with DNS resolution)
 and again, syntactically, right before every send. DNS rebinding between the two is a known
 residual that network egress policy must cover (see docs/THREAT-MODEL.md).
@@ -15,11 +15,11 @@ from typing import Any, Iterable
 from urllib.parse import urlsplit
 
 from ..core.config import Settings
-from ..core.errors import SentinelError
+from ..core.errors import ArgusError
 from ..core.policy import allowed_ip
 
 
-class EgressDenied(SentinelError):
+class EgressDenied(ArgusError):
     status = 400
     code = 'egress_denied'
 

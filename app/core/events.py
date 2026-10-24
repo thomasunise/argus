@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 from typing import Any, Awaitable, Callable
 
-log = logging.getLogger('sentinel.events')
+log = logging.getLogger('argus.events')
 
 Subscriber = Callable[[str, dict[str, Any]], Awaitable[None]]
 

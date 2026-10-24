@@ -25,7 +25,7 @@ import httpx
 
 from .base import Collector, CollectorContext, CollectorResult, is_private_ip, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.osquery')
+log = logging.getLogger('argus.collectors.osquery')
 
 SERVER_PARENTS = {'nginx', 'apache2', 'httpd', 'java', 'tomcat', 'node', 'php-fpm', 'w3wp.exe', 'sqlservr.exe', 'postgres', 'mysqld', 'mongod', 'redis-server',
                   'winword.exe', 'excel.exe', 'powerpnt.exe', 'outlook.exe', 'acrord32.exe', 'mshta.exe', 'wscript.exe', 'cscript.exe', 'rundll32.exe', 'regsvr32.exe'}
@@ -259,7 +259,7 @@ async def _fetch_fleet(ctx: CollectorContext) -> dict[str, Any]:
     denied = egress_ok(base, ctx.settings, allow_http=bool(getattr(ctx.settings, 'allow_private_targets', False)))
     if denied:
         raise ValueError(f'fleet_url refused: {denied}')
-    headers = {'Accept': 'application/json', 'User-Agent': 'sentinel-collector'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'argus-collector'}
     if config.get('fleet_token'):
         headers['Authorization'] = f"Bearer {config['fleet_token']}"
     warnings: list[str] = []

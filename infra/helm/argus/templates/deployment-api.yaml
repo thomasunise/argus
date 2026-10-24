@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sentinel.fullname" . }}-api
+  name: {{ include "argus.fullname" . }}-api
   labels:
-    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- include "argus.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   {{- if not .Values.api.hpa.enabled }}
@@ -17,20 +17,20 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+      {{- include "argus.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
   template:
     metadata:
       labels:
-        {{- include "sentinel.selectorLabels" . | nindent 8 }}
+        {{- include "argus.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
       annotations:
-        checksum/config: {{ include "sentinel.configChecksum" . }}
+        checksum/config: {{ include "argus.configChecksum" . }}
         {{- with .Values.api.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "sentinel.serviceAccountName" . }}
+      serviceAccountName: {{ include "argus.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
@@ -41,7 +41,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: api
-          image: {{ include "sentinel.image" . }}
+          image: {{ include "argus.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["api"]
           securityContext:
@@ -63,7 +63,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           envFrom:
-            {{- include "sentinel.envFrom" . | nindent 12 }}
+            {{- include "argus.envFrom" . | nindent 12 }}
           startupProbe:
             httpGet:
               path: /health
@@ -87,12 +87,12 @@ spec:
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
           volumeMounts:
-            {{- include "sentinel.volumeMounts" . | nindent 12 }}
+            {{- include "argus.volumeMounts" . | nindent 12 }}
             {{- with .Values.api.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
-        {{- include "sentinel.volumes" . | nindent 8 }}
+        {{- include "argus.volumes" . | nindent 8 }}
         {{- with .Values.api.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

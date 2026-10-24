@@ -1,7 +1,7 @@
 locals {
   prefix = "${var.name}-${var.environment}"
   tags = merge({
-    Project     = "sentinel"
+    Project     = "argus"
     Environment = var.environment
     ManagedBy   = "terraform"
   }, var.tags)
@@ -17,7 +17,7 @@ locals {
     METRICS_ENABLED          = "true"
     SCAN_ROOT                = "/app/targets"
     AUDIT_S3_BUCKET          = aws_s3_bucket.audit.id
-    AUDIT_S3_PREFIX          = "sentinel-audit/"
+    AUDIT_S3_PREFIX          = "argus-audit/"
     ACTIONS_KILL_SWITCH      = "false"
     ACTIONS_AUTO_APPROVE_LOW = "false"
     FORWARDED_ALLOW_IPS      = "*" # the ALB is the only client of the task ENI (security group)

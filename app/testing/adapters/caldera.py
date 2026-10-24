@@ -79,7 +79,7 @@ class CalderaAdapter(TestAdapter):
                                      headers=headers, limits=httpx.Limits(max_connections=2)) as client:
             await ctx.rate_limiter.acquire()
             created = await client.post('/api/v2/operations', json={
-                'name': f'sentinel-{ctx.run_id[:8]}', 'adversary': {'adversary_id': adversary_id},
+                'name': f'argus-{ctx.run_id[:8]}', 'adversary': {'adversary_id': adversary_id},
                 'group': group, 'auto_close': True, 'state': 'running'})
             created.raise_for_status()
             op = created.json()

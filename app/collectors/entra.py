@@ -26,7 +26,7 @@ import httpx
 
 from .base import Collector, CollectorContext, CollectorResult, age_days, parse_time, registry
 
-log = logging.getLogger('sentinel.collectors.entra')
+log = logging.getLogger('argus.collectors.entra')
 
 PRIVILEGED_ROLES = {'Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator',
                     'Exchange Administrator', 'SharePoint Administrator', 'User Administrator', 'Application Administrator', 'Cloud Application Administrator',
@@ -263,7 +263,7 @@ async def _fetch(ctx: CollectorContext) -> dict[str, Any]:
     raw: dict[str, Any] = {'tenant_id': tenant_id, 'users': [], 'groups': [], 'directory_roles': [], 'service_principals': [], 'conditional_access_policies': None,
                            'risky_sign_ins': [], 'audit_logs': [], 'warnings': warnings}
     since = ctx.since_or(int(config.get('log_lookback_hours') or 24)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), headers={'User-Agent': 'sentinel-collector'}) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), headers={'User-Agent': 'argus-collector'}) as client:
         token = await _token(client, login, tenant_id, client_id, config.get('client_secret', ''), graph)
         client.headers['Authorization'] = f'Bearer {token}'
         client.headers['ConsistencyLevel'] = 'eventual'

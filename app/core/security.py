@@ -47,7 +47,7 @@ def verify_password(password: str, stored: str) -> bool:
 
 # ---------------------------------------------------------------- API keys
 
-API_KEY_PREFIX = 'snt'
+API_KEY_PREFIX = 'argus'
 
 
 def generate_api_key() -> tuple[str, str, str]:
@@ -198,7 +198,7 @@ async def oidc_exchange_code(doc: OidcDiscovery, settings: Settings, code: str, 
 # ---------------------------------------------------------------- secrets
 
 
-_SECRET_LOG = __import__('logging').getLogger('sentinel.secrets')
+_SECRET_LOG = __import__('logging').getLogger('argus.secrets')
 
 
 def secret_ref_allowed(ref: str, settings: Settings) -> tuple[bool, str]:
@@ -264,7 +264,7 @@ _REDACT_PATTERNS = [
     re.compile(r'(?i)(api[_-]?key|secret|password|passwd|token|authorization)(\s*[:=]\s*)(["\']?)[^\s"\',;]{6,}'),
     re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----'),
     re.compile(r'sk-[A-Za-z0-9]{20,}'),
-    re.compile(r'snt_[0-9a-f]{8}_[A-Za-z0-9\-_]{20,}'),
+    re.compile(r'argus_[0-9a-f]{8}_[A-Za-z0-9\-_]{20,}'),
     re.compile(r'gh[pousr]_[A-Za-z0-9]{30,}'),
     re.compile(r'xox[baprs]-[A-Za-z0-9\-]{10,}'),
 ]

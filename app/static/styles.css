@@ -1,4 +1,4 @@
-/* Sentinel — light-first, monochrome, hairline UI. Dark mode is true black. */
+/* Argus — light-first, monochrome, hairline UI. Dark mode is true black. */
 :root{
   --bg:#ffffff;--side:#fafafa;--panel:#ffffff;--panel2:#fafafa;--surface:#f4f4f4;--hover:#f3f3f3;
   --border:#e4e4e4;--border2:#eeeeee;--track:#ececec;

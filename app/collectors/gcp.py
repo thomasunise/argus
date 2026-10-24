@@ -20,7 +20,7 @@ from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, jsonable, registry
 
-log = logging.getLogger('sentinel.collectors.gcp')
+log = logging.getLogger('argus.collectors.gcp')
 
 RESOURCE_TYPES = ['compute.googleapis.com/Instance', 'compute.googleapis.com/Firewall', 'storage.googleapis.com/Bucket', 'container.googleapis.com/Cluster']
 IAM_TYPES = ['cloudresourcemanager.googleapis.com/Project', 'storage.googleapis.com/Bucket']

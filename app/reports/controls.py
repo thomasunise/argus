@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ..core.config import Settings
 from .evidence import Evidence, run_check, utcnow
 
-DISCLAIMER = ('Automated evidence mapping only. Statuses reflect signals Sentinel can observe about its own configuration and the '
+DISCLAIMER = ('Automated evidence mapping only. Statuses reflect signals Argus can observe about its own configuration and the '
               'tenant data it holds. They are not a certification, attestation or audit opinion for any framework.')
 
 
@@ -50,9 +50,9 @@ SOC2: tuple[Control, ...] = (
     Control('CC7.4', 'Incident response', 'Incidents are responded to, contained and remediated.', ('incident_workflow', 'vulnerability_sla', 'mttr', 'action_governance')),
     Control('CC8.1', 'Change management', 'Changes to infrastructure, data and software are authorized, tested, approved and implemented.',
             ('action_governance', 'admin_changes_audited', 'audit_chain_valid')),
-    Control('CC9.2', 'Vendor and business partner risk', 'Risks from vendors and partners are assessed and managed.', (), 'Record vendor assessments outside Sentinel.'),
+    Control('CC9.2', 'Vendor and business partner risk', 'Risks from vendors and partners are assessed and managed.', (), 'Record vendor assessments outside Argus.'),
     Control('A1.2', 'Availability: recovery infrastructure', 'Backup and recovery infrastructure and processes are in place.', (),
-            'Database and audit-sink backups are operated outside Sentinel.'),
+            'Database and audit-sink backups are operated outside Argus.'),
     Control('C1.1', 'Confidentiality: identification and protection', 'Confidential information is identified and protected.',
             ('collector_secrets_by_reference', 'audit_external_sink', 'retention_policy')),
 )
@@ -93,7 +93,7 @@ ISO27001: tuple[Control, ...] = (
     Control('A.5.24', 'Incident management planning and preparation', 'Processes, roles and responsibilities for incident management are defined.', ('incident_workflow', 'detections_enabled')),
     Control('A.5.26', 'Response to information security incidents', 'Incidents are responded to in accordance with documented procedures.', ('incident_workflow', 'action_governance', 'mttr')),
     Control('A.5.28', 'Collection of evidence', 'Procedures for identification, collection and preservation of evidence.', ('audit_chain_valid', 'audit_external_sink')),
-    Control('A.5.30', 'ICT readiness for business continuity', 'ICT readiness is planned, implemented and tested.', (), 'Document continuity tests outside Sentinel.'),
+    Control('A.5.30', 'ICT readiness for business continuity', 'ICT readiness is planned, implemented and tested.', (), 'Document continuity tests outside Argus.'),
     Control('A.8.2', 'Privileged access rights', 'Allocation and use of privileged access rights is restricted and managed.', ('least_privilege_owners', 'action_governance')),
     Control('A.8.5', 'Secure authentication', 'Secure authentication technologies and procedures are implemented.', ('mfa_enforced', 'session_controls')),
     Control('A.8.8', 'Management of technical vulnerabilities', 'Information about technical vulnerabilities is obtained and remediated.', ('testing_authorized', 'vulnerability_sla', 'coverage')),

@@ -82,7 +82,7 @@ def test_types_lists_collectors_with_schema_and_availability(owner):
     if not aws['available']:
         assert aws['install_hint'] == 'install boto3'
     assert items['netflow']['available'] is True and items['github']['secret_fields'] == ['token']
-    assert client.get(f'{BASE}/types', headers={'X-API-Key': 'snt_deadbeef_notarealkey'}).status_code == 401
+    assert client.get(f'{BASE}/types', headers={'X-API-Key': 'argus_deadbeef_notarealkey'}).status_code == 401
 
 
 def test_create_rejects_inline_and_literal_secrets(owner, fake):
@@ -215,7 +215,7 @@ async def test_execute_run_handles_unknown_and_disabled_collectors(app, settings
     # missing secret => warning, timeout => failed run
     with app.state.db_factory() as db:
         config = db.get(CollectorConfig, config_id)
-        config.collector, config.config_json, config.secret_refs_json = 'fake', '{"account": "1"}', '{"token": "env:DEFINITELY_NOT_SET_SENTINEL"}'
+        config.collector, config.config_json, config.secret_refs_json = 'fake', '{"account": "1"}', '{"token": "env:DEFINITELY_NOT_SET_ARGUS"}'
         run = CollectorRun(tenant_id=default_tenant_id, config_id=config.id)
         db.add(run)
         db.commit()

@@ -23,7 +23,7 @@ from .config import Settings
 from .rbac import Principal
 from .security import redact
 
-log = logging.getLogger('sentinel.audit')
+log = logging.getLogger('argus.audit')
 _lock = threading.Lock()
 
 
@@ -96,7 +96,7 @@ def build_sinks(settings: Settings) -> list[AuditSink]:
 
 
 _sinks: list[AuditSink] = []
-_OUTBOX = 'sentinel_audit_outbox'
+_OUTBOX = 'argus_audit_outbox'
 _signing_key: bytes = b''
 _signing_keys: dict[str, bytes] = {}
 _signing_kid: str = ''

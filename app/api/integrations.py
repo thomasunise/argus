@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.errors import NotFound, SentinelError
+from ..core.errors import NotFound, ArgusError
 from ..core.rbac import Principal
 from ..core.config import Settings
 from ..core.security import mask_secret_refs, merge_secret_refs
@@ -26,7 +26,7 @@ from .deps import Page, get_db, get_settings, require
 router = APIRouter(prefix='/api/v1/integrations', tags=['integrations'])
 
 
-class InvalidConfig(SentinelError):
+class InvalidConfig(ArgusError):
     status = 400
     code = 'invalid_config'
 
@@ -263,8 +263,8 @@ async def test_integration(integration_id: str, request: Request, db: Session = 
         return {'ok': not missing, 'direction': 'inbound', 'kind': row.kind, 'secrets_resolved': sorted(secrets), 'secrets_missing': missing,
                 'ingest_url': f'/api/v1/ingest/{impl.name}' + (f'/verify?integration={row.id}' if impl.supports_verify else ''),
                 'pull_job': 'integrations.wazuh_sync' if impl.pull else None}
-    payload = {'title': f'Sentinel test event for {row.name}', 'severity': 'low', 'summary': 'This is a synthetic event sent from POST /integrations/{id}/test.',
-               'tenant_id': principal.tenant_id, 'source': 'sentinel', 'requested_by': principal.actor}
+    payload = {'title': f'Argus test event for {row.name}', 'severity': 'low', 'summary': 'This is a synthetic event sent from POST /integrations/{id}/test.',
+               'tenant_id': principal.tenant_id, 'source': 'argus', 'requested_by': principal.actor}
     delivery = WebhookDelivery(tenant_id=principal.tenant_id, integration_id=row.id, topic=TEST_TOPIC, payload_json=dumps(payload), status='queued', max_attempts=1)
     db.add(delivery)
     db.flush()

@@ -64,7 +64,7 @@ locals {
     ingest-api-key                = random_password.ingest_api_key.result
     audit-signing-key             = random_password.audit_signing_key.result
     data-encryption-key           = random_password.data_encryption_key.result
-    database-url                  = "postgresql+psycopg://sentinel:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/sentinel?sslmode=require"
+    database-url                  = "postgresql+psycopg://argus:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/argus?sslmode=require"
     redis-url                     = "rediss://:${azurerm_redis_cache.this.primary_access_key}@${azurerm_redis_cache.this.hostname}:${azurerm_redis_cache.this.ssl_port}/0"
     audit-azure-connection-string = azurerm_storage_account.audit.primary_connection_string
   }

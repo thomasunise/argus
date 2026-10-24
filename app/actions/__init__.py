@@ -13,7 +13,7 @@ import pkgutil
 from . import broker, catalog, credentials, policy  # noqa: F401
 from .catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecResult, register  # noqa: F401
 
-log = logging.getLogger('sentinel.actions')
+log = logging.getLogger('argus.actions')
 
 
 def load_executors() -> None:
