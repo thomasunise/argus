@@ -30,7 +30,7 @@ def scope_to_dict(s) -> dict:
     return {'id': s.id, 'name': s.name, 'asset_ids': loads(s.asset_ids_json, []),
             'allowed_tiers': loads(s.allowed_tiers_json, []), 'environments': loads(s.environments_json, []),
             'window_start': s.window_start, 'window_end': s.window_end, 'max_rps': s.max_rps,
-            'max_concurrency': s.max_concurrency, 'signed_document_ref': s.signed_document_ref,
+            'max_concurrency': s.max_concurrency, 'signed_document_ref': s.signed_document_ref, 'autonomous': bool(getattr(s, 'autonomous', False)),
             'created_by': s.created_by, 'created_at': s.created_at, 'expires_at': s.expires_at,
             'revoked_at': s.revoked_at}
 

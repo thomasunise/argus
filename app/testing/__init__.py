@@ -36,6 +36,12 @@ def setup(app) -> None:
         return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id,
                                  deferrals=int(job.payload.get('deferrals', 0) or 0))
 
+    from . import autopilot
+
+    @queue.handler('testing.autopilot')
+    async def _autopilot(job, ctx):
+        return await autopilot.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+
     if settings.autoscan_enabled:
         async def _start_scheduler(app) -> None:
             from .scheduler import scheduler_loop

@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     private_target_cidrs: str = ''
     autoscan_enabled: bool = False
     autoscan_minutes: int = 360
+    # --- autonomous pentesting (autopilot) ---
+    autopentest_enabled: bool = False
+    autopentest_kill_switch: bool = False
 
     # --- actions ---
     actions_kill_switch: bool = False

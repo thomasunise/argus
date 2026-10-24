@@ -38,6 +38,7 @@ class ScopeBody(BaseModel):
     max_rps: float = 5.0
     max_concurrency: int = 1
     signed_document_ref: str = ''
+    autonomous: bool = False
     expires_at: datetime | None = None
 
     @field_validator('allowed_tiers')
@@ -141,11 +142,26 @@ def create_scope(body: ScopeBody, db: Session = Depends(get_db), principal: Prin
                       allowed_tiers_json=dumps(body.allowed_tiers), environments_json=dumps(body.environments),
                       window_start=body.window_start, window_end=body.window_end, max_rps=body.max_rps,
                       max_concurrency=body.max_concurrency, signed_document_ref=body.signed_document_ref,
-                      expires_at=body.expires_at, created_by=principal.user_id or '')
+                      autonomous=body.autonomous, expires_at=body.expires_at, created_by=principal.user_id or '')
     db.add(scope)
     db.flush()
     record_audit(db, principal, 'testing.scope.created', scope.id,
-                 {'name': body.name, 'tiers': body.allowed_tiers, 'assets': len(body.asset_ids)})
+                 {'name': body.name, 'tiers': body.allowed_tiers, 'assets': len(body.asset_ids), 'autonomous': body.autonomous})
+    return service.scope_to_dict(scope)
+
+
+class AutonomousBody(BaseModel):
+    autonomous: bool
+
+
+@router.post('/scopes/{scope_id}/autonomous')
+def set_scope_autonomous(scope_id: str, body: AutonomousBody, db: Session = Depends(get_db),
+                         principal: Principal = Depends(require('tests:scopes'))):
+    scope = get_scoped(db, TestScope, principal, scope_id)
+    if scope is None:
+        raise NotFound('test scope not found')
+    scope.autonomous = bool(body.autonomous)
+    record_audit(db, principal, 'testing.scope.autonomous', scope_id, {'autonomous': scope.autonomous, 'name': scope.name})
     return service.scope_to_dict(scope)
 
 
