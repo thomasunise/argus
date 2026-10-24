@@ -19,6 +19,22 @@ from ..models import ApiKey, Membership, Tenant, User, utcnow
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
 
 
+async def write_off_loop(db: Session, fn) -> None:
+    """Run DB writes from an async endpoint in a thread, then commit.
+
+    An async endpoint that writes on the event loop after an await can deadlock with the in-process worker on
+    SQLite: the worker holds the write lock while it waits for the loop, and the endpoint blocks the loop while it
+    waits for the lock. Writing in a thread keeps the loop free, and committing releases the lock straight away.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    def _run() -> None:
+        fn()
+        db.commit()
+
+    await run_in_threadpool(_run)
+
+
 def get_settings(request: Request) -> Settings:
     return request.app.state.settings
 

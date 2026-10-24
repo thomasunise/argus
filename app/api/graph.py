@@ -13,7 +13,7 @@ from ..core.rbac import Principal
 from ..graph import service
 from ..models import utcnow
 from ..models.graph import ATTACK_PATH_STATUSES, AttackPath, GraphNode
-from .deps import Page, get_db, require
+from .deps import Page, get_db, require, write_off_loop
 
 router = APIRouter(prefix='/api/v1/graph', tags=['graph'])
 
@@ -98,7 +98,8 @@ async def recompute(request: Request, body: RecomputeBody | None = None, db: Ses
     payload = {'tenant_id': principal.tenant_id, 'from_kind': body.from_kind[:24], 'to_kind': body.to_kind[:24],
                'max_hops': max(1, min(body.max_hops, 10)), 'limit': max(1, min(body.limit, 500))}
     job = await request.app.state.queue.enqueue('graph.recompute', payload, tenant_id=principal.tenant_id)
-    record_audit(db, principal, 'graph.recompute', job.id, {'from_kind': payload['from_kind'], 'to_kind': payload['to_kind']})
+    await write_off_loop(db, lambda: record_audit(db, principal, 'graph.recompute', job.id,
+                                                  {'from_kind': payload['from_kind'], 'to_kind': payload['to_kind']}))
     return {'job_id': job.id, 'status': job.status}
 
 

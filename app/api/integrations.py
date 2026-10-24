@@ -21,7 +21,7 @@ from ..integrations.outbound import registry as outbound_registry
 from ..integrations.schema import validate_no_inline_secrets, validate_schema, validate_secret_refs, validate_severity, validate_topics
 from ..models import dumps, loads, utcnow
 from ..models.integrations import IngestBatch, IntegrationConfig, WebhookDelivery
-from .deps import Page, get_db, get_settings, require
+from .deps import Page, get_db, get_settings, require, write_off_loop
 
 router = APIRouter(prefix='/api/v1/integrations', tags=['integrations'])
 
@@ -189,11 +189,15 @@ async def retry_delivery(delivery_id: str, request: Request, db: Session = Depen
     row.status, row.next_attempt_at = 'queued', None
     if row.attempts >= row.max_attempts:
         row.max_attempts = row.attempts + 1
-    db.flush()
+    db.commit()  # do not hold the SQLite write lock across the await below
     job = await request.app.state.queue.enqueue('integrations.deliver', {'delivery_id': row.id}, tenant_id=principal.tenant_id,
                                                 idempotency_key=f'deliver:{row.id}:manual:{row.attempts}:{utcnow().timestamp()}')
-    row.job_id = job.id
-    record_audit(db, principal, 'integrations.delivery_retry', row.id, {'integration_id': row.integration_id, 'topic': row.topic, 'attempts': row.attempts})
+
+    def _record() -> None:
+        row.job_id = job.id
+        record_audit(db, principal, 'integrations.delivery_retry', row.id, {'integration_id': row.integration_id, 'topic': row.topic, 'attempts': row.attempts})
+
+    await write_off_loop(db, _record)
     return {'ok': True, 'job_id': job.id, 'delivery': delivery_to_dict(row)}
 
 
@@ -282,5 +286,5 @@ async def sync_integration(integration_id: str, request: Request, db: Session = 
         raise InvalidConfig(f'{row.kind} has no pull job')
     job = await request.app.state.queue.enqueue(f'integrations.{impl.name}_sync', {'integration_id': row.id}, tenant_id=principal.tenant_id,
                                                 idempotency_key=f'{impl.name}_sync:{row.id}')
-    record_audit(db, principal, 'integrations.sync', row.id, {'kind': row.kind, 'job_id': job.id})
+    await write_off_loop(db, lambda: record_audit(db, principal, 'integrations.sync', row.id, {'kind': row.kind, 'job_id': job.id}))
     return {'ok': True, 'job_id': job.id}

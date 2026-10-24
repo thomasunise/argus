@@ -18,7 +18,7 @@ from ..detections.engine import detection_to_dict, effective_params, registry, r
 from ..models import dumps, loads, utcnow
 from ..models.detections import DETECTION_STATUSES, Detection, DetectionRuleState, DetectionRun
 from ._common import like
-from .deps import Page, get_db, require
+from .deps import Page, get_db, require, write_off_loop
 
 router = APIRouter(prefix='/api/v1/detections', tags=['detections'])
 
@@ -129,7 +129,8 @@ async def trigger_run(body: RunBody, request: Request, db: Session = Depends(get
     since = (utcnow() - timedelta(minutes=body.since_minutes)).isoformat() if body.since_minutes else None
     payload = {'tenant_id': principal.tenant_id, 'since': since, 'rule_ids': body.rule_ids, 'requested_by': principal.actor}
     job = await request.app.state.queue.enqueue('detections.run', payload, tenant_id=principal.tenant_id, lease_seconds=600)
-    record_audit(db, principal, 'detections.run_requested', job.id, {'since_minutes': body.since_minutes, 'rule_ids': body.rule_ids})
+    await write_off_loop(db, lambda: record_audit(db, principal, 'detections.run_requested', job.id,
+                                                  {'since_minutes': body.since_minutes, 'rule_ids': body.rule_ids}))
     return {'job_id': job.id, 'status': job.status}
 
 
