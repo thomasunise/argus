@@ -61,6 +61,29 @@ def fake():
         registry.unregister('fake')
 
 
+def start_run(client, headers, config_id):
+    """POST /run with the in-process worker held back until the response is complete. On SQLite a job that starts
+    writing while the request's audit write upgrades its read transaction gets an immediate 'database is locked'
+    (WAL snapshot rule, not covered by busy_timeout); PostgreSQL, the production backend, has no such case."""
+    import threading
+
+    queue = client.app.state.queue
+    gate = threading.Event()
+    original = queue._handlers['collectors.run']
+
+    async def gated(job, ctx):
+        while not gate.is_set():
+            await asyncio.sleep(0.02)
+        return await original(job, ctx)
+
+    queue._handlers['collectors.run'] = gated
+    try:
+        return client.post(f"{BASE}/{config_id}/run", headers=headers)
+    finally:
+        gate.set()
+        queue._handlers['collectors.run'] = original
+
+
 def create(client, headers, **overrides):
     body = {'name': 'prod account', 'collector': 'fake', 'config': {'account': '111', 'regions': ['eu-west-1']}, 'secret_refs': {'token': 'env:FAKE_TOKEN'}, 'schedule_minutes': 0}
     body.update(overrides)
@@ -147,7 +170,7 @@ def test_run_job_end_to_end(owner, fake, app, db, default_tenant_id, monkeypatch
     monkeypatch.setenv('FAKE_TOKEN', 'resolved-token-value')
     client, headers = owner
     config = create(client, headers).json()
-    started = client.post(f"{BASE}/{config['id']}/run", headers=headers)
+    started = start_run(client, headers, config['id'])
     assert started.status_code == 202, started.text
     payload = started.json()
     assert payload['status'] == 'queued' and payload['job_id'] and payload['already_queued'] is False
@@ -173,7 +196,7 @@ def test_run_job_end_to_end(owner, fake, app, db, default_tenant_id, monkeypatch
     assert len(audit) == 1 and 'resolved-token-value' not in audit[0].detail and audit[0].actor == 'system'
     assert any(a.action == 'collectors.run_requested' for a in db.execute(select(AuditEntry).where(AuditEntry.tenant_id == default_tenant_id)).scalars())
     # second run: dedupes the event, passes `since`, and a repeated POST while queued returns the same run
-    again = client.post(f"{BASE}/{config['id']}/run", headers=headers).json()
+    again = start_run(client, headers, config['id']).json()
     wait_job(client, headers, again['job_id'])
     assert fake.calls[-1].since is not None
     assert db.scalar(select(SecurityEvent.id).where(SecurityEvent.tenant_id == default_tenant_id, SecurityEvent.source == 'collector:fake').limit(2)) and \
@@ -183,7 +206,7 @@ def test_run_job_end_to_end(owner, fake, app, db, default_tenant_id, monkeypatch
 def test_run_failure_is_recorded_and_retried(owner, fake, db):
     client, headers = owner
     config = create(client, headers, config={'account': '333', 'fail_times': 1}).json()
-    started = client.post(f"{BASE}/{config['id']}/run", headers=headers).json()
+    started = start_run(client, headers, config['id']).json()
     job = wait_job(client, headers, started['job_id'])
     assert job['status'] == 'completed' and job['attempts'] == 2  # first attempt failed, queue retried
     run = client.get(f"{BASE}/runs/{started['run_id']}", headers=headers).json()
@@ -330,7 +353,7 @@ def test_scheduler_loop_is_registered_as_startup_hook(app, client):
 def test_cross_tenant_isolation_on_every_endpoint(owner, fake, second_tenant):
     client, headers = owner
     config = create(client, headers).json()
-    started = client.post(f"{BASE}/{config['id']}/run", headers=headers).json()
+    started = start_run(client, headers, config['id']).json()
     wait_job(client, headers, started['job_id'])
     other, oh = second_tenant['client'], second_tenant['headers']
     assert other.get(BASE, headers=oh).json()['items'] == []

@@ -9,6 +9,8 @@ targets/
 *.sqlite
 *.sqlite3
 *.log
+# Collector sample data under tests/fixtures is synthetic and needed by the tests.
+!tests/fixtures/**/*.log
 
 # Terraform working directories (providers are cached in TF_PLUGIN_CACHE_DIR); keep .terraform.lock.hcl
 .terraform/

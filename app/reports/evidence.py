@@ -164,8 +164,9 @@ def audit_chain_valid(db: Session, tenant_id: str, settings: Settings) -> Eviden
 
 @check('audit_signing')
 def audit_signing(db: Session, tenant_id: str, settings: Settings) -> Evidence:
-    ok = bool(settings.audit_signing_key)
-    return Evidence('audit_signing', ok, 'audit entries carry an HMAC signature' if ok else 'AUDIT_SIGNING_KEY not set')
+    ok = bool(settings.audit_signing_key or settings.audit_signing_keys)
+    return Evidence('audit_signing', ok, 'audit entries carry an HMAC signature' if ok
+                    else 'neither AUDIT_SIGNING_KEY nor AUDIT_SIGNING_KEYS is set')
 
 
 @check('audit_external_sink')

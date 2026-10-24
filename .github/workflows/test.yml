@@ -179,7 +179,7 @@ jobs:
       - name: Compose config validates (dev and prod overlay)
         run: |
           docker compose -f compose.yaml config --quiet
-          ARGUS_DOMAIN=argus.example.com docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+          ARGUS_DOMAIN=argus.example.com ACME_EMAIL=ops@example.com docker compose -f compose.yaml -f compose.prod.yaml config --quiet
       - name: Start the stack
         run: |
           docker compose -f compose.yaml up -d --no-build postgres redis api worker
