@@ -15,7 +15,7 @@ import respx
 
 from app.actions import catalog, load_executors
 from app.actions.catalog import ActionError, ExecContext
-from app.actions.executors import aws, azure, cloudflare, entra, gcp, github, kubernetes, okta, argus
+from app.actions.executors import aws, azure, cloudflare, crowdstrike, entra, gcp, github, kubernetes, okta, sentinelone, argus
 from app.models import Asset, AssetAuthorization, Finding
 
 FIX = Path(__file__).parent / 'fixtures' / 'actions'
@@ -86,6 +86,10 @@ def env(monkeypatch):
     monkeypatch.setenv('ACTIONS_OKTA_TOKEN', 'okta-token')
     monkeypatch.setenv('ACTIONS_GITHUB_TOKEN', 'ghp_testtoken')
     monkeypatch.setenv('ACTIONS_CLOUDFLARE_TOKEN', 'cf-token')
+    monkeypatch.setenv('ACTIONS_CROWDSTRIKE_CLIENT_ID', 'cs-id')
+    monkeypatch.setenv('ACTIONS_CROWDSTRIKE_CLIENT_SECRET', 'cs-secret')
+    monkeypatch.setenv('ACTIONS_SENTINELONE_API_URL', 'https://acme.sentinelone.net')
+    monkeypatch.setenv('ACTIONS_SENTINELONE_TOKEN', 's1-token')
 
 
 # ======================================================================== AWS
@@ -731,7 +735,7 @@ async def test_argus_internal_actions(app, client, settings, default_tenant_id):
 
 def test_every_real_action_is_registered_with_a_plan():
     names = catalog.names()
-    assert len([n for n in names if not n.startswith('test.')]) == 25
+    assert len([n for n in names if not n.startswith('test.')]) == 27
     for action in catalog.all():
         if action.name.startswith('test.'):
             continue

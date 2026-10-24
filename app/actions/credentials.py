@@ -30,6 +30,9 @@ ENV: dict[str, dict[str, str]] = {
     'okta': {'org_url': 'ACTIONS_OKTA_ORG_URL', 'token': 'ACTIONS_OKTA_TOKEN'},
     'github': {'token': 'ACTIONS_GITHUB_TOKEN', 'api_url': 'ACTIONS_GITHUB_API_URL'},
     'cloudflare': {'token': 'ACTIONS_CLOUDFLARE_TOKEN'},
+    'crowdstrike': {'client_id': 'ACTIONS_CROWDSTRIKE_CLIENT_ID', 'client_secret': 'ACTIONS_CROWDSTRIKE_CLIENT_SECRET',
+                    'base_url': 'ACTIONS_CROWDSTRIKE_BASE_URL'},
+    'sentinelone': {'api_url': 'ACTIONS_SENTINELONE_API_URL', 'token': 'ACTIONS_SENTINELONE_TOKEN'},
 }
 
 # Keys that must be present for the platform to count as configured (any one group suffices).
@@ -42,6 +45,8 @@ REQUIRED: dict[str, list[list[str]]] = {
     'okta': [['org_url', 'token']],
     'github': [['token']],
     'cloudflare': [['token']],
+    'crowdstrike': [['client_id', 'client_secret']],
+    'sentinelone': [['api_url', 'token']],
 }
 
 FALLBACK = {'entra': 'azure'}  # Entra actions may reuse the Azure app registration
