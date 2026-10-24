@@ -57,7 +57,7 @@ def test_list_get_patch_detection_and_cross_tenant(owner, second_tenant, db, def
 def test_rules_endpoint_state_and_permissions(owner, second_tenant, client, make_user):
     c, headers = owner
     rules = c.get('/api/v1/detections/rules', headers=headers).json()['items']
-    assert len(rules) == 12 and all(r['enabled'] for r in rules)
+    assert len(rules) == 13 and all(r['enabled'] for r in rules)
     fanout = next(r for r in rules if r['id'] == 'swarm.coordinated_identity_fanout')
     assert fanout['params']['min_actors'] == 10 and fanout['category'] == 'swarm'
     patched = c.patch('/api/v1/detections/rules/swarm.coordinated_identity_fanout', json={'enabled': False, 'params': {'min_actors': 4}}, headers=headers)
@@ -84,10 +84,10 @@ def test_run_job_and_stats(owner, db, default_tenant_id, second_tenant):
     assert queued.status_code == 202, queued.text
     job = wait_job(client, headers, queued.json()['job_id'])
     assert job['status'] == 'completed', job
-    assert job['result']['rules_run'] == 12 and job['result']['detections_created'] == 1 and job['result']['errors'] == []
+    assert job['result']['rules_run'] == 13 and job['result']['detections_created'] == 1 and job['result']['errors'] == []
     stats = client.get('/api/v1/detections/stats', headers=headers).json()
     assert stats['by_rule'] == {'swarm.machine_speed_sequence': 1} and stats['by_status'] == {'open': 1} and stats['open_by_severity'] == {'high': 1}
-    assert stats['last_run']['trigger'] == 'job' and stats['last_run']['detections_created'] == 1 and stats['rules_registered'] == 12
+    assert stats['last_run']['trigger'] == 'job' and stats['last_run']['detections_created'] == 1 and stats['rules_registered'] == 13
     # The other tenant's run finds nothing because events are tenant scoped.
     other, oh = second_tenant['client'], second_tenant['headers']
     queued = other.post('/api/v1/detections/run', json={}, headers=oh)

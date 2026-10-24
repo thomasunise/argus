@@ -9,3 +9,4 @@ from .audit import AuditEntry  # noqa: F401
 from .agents import AgentRun, AgentStep, EvalRun  # noqa: F401
 
 from . import actions, collectors, detections, graph, integrations, testing  # noqa: F401  (registers their tables)
+from . import ai  # noqa: F401  (AI gateway and shadow-AI tables)
