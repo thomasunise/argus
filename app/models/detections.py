@@ -11,7 +11,10 @@ from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
 DETECTION_STATUSES = ('open', 'investigating', 'resolved', 'false_positive')
 BASELINE_DIMENSIONS = ('actor_rate', 'entity_rate', 'actor_novel_actions', 'action_rate', 'source_rate')
-CANARY_KINDS = ('token', 'url', 'credential', 'file', 'dns', 'aws_key', 'api_key', 'document')
+CANARY_KINDS = ('token', 'url', 'credential', 'file', 'dns', 'aws_key', 'api_key', 'document',
+                # aimed at AI agents: planted instructions, a fake MCP server, an LLM key + base URL, agent rules files
+                'prompt_injection', 'mcp_server', 'llm_api_key', 'agent_rules')
+AGENT_CANARY_KINDS = ('prompt_injection', 'mcp_server', 'llm_api_key', 'agent_rules')
 
 
 class Detection(TenantMixin, Base):

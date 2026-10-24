@@ -6,7 +6,8 @@ from collections import defaultdict
 
 from sqlalchemy import select
 
-from ...models.detections import Canary, CanaryHit
+from ...models.detections import AGENT_CANARY_KINDS, Canary, CanaryHit
+from ..canaries import classify_client
 from ..engine import DetectionDraft, DetectionRule, RuleContext, registry
 from ..util import aware, iso, sample, window_bucket
 
@@ -39,15 +40,20 @@ class CanaryTripwire(DetectionRule):
             hits = [h for h, _ in items]
             first, last = aware(hits[0].received_at), aware(hits[-1].received_at)
             ips = sample(h.source_ip for h in hits)
+            clients = [classify_client(h.user_agent) for h in hits]
+            ai_agent = canary.kind in AGENT_CANARY_KINDS or any(c['ai_agent'] for c in clients)
+            who = 'an AI agent' if ai_agent else (ips[0] if ips else 'unknown')
             drafts.append(DetectionDraft(
                 rule_id=self.id, severity=self.severity, confidence=0.95,
-                title=f'Canary "{canary.label}" ({canary.kind}) triggered from {ips[0] if ips else "unknown"}',
+                title=(f'Canary "{canary.label}" ({canary.kind}) triggered by {who}' if ai_agent else
+                       f'Canary "{canary.label}" ({canary.kind}) triggered from {who}'),
                 description=(f'The {canary.kind} canary "{canary.label}" planted at "{canary.placement or "unspecified"}" received {len(hits)} '
                              f'hit(s) between {iso(first)} and {iso(last)} from {", ".join(ips) or "unknown sources"}.'),
                 entity=canary.label, entity_kind='canary', fingerprint_parts=[canary.id], window_bucket=window_bucket(first, bucket_minutes),  # type: ignore[arg-type]
-                first_seen_at=first, last_seen_at=last, tags=['canary', canary.kind],
+                first_seen_at=first, last_seen_at=last, tags=['canary', canary.kind] + (['ai-agent'] if ai_agent else []),
                 evidence={'canary_id': canary.id, 'kind': canary.kind, 'label': canary.label, 'placement': canary.placement, 'hits': len(hits),
-                          'source_ips': ips, 'user_agents': sample(h.user_agent for h in hits), 'first_hit_at': iso(first), 'last_hit_at': iso(last),
+                          'source_ips': ips, 'src_ip': ips[0] if ips else '', 'ai_agent': ai_agent,
+                          'clients': sample(c['client'] for c in clients), 'user_agents': sample(h.user_agent for h in hits), 'first_hit_at': iso(first), 'last_hit_at': iso(last),
                           'hit_ids': [h.id for h in hits[:25]]}))
         return drafts
 
