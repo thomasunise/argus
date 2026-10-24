@@ -32,6 +32,7 @@ class TestScope(TenantMixin, Base):
     max_rps: Mapped[float] = mapped_column(Float, default=5.0)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     signed_document_ref: Mapped[str] = mapped_column(String(512), default='')
+    autonomous: Mapped[bool] = mapped_column(Boolean, default=False)  # may autopilot run tests on this scope unattended
     created_by: Mapped[str] = mapped_column(String(36), default='')
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

@@ -170,6 +170,10 @@ automatically by `app/api/__init__.py`.
 | `GET /tests/runs`, `GET /tests/runs/{id}` | runs and results |
 | `POST /scans` `{asset_id, adapter, scope_id, tier?}` (`scans:run`) | single ad-hoc run inside a scope (202) |
 | `GET /scans`, `GET /scans/{id}` (`scans:read`) | ad-hoc runs |
+| `POST /tests/scopes/{id}/autonomous` `{autonomous}` (`tests:scopes`) | allow/disallow unattended autopilot runs on a scope |
+| `POST /tests/autopilot` `{scope_id, asset_ids?, max_tier?, max_rounds?}` (`tests:run`) | start an autonomous, scope-checked pentest (202); 403 with a reason when disabled, the scope is not autonomous, or a kill switch is engaged |
+| `GET /tests/autopilot`, `GET /tests/autopilot/{id}` (`tests:read`) | autopilot runs with their step log |
+| `POST /tests/autopilot/{id}/stop` (`tests:run`) | request an autopilot run to stop |
 
 ## Actions
 
