@@ -84,9 +84,14 @@ def denied_by_list(action_name: str, patterns: list) -> str | None:
 
 def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionType, params: dict, requester: Principal | None, *,
              dry_run: DryRunResult | None = None, agent_originated: bool = False, phase: str = 'request',
-             now: datetime | None = None) -> PolicyDecision:
+             now: datetime | None = None, autonomous: dict | None = None) -> PolicyDecision:
     """phase is 'request' (deciding how many approvals a new request needs) or 'execute' (gatekeeping a run).
-    `db` is accepted for parity with the documented signature; the decision needs only the tenant row."""
+    `db` is accepted for parity with the documented signature; the decision needs only the tenant row.
+
+    `autonomous` is set only by the autonomous-response engine for an enforcing playbook:
+    {'playbook': name, 'max_risk': 'medium'|'high', 'max_entities': int}. It can replace the human
+    approvals of a reversible, non-critical action whose dry run succeeded within the blast radius;
+    every hard denial above still applies."""
     decision = PolicyDecision()
     overrides = tenant_policy(tenant)
     now = now or datetime.now(timezone.utc)
@@ -135,6 +140,10 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
             decision.required_approvals = 0
             decision.reasons.append('auto-approved: low risk, reversible, blast radius within threshold')
 
+    # -- autonomous playbook: replaces approvals only when every guardrail holds
+    if autonomous is not None:
+        _autonomous(decision, action_type, dry_run, autonomous, agent_originated)
+
     # -- maintenance window for high and critical
     window = str(overrides.get('maintenance_window', settings.actions_maintenance_window) or '')
     if window and RISK_RANK[risk] >= RISK_RANK['high']:
@@ -150,6 +159,34 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
             else:
                 decision.reasons.append(f'execution is only allowed inside the maintenance window {window} UTC')
     return decision
+
+
+def _autonomous(decision: PolicyDecision, action_type: ActionType, dry_run: DryRunResult | None, autonomous: dict, agent_originated: bool) -> None:
+    name = str(autonomous.get('playbook') or 'playbook')
+    max_risk = str(autonomous.get('max_risk') or 'medium')
+    if max_risk not in RISK_RANK or RISK_RANK[max_risk] > RISK_RANK['high']:
+        max_risk = 'medium'
+    try:
+        max_entities = max(1, int(autonomous.get('max_entities', 1) or 1))
+    except (TypeError, ValueError):
+        max_entities = 1
+    if agent_originated:
+        reason = 'agent-originated requests are never auto-approved'
+    elif action_type.risk == 'critical':
+        reason = 'critical actions are never autonomous'
+    elif not action_type.reversible:
+        reason = 'not reversible, so not autonomous'
+    elif RISK_RANK[action_type.risk] > RISK_RANK[max_risk]:
+        reason = f'{action_type.risk} risk exceeds the playbook limit ({max_risk})'
+    elif dry_run is None or not dry_run.ok:
+        reason = 'no successful dry run, so not autonomous'
+    elif dry_run.entities > max_entities:
+        reason = f'dry run touches {dry_run.entities} entities (> {max_entities}), so not autonomous'
+    else:
+        decision.auto_approve, decision.required_approvals, decision.owner_required = True, 0, False
+        decision.reasons.append(f'autonomous: playbook {name!r} approved a reversible {action_type.risk}-risk action within its blast radius')
+        return
+    decision.reasons.append(f'autonomous playbook {name!r} did not approve: {reason}')
 
 
 def _deny(decision: PolicyDecision, reason: str) -> PolicyDecision:

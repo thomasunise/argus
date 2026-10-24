@@ -39,4 +39,7 @@ def setup(app) -> None:
     async def _rollback(job, ctx):
         return await broker.handle_rollback(job, ctx)
 
+    from . import autoresponse
+
+    autoresponse.install(app)
     log.info('action broker ready: %d action types', len(catalog.all()))

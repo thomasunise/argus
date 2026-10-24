@@ -209,7 +209,7 @@ def test_types_crud_and_validation(owner, db, monkeypatch):
     assert {t['kind'] for t in types['outbound']} == {'webhook', 'slack', 'jira', 'servicenow', 'pagerduty', 'email'}
     assert {t['name'] for t in types['inbound']} >= {'wazuh', 'aws_cloudtrail', 'github_webhook', 'okta_logs', 'generic'}
     slack = next(t for t in types['outbound'] if t['kind'] == 'slack')
-    assert slack['secret_fields'] == ['webhook_url', 'bot_token'] and slack['config_schema']['type'] == 'object'
+    assert slack['secret_fields'] == ['webhook_url', 'bot_token', 'signing_secret'] and slack['config_schema']['type'] == 'object'
     github = next(t for t in types['inbound'] if t['name'] == 'github_webhook')
     assert github['supports_verify'] and github['example'].endswith('secret_scanning_alert.json') and github['secret_fields'] == ['webhook_secret']
 

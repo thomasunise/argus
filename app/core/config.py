@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     actions_require_two_for_high: bool = True
     actions_maintenance_window: str = ''  # e.g. "02:00-04:00" UTC
 
+    # --- autonomous response (playbooks that act on detections without a human; off by default) ---
+    autoresponse_enabled: bool = False  # global switch; each tenant must also opt in (Tenant.settings_json['autoresponse'])
+    autoresponse_max_per_hour: int = 20  # enforced autonomous actions per tenant per hour (tenant may lower it)
+    autoresponse_sweep_seconds: int = 60  # how often expired autonomous actions are rolled back
+
     # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''

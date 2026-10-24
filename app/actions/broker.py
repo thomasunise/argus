@@ -230,8 +230,12 @@ def _detection_in_tenant(db: Session, principal: Principal, detection_id: str) -
 
 
 async def request(db: Session, principal: Principal, action_type: str, params: dict, reason: str, finding_id: str | None = None,
-                  detection_id: str | None = None, agent_run_id: str | None = None, *, settings: Settings | None = None) -> ActionRequest:
-    """Create a pending (or auto-approved) ActionRequest. Nothing is executed here."""
+                  detection_id: str | None = None, agent_run_id: str | None = None, *, settings: Settings | None = None,
+                  autonomous: dict | None = None) -> ActionRequest:
+    """Create a pending (or auto-approved) ActionRequest. Nothing is executed here. `autonomous` is passed
+    only by the autonomous-response engine (system principal); see policy.evaluate."""
+    if autonomous is not None and (principal.auth != 'system' or agent_run_id):
+        raise Forbidden('autonomous requests may only be made by the autonomous-response engine')
     settings = _cfg(settings)
     action = catalog.get(action_type)
     if action is None:
@@ -259,7 +263,8 @@ async def request(db: Session, principal: Principal, action_type: str, params: d
                         expires_at=_now() + timedelta(hours=policy.request_ttl_hours(tenant)))
     ctx = build_context(settings, tenant, req, action, db=db, actor=actor_id(principal), dry_run=True)
     dry = await safe_dry_run(action, params, ctx)
-    decision = policy.evaluate(db, tenant, settings, action, params, principal, dry_run=dry, agent_originated=agent_originated)
+    decision = policy.evaluate(db, tenant, settings, action, params, principal, dry_run=dry, agent_originated=agent_originated,
+                               autonomous=autonomous)
     if decision.denied:
         raise PolicyDenied(decision.deny_reason)
     req.dry_run_json = dumps(dry.as_dict(), limit=16000)
@@ -273,7 +278,8 @@ async def request(db: Session, principal: Principal, action_type: str, params: d
     record_audit(db, principal, 'actions.requested', req.id,
                  {'action_type': action.name, 'risk': action.risk, 'status': req.status, 'required_approvals': req.required_approvals,
                   'agent_run_id': agent_run_id, 'finding_id': finding_id, 'detection_id': detection_id, 'dry_run_ok': dry.ok,
-                  'blast_radius': dry.blast_radius, 'params': _redacted(params)})
+                  'blast_radius': dry.blast_radius, 'params': _redacted(params),
+                  **({'autonomous_playbook': str(autonomous.get('playbook') or '')} if autonomous is not None else {})})
     await publish('action.requested', _event(req, requested_by=req.requested_by, required_approvals=req.required_approvals))
     return req
 
