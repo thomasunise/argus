@@ -1,5 +1,8 @@
 # Argus
 
+[![Test](https://github.com/thomasunise/argus/actions/workflows/test.yml/badge.svg)](https://github.com/thomasunise/argus/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Argus is a self-hosted, multi-tenant security operations platform in which AI agents
 analyze evidence but never act on the estate. Collectors inventory cloud, identity, code,
 endpoint, network and Kubernetes assets into an evidence graph; a detection engine evaluates
@@ -8,8 +11,20 @@ authorized security tools; governed agents triage, investigate and hunt with rea
 and a separate action broker (typed actions, policy, approvals, dry runs, rollback, kill
 switch) is the only component allowed to change anything.
 
-This README describes what is in the repository today. `docs/ARCHITECTURE.md` is the build
-contract; `docs/ROADMAP.md` lists what is implemented versus planned.
+![Argus overview](docs/screenshots/overview-light.png)
+
+This README describes what is in the repository today. `docs/ARCHITECTURE.md` describes the
+design; `docs/ROADMAP.md` lists what is implemented versus planned.
+
+## Project status
+
+Argus is an early open-source foundation, meant to be forked and extended. The platform core
+(tenancy, auth, RBAC, audit chain, queue, policy and approvals) is tested end to end on SQLite
+and PostgreSQL. The cloud and identity collectors and the action executors are tested against
+recorded fixtures and mocked APIs, not yet against live accounts, and the 12 detection rules
+are an untuned starting set. Expect to adapt collectors and rules to your estate, and run
+monitoring-only (`docs/GO-LIVE.md`) before enabling any action. It is not a certified product;
+see `docs/COMPLIANCE.md` for what it can and cannot evidence.
 
 ## Architecture
 
@@ -44,7 +59,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 2. Everything an agent reads is wrapped as untrusted data and the prompt says so.
 3. Active testing runs only inside a recorded authorization and scope, re-checked at run time.
 4. Every domain table carries `tenant_id`; queries go through a scoped helper; tests assert it.
-5. The audit chain is hash-linked, optionally HMAC-signed, and mirrored to a WORM sink.
+5. The audit chain is hash-linked, HMAC-signed (required in production), and mirrored to an external, optionally WORM, sink.
 
 ## What is in this checkout
 
@@ -132,10 +147,11 @@ blob container, Key Vault, Front Door + WAF).
 The production checklist is in `docs/DEPLOYMENT.md`. The short version, enforced partly by
 `assert_safe_config()` at startup:
 
-- `APP_ENV=production` requires PostgreSQL, `REDIS_URL` and `COOKIE_SECURE=true`.
+- `APP_ENV=production` refuses to start without PostgreSQL, `REDIS_URL`, `COOKIE_SECURE=true`,
+  an `https://` `BASE_URL`, `DATA_ENCRYPTION_KEY(S)`, `AUDIT_SIGNING_KEY(S)`, an external audit
+  sink, and either OIDC or `TOTP_REQUIRED=true`.
 - Dedicated workers (`WORKERS_INPROCESS=false`, `python -m app.worker`).
-- `AUDIT_SIGNING_KEY` set and an object-lock audit sink configured.
-- OIDC configured, `TOTP_REQUIRED=true` for local accounts.
+- Use an object-lock audit sink (S3 Object Lock or Azure immutable blob), not only JSONL.
 - `/metrics` blocked at the edge; egress filtering for workers; secrets in a secret manager.
 - Images pinned by digest and verified with cosign (`.github/workflows/release.yml`).
 
@@ -168,7 +184,8 @@ model and tool step is persisted (`agent_steps`) with input hash, tokens and lat
 eval suites live in `app/agents/evals/suites/`.
 
 **Testing** (`app/testing/`). A `TestScope` lists assets, allowed tiers (passive, active,
-intrusive), environments, a UTC window and a rate limit (a concurrency limit is recorded but not yet enforced). A run is allowed only if
+intrusive), environments, a UTC window, a rate limit and a concurrency limit (runs beyond
+`max_concurrency` wait in the queue). A run is allowed only if
 the asset has a current `AssetAuthorization` whose flags permit the tier, the scope permits
 it, the window is open and the target passes policy validation. `scope.check()` runs at
 request time and again inside the worker; intrusive tiers are limited to staging and lab
@@ -190,15 +207,21 @@ queue job with a stored rollback payload, and an audit entry at every transition
 
 | Document | Content |
 |---|---|
-| `docs/ARCHITECTURE.md` | build contract: packages, interfaces, data model, API table |
+| `docs/ARCHITECTURE.md` | design: packages, interfaces, data model, API table |
 | `docs/API.md` | v1 route summary with status |
 | `docs/DEPLOYMENT.md` | dev, compose, Kubernetes, AWS, Azure; production checklist |
+| `docs/GO-LIVE.md` | step-by-step production rollout in monitoring-only mode |
 | `docs/SECURITY.md` | security model as implemented, reporting |
 | `docs/THREAT-MODEL.md` | STRIDE per trust boundary, prompt injection, SSRF, tenancy, credentials, broker abuse, supply chain |
 | `docs/RUNBOOKS.md` | incident procedures |
 | `docs/COMPLIANCE.md` | SOC 2 / NIST 800-171 / ISO 27001 control mapping (evidence support, not certification) |
 | `docs/ROADMAP.md` | implemented versus next |
 | `CONTRIBUTING.md` | contributing guide |
+
+## Security
+
+Please report vulnerabilities privately through GitHub's private vulnerability reporting
+(Security tab), not in public issues. Details in `docs/SECURITY.md`.
 
 ## License
 

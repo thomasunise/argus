@@ -7,7 +7,7 @@ reason over an evidence graph with read-only tools, active testing is scope-gate
 change to the world goes through a separate action broker with typed actions, policy,
 approvals, dry runs, rollback and a kill switch.
 
-This document is the build contract. Every package below is self-contained and
+This document describes the design. Every package below is self-contained and
 exposes only the interfaces described here. Conventions apply to all code.
 
 ---
