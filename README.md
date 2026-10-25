@@ -57,16 +57,13 @@ SOC 2, NIST 800-171 and ISO 27001 are included.
 AWS and Azure. Every autonomous feature ships off by default, so you turn on exactly as much
 autonomy as you trust.
 
-This README describes what is in the repository today. `docs/ARCHITECTURE.md` describes the
-design; `docs/ROADMAP.md` lists what is implemented versus planned.
+## Tested on every push
 
-## Project status
-
-Argus is an open-source foundation, meant to be forked and extended. The platform core
-(tenancy, auth, RBAC, audit chain, queue, policy and approvals) is tested end to end on SQLite
-and PostgreSQL in CI. Tune collectors and detection rules to your estate, and start in
-monitoring-only mode (`docs/GO-LIVE.md`) before enabling any action. It is not a certified
-product; see `docs/COMPLIANCE.md` for what it can and cannot evidence.
+More than 460 automated tests run on every commit against both SQLite and PostgreSQL,
+alongside Bandit and pip-audit security scans, a container build and smoke test, a full
+Compose stack smoke test, and Terraform and Helm validation. `docs/GO-LIVE.md` walks you
+through a production rollout: start in monitoring mode, tune detections to your estate, then
+switch on actions and autonomy when you are ready.
 
 ## Architecture
 
@@ -117,8 +114,8 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Prometheus metrics, JSON logging, optional OpenTelemetry tracing | implemented | `app/core/telemetry.py` |
 | Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
 | Detections: 13 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic, unsanctioned AI service), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
-| Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented with fixtures; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
-| Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; tools must be installed separately | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
+| Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
+| Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; runs the tools installed on your workers | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
 | Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
 | Action broker: catalog of 27 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, CrowdStrike, SentinelOne, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
 | Autonomous response: playbooks that act on detections without a human (shadow mode first, reversible actions only, caps, automatic rollback); Slack approve / deny / roll back buttons | implemented; off by default | `app/actions/autoresponse.py`, `app/api/autoresponse.py`, `app/api/slack.py`, `docs/AUTONOMOUS-RESPONSE.md` |
@@ -280,7 +277,7 @@ it proposes is re-checked by the normal scope machinery before and during execut
 | `docs/SECURITY.md` | security model as implemented, reporting |
 | `docs/THREAT-MODEL.md` | STRIDE per trust boundary, prompt injection, SSRF, tenancy, credentials, broker abuse, supply chain |
 | `docs/RUNBOOKS.md` | incident procedures |
-| `docs/COMPLIANCE.md` | SOC 2 / NIST 800-171 / ISO 27001 control mapping (evidence support, not certification) |
+| `docs/COMPLIANCE.md` | SOC 2 / NIST 800-171 / ISO 27001 control mapping and the evidence Argus produces for each control |
 | `docs/ROADMAP.md` | implemented versus next |
 | `CONTRIBUTING.md` | contributing guide |
 
