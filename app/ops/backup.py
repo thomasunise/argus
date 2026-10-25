@@ -292,7 +292,7 @@ def dump(engine: Engine, settings: Settings, out_dir: Path, *, app_version: str 
         raise BackupError(f'only {free_mb} MB free in {out_dir}; BACKUP_MIN_FREE_MB is {settings.backup_min_free_mb}')
     key_id, key = encryption_key(settings)
     created = datetime.now(timezone.utc)
-    name = f"argus-{created.strftime('%Y%m%dT%H%M%S')}Z-{secrets.token_hex(3)}{SUFFIX}"
+    name = f"argus-{created.strftime('%Y%m%dT%H%M%S%f')}Z-{secrets.token_hex(3)}{SUFFIX}"
     final_path = out_dir / name
     partial = out_dir / (name + '.partial')
     header = {'format': FORMAT, 'cipher': CIPHER if key else 'none', 'key_id': key_id if key else '',

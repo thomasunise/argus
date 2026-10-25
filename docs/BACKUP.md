@@ -77,7 +77,7 @@ Restore is a command-line operation and is not available over HTTP. It only writ
 4. Restore:
 
    ```bash
-   python -m app.ops backup restore argus-20261025T020000Z-1a2b3c.argus-backup \
+   python -m app.ops backup restore argus-20261025T020000000000Z-1a2b3c.argus-backup \
        --target-url postgresql+psycopg://argus:...@postgres:5432/argus
    ```
 
