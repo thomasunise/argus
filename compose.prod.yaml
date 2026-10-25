@@ -23,6 +23,8 @@ x-production-env: &production-env
   LOG_JSON: "true"
   BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN}
   TOTP_REQUIRED: ${TOTP_REQUIRED:-true}   # OIDC deployments set TOTP_REQUIRED=false in .env together with OIDC_ISSUER
+  BACKUP_ENABLED: ${BACKUP_ENABLED:-true}     # daily encrypted backups into the argus-data volume (docs/BACKUP.md); add BACKUP_S3_BUCKET for off-host copies
+  RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
 
 services:
   api:

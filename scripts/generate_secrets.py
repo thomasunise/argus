@@ -1,7 +1,7 @@
 """Print fresh random values for the secrets Argus requires.
 
     python scripts/generate_secrets.py            # print KEY=value lines
-    python scripts/generate_secrets.py --write    # fill the REPLACE_ placeholders (and empty AUDIT_SIGNING_KEY / DATA_ENCRYPTION_KEY) in .env in place
+    python scripts/generate_secrets.py --write    # fill the REPLACE_ placeholders (and empty AUDIT_SIGNING_KEY / DATA_ENCRYPTION_KEY / BACKUP_ENCRYPTION_KEY) in .env in place
 
 Never commit the output. Rotation procedures are in docs/RUNBOOKS.md.
 """
@@ -18,6 +18,7 @@ SECRETS = {
     'INGEST_API_KEY': lambda: f'argus_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}',  # same shape as keys minted by the API
     'AUDIT_SIGNING_KEY': lambda: secrets.token_hex(32),       # HMAC key for the audit chain
     'DATA_ENCRYPTION_KEY': lambda: secrets.token_urlsafe(32),  # encryption at rest (required in production)
+    'BACKUP_ENCRYPTION_KEY': lambda: secrets.token_urlsafe(32),  # encrypts backup files; keep a copy off the server
 }
 
 
@@ -31,8 +32,8 @@ def main(argv: list[str]) -> int:
         text = env_path.read_text(encoding='utf-8')
         replaced = []
         for name, value in values.items():
-            # Replace REPLACE_ placeholders; AUDIT_SIGNING_KEY and DATA_ENCRYPTION_KEY are also filled when empty.
-            optional = '?' if name in {'AUDIT_SIGNING_KEY', 'DATA_ENCRYPTION_KEY'} else ''
+            # Replace REPLACE_ placeholders; the key variables are also filled when empty.
+            optional = '?' if name in {'AUDIT_SIGNING_KEY', 'DATA_ENCRYPTION_KEY', 'BACKUP_ENCRYPTION_KEY'} else ''
             pattern = re.compile(rf'^{name}=(REPLACE_[^\n]*){optional}$', re.MULTILINE)
             if pattern.search(text):
                 text = pattern.sub(f'{name}={value}', text, count=1)

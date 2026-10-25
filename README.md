@@ -49,6 +49,10 @@ scopes a human has marked for unattended testing.
 CISA's Known Exploited Vulnerabilities list and EPSS exploit-probability scores, and severity
 is raised automatically. It works offline for air-gapped installs.
 
+**Never lose a day of data.** Encrypted backups run on a schedule and land on disk, S3 or Azure. Restore is one
+command, and it proves itself: row counts and every tenant's audit chain are checked before you switch over.
+Per-tenant retention keeps the database lean without touching the audit trail.
+
 **Audit-ready from day one.** A hash-linked, signed audit chain records every action, approval
 and agent step, mirrored to S3 Object Lock or Azure immutable storage. Control mappings for
 SOC 2, NIST 800-171 and ISO 27001 are included.
@@ -124,8 +128,9 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Threat intel: automatic CISA KEV and EPSS enrichment of findings, offline cache | implemented | `app/intel/`, `app/api/intel.py`, `docs/INTEL.md` |
 | Agentic attack simulator: 8 agent-driven attack scenarios replayed in an isolated sandbox tenant, coverage report, evasion variants | implemented | `app/simulator/`, `app/api/simulations.py`, `docs/SIMULATOR.md` |
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
+| Backups and retention: scheduled encrypted backups to disk, S3 and Azure, verified one-command restore, per-tenant retention policies | implemented | `app/ops/`, `app/api/backups.py`, `app/api/retention.py`, `docs/BACKUP.md` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
-| Alembic migrations (4 revisions, through autonomy and AI security) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Alembic migrations (5 revisions, through backup history) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
 | Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
@@ -213,7 +218,7 @@ Roles are cumulative (`app/core/rbac.py`):
 | analyst | edit findings and detections, run agents and evals, manage canaries, record approvals, use the AI gateway |
 | operator | manage and authorize assets, run tests, scans, autopilot and collectors, request, approve, execute and roll back actions, run detections and simulations |
 | admin | users, API keys, settings, collector and integration configuration, the actions kill switch, test scopes (including marking one autonomous), autoresponse playbooks, AI gateway policy |
-| owner | tenant settings, approving critical actions |
+| owner | tenant settings, approving critical actions; owners of the bootstrap tenant also manage backups |
 
 API keys carry a role and optional scopes (for example `ingest`) that further restrict them.
 A `system` principal is used only inside queue handlers.
@@ -272,6 +277,7 @@ it proposes is re-checked by the normal scope machinery before and during execut
 | `docs/AI-GATEWAY.md` | AI gateway policy, DLP, budgets and shadow-AI discovery |
 | `docs/SIMULATOR.md` | agentic attack simulator scenarios and coverage reports |
 | `docs/INTEL.md` | CISA KEV and EPSS enrichment, caching and offline mode |
+| `docs/BACKUP.md` | backups, restore procedure and drill, data retention policies |
 | `docs/MIGRATIONS.md` | Alembic workflow |
 | `docs/GO-LIVE.md` | step-by-step production rollout in monitoring-only mode |
 | `docs/SECURITY.md` | security model as implemented, reporting |

@@ -109,7 +109,8 @@ redis-cli -u "$REDIS_URL" SCARD argus:running; redis-cli -u "$REDIS_URL" LLEN ar
 **Diagnosis.**
 
 1. Was the signing key rotated without following the rotation runbook? A `signature` failure on every entry up to a point in time means the key changed; see below.
-2. Was the database restored from a backup, migrated, or edited? Compare the entry with the mirror:
+2. Was the database restored from a backup, migrated, or edited? (`backup_records` and `ops.backup.*` audit entries show
+   recent backups; `docs/BACKUP.md` has the restore procedure.) Compare the entry with the mirror:
    - JSONL: `grep '"id": <broken_at>' /app/data/audit.jsonl`
    - S3: `aws s3 cp s3://<bucket>/argus-audit/<tenant>/<id padded to 12>.json -`
    - Azure: `az storage blob download --container-name argus-audit --name <tenant>/<id>.json`

@@ -124,7 +124,8 @@ Frontend
 Operations
 
 - [ ] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
-- [ ] Retention and purge jobs for events, test results, agent steps and deliveries
-- [ ] Backup and restore automation; restore drill documentation
+- [x] Retention and purge jobs: per-tenant policies for events, closed detections, agent runs and steps, job runs, deliveries, ingest batches, AI gateway log and canary hits
+- [x] Backup and restore automation: scheduled encrypted backups to local disk, S3 and Azure, pruning, verified restore with Alembic, Postgres restore drill in CI (`docs/BACKUP.md`)
+- [ ] Retention for test results and scan output (they back findings, so they need a finding-aware policy)
 - [ ] Evidence bundle export for assessors (zip of the items in `docs/COMPLIANCE.md`)
 - [ ] Redis-backed login throttling and rate limits shared across replicas

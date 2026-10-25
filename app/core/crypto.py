@@ -30,25 +30,29 @@ def _derive(raw: str) -> bytes:
     return hashlib.sha256(raw.encode()).digest()
 
 
+def key_ring(keys_spec: str = '', single_key: str = '') -> tuple[dict[str, bytes], str]:
+    """Parse DATA_ENCRYPTION_KEYS / DATA_ENCRYPTION_KEY into ({kid: key}, current kid)."""
+    parsed: dict[str, bytes] = {}
+    order: list[str] = []
+    for item in (keys_spec or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        kid, _, value = item.partition('=')
+        if not value:
+            kid, value = 'k1', kid
+        parsed[kid.strip()] = _derive(value.strip())
+        order.append(kid.strip())
+    if single_key and 'k1' not in parsed:
+        parsed['k1'] = _derive(single_key)
+        order.append('k1')
+    return parsed, (order[0] if order else '')
+
+
 def configure(keys_spec: str = '', single_key: str = '') -> None:
     global _keys, _current
     with _lock:
-        parsed: dict[str, bytes] = {}
-        order: list[str] = []
-        for item in (keys_spec or '').split(','):
-            item = item.strip()
-            if not item:
-                continue
-            kid, _, value = item.partition('=')
-            if not value:
-                kid, value = 'k1', kid
-            parsed[kid.strip()] = _derive(value.strip())
-            order.append(kid.strip())
-        if single_key and 'k1' not in parsed:
-            parsed['k1'] = _derive(single_key)
-            order.append('k1')
-        _keys = parsed
-        _current = order[0] if order else ''
+        _keys, _current = key_ring(keys_spec, single_key)
 
 
 def configured() -> bool:

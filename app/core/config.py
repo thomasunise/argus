@@ -137,6 +137,29 @@ class Settings(BaseSettings):
     ai_discovery_enabled: bool = True
     ai_discovery_interval_minutes: int = 15
 
+    # --- backups (docs/BACKUP.md) ---
+    backup_enabled: bool = False  # scheduled backups; `python -m app.ops backup create` works either way
+    backup_dir: Path = Path('./data/backups')  # local copies, and the staging area for S3 / Azure uploads
+    backup_interval_hours: int = 24
+    backup_keep: int = 7  # newest backups kept in every store; older ones are deleted
+    backup_encryption_key: str = ''  # empty: a key derived from DATA_ENCRYPTION_KEY(S) is used
+    backup_min_free_mb: int = 1024  # refuse to start a backup with less free disk than this in BACKUP_DIR
+    backup_s3_bucket: str = ''
+    backup_s3_prefix: str = 'argus-backups/'
+    backup_azure_container: str = ''
+    backup_azure_connection_string: str = ''
+
+    # --- data retention (days; 0 keeps forever; a tenant may override each one) ---
+    retention_enabled: bool = False  # nightly pruning; previews and manual runs work either way
+    retention_events_days: int = 90
+    retention_detections_days: int = 365  # resolved and false-positive detections only
+    retention_agent_runs_days: int = 90  # finished agent runs and their steps
+    retention_runs_days: int = 180  # finished detection, collector, simulation, autopilot and eval runs
+    retention_deliveries_days: int = 30  # finished outbound deliveries
+    retention_ingest_batches_days: int = 30
+    retention_ai_gateway_days: int = 90
+    retention_canary_hits_days: int = 365
+
     # --- secrets backend / encryption at rest ---
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''
@@ -170,6 +193,11 @@ class Settings(BaseSettings):
     @classmethod
     def _scan_root(cls, value):
         return Path(value or './targets').resolve()
+
+    @field_validator('backup_interval_hours', 'backup_keep')
+    @classmethod
+    def _at_least_one(cls, value: int) -> int:
+        return max(1, int(value))
 
     @field_validator('autoscan_minutes')
     @classmethod

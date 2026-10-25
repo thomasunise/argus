@@ -186,6 +186,19 @@ config:
   AUDIT_S3_BUCKET: ""
   AUDIT_S3_PREFIX: argus-audit/
   AUDIT_AZURE_CONTAINER: ""
+  # Backups (docs/BACKUP.md). /app/data is an emptyDir unless auditVolume.enabled, so in a cluster the copy that
+  # matters is the one in BACKUP_S3_BUCKET or BACKUP_AZURE_CONTAINER (both need the -extras image).
+  BACKUP_ENABLED: "false"
+  BACKUP_DIR: /app/data/backups
+  BACKUP_INTERVAL_HOURS: "24"
+  BACKUP_KEEP: "14"
+  BACKUP_S3_BUCKET: ""
+  BACKUP_S3_PREFIX: argus-backups/
+  BACKUP_AZURE_CONTAINER: ""
+  # Retention (days, 0 keeps forever; tenants can override through /api/v1/retention)
+  RETENTION_ENABLED: "false"
+  RETENTION_EVENTS_DAYS: "90"
+  RETENTION_DETECTIONS_DAYS: "365"
   LOG_JSON: "true"
   LOG_LEVEL: INFO
   METRICS_ENABLED: "true"      # set "false" when /metrics is neither scraped nor blocked at the ingress (see ingress.annotations)
@@ -240,3 +253,5 @@ secrets:
   calderaApiKey: ""
   auditAzureConnectionString: ""
   wazuhIndexerPassword: ""
+  backupEncryptionKey: ""          # encrypts backup files (docs/BACKUP.md); keep a copy outside the cluster
+  backupAzureConnectionString: ""

@@ -55,6 +55,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://argus:argus@localhost:5432/argus
       DB_AUTO_CREATE: "true"
+      # tests/test_backup.py creates two scratch databases on this server for the backup / restore drill
+      BACKUP_DRILL_DATABASE_URL: postgresql+psycopg://argus:argus@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

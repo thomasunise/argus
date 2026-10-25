@@ -112,6 +112,10 @@ terminates TLS, so it has no Caddy and no host port.
    TOTP seeds unreadable and breaks audit verification.
 4. Deploy. The API applies migrations on start. Sign in and enrol TOTP (`docs/GO-LIVE.md` step 3.5).
 
+Backups run daily into the `argus-data` volume and retention prunes old events nightly (`docs/BACKUP.md`). That
+volume is on the same disk as the database, so add `BACKUP_S3_BUCKET` (Hetzner Object Storage works through
+`AWS_ENDPOINT_URL_S3`, with `ARGUS_EXTRAS=1`) for a copy that survives losing the server.
+
 Only variables listed in the file reach the containers; add a line to `x-argus-env` for any other
 setting. Leave a few GB of free disk for the image build; containers log with rotation (20 MB x 3).
 
@@ -244,7 +248,7 @@ Identity and access
 Platform
 
 - [ ] `APP_ENV=production`, `COOKIE_SECURE=true`, `BASE_URL` is the HTTPS origin, `SESSION_MAX_AGE` fits your policy.
-- [ ] PostgreSQL with TLS, automated backups, tested restore. `DB_AUTO_CREATE=false` once migrations own the schema.
+- [ ] PostgreSQL with TLS, automated backups, tested restore (`BACKUP_ENABLED=true` with an off-host `BACKUP_S3_BUCKET`, plus your platform's PITR; `docs/BACKUP.md`). `DB_AUTO_CREATE=false` once migrations own the schema.
 - [ ] Redis with TLS and AUTH, persistence on, `noeviction`.
 - [ ] Workers separate from the API (`WORKERS_INPROCESS=false`), sized for collector and test-tool workloads; worker egress restricted to known destinations.
 - [ ] Image pinned by digest, signature verified (`cosign verify`), SBOM retained.

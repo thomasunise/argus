@@ -6,7 +6,9 @@
 #   2. Domains for "api": https://argus.example.com:8080  (the :8080 tells the proxy the container port;
 #      the public URL stays https://argus.example.com). No domain on any other service.
 #   3. Environment variables: fill every one marked required (generate them with
-#      `python scripts/generate_secrets.py`). ARGUS_DOMAIN is the bare host, e.g. argus.example.com.
+#      `python scripts/generate_secrets.py`, which also prints BACKUP_ENCRYPTION_KEY). ARGUS_DOMAIN is the bare
+#      host, e.g. argus.example.com. Keep copies of DATA_ENCRYPTION_KEY, AUDIT_SIGNING_KEY and
+#      BACKUP_ENCRYPTION_KEY somewhere other than this server: a backup is unreadable without them.
 #   4. Deploy, then sign in as ADMIN_EMAIL / ADMIN_PASSWORD and enrol TOTP (docs/GO-LIVE.md step 3.5).
 #
 # Variables only reach the containers if they are listed below; add a line to x-argus-env for any other
@@ -44,6 +46,22 @@ x-argus-env: &argus-env
   AI_GATEWAY_ENABLED: ${AI_GATEWAY_ENABLED:-false}
   INTEL_ENRICHMENT_ENABLED: ${INTEL_ENRICHMENT_ENABLED:-true}
   INTEL_CACHE_DIR: /app/data/intel
+  # Backups (docs/BACKUP.md): daily, encrypted, kept 7 deep in the argus-data volume. Add an S3 bucket for copies
+  # off this server (needs ARGUS_EXTRAS=1 for boto3).
+  BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+  BACKUP_DIR: /app/data/backups
+  BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+  BACKUP_KEEP: ${BACKUP_KEEP:-7}
+  BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+  BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+  BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-argus-backups/}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+  AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3:-}   # S3-compatible storage such as Hetzner Object Storage
+  # Retention: nightly pruning of old events, runs and logs (defaults: events 90 days, closed detections 365).
+  RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+  RETENTION_EVENTS_DAYS: ${RETENTION_EVENTS_DAYS:-90}
 
 x-argus-common: &argus-common
   build:

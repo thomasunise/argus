@@ -242,6 +242,18 @@ See `docs/AI-GATEWAY.md`. Proxy routes take an Argus API key only (`Authorizatio
 | `GET /ai/discovery` (`ai:read`) | discovery cursor and counters |
 | `GET /ai/catalog` (`ai:read`) | known AI services (domains, app names) and cloud API signatures |
 
+## Backups and retention
+
+Details and the restore procedure in `docs/BACKUP.md`. Restore is command-line only (`python -m app.ops backup restore`).
+
+| Route | Purpose |
+|---|---|
+| `GET /ops/backups` (platform owner: `admin:tenant` in the bootstrap tenant) | backup configuration, `last_success_at`, history (size, SHA-256, rows, stores, errors) |
+| `POST /ops/backups` (platform owner) | 202: queue a `backup.run` job |
+| `GET /retention` (`admin:settings`) | effective retention policy, server defaults, overrides, rows due now, last run |
+| `PUT /retention` `{overrides: {events_days: 30, runs_days: null}}` (`admin:settings`) | set (0 to 3650 days, 0 keeps forever) or remove overrides; audited as `retention.policy_updated` |
+| `POST /retention/run` (`admin:settings`) | 202: queue a `retention.run` job for the tenant; audited as `retention.pruned` |
+
 ## Audit and reports
 
 | Route | Purpose |

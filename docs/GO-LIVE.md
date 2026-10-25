@@ -344,6 +344,19 @@ Run it once per tenant. Expected tail: `OK: 10/10 steps passed`. A failure print
 
 Back up **before** every upgrade and on a schedule. The database chain is the source of truth; the JSONL/object-lock mirror is the evidence copy.
 
+Built in (`docs/BACKUP.md`): with `BACKUP_ENABLED=true` (the default in `compose.prod.yaml`) Argus takes an encrypted
+backup every `BACKUP_INTERVAL_HOURS`, copies it to `BACKUP_S3_BUCKET` / `BACKUP_AZURE_CONTAINER` and keeps
+`BACKUP_KEEP` of them. Before an upgrade, take one by hand and check it:
+
+```bash
+docker compose exec worker python -m app.ops backup create
+docker compose exec worker python -m app.ops backup verify <name from the output>
+```
+
+Restore with `python -m app.ops backup restore <name> --target-url <empty database>`; it verifies row counts and every
+tenant's audit chain and exits non-zero when anything is off. The pg_dump route below remains useful as a second,
+independent copy:
+
 ```bash
 # PostgreSQL (compose)
 TS=$(date -u +%Y%m%dT%H%M%SZ)
