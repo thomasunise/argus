@@ -170,8 +170,10 @@ def record_audit(db: Session, actor: Principal | str, action: str, subject: str 
         detail_text = dumps({k: (redact(v) if isinstance(v, str) else v) for k, v in detail.items()}, limit=4000)
     else:
         detail_text = dumps({'text': redact(detail or '')}, limit=4000)
+    # Database lock first, then the in-process lock. The reverse order deadlocks: a worker that already holds the
+    # SQLite write lock waits here for _lock while a request thread holding _lock waits for the write lock.
+    _serialize_tenant(db, tenant)
     with _lock:
-        _serialize_tenant(db, tenant)
         last = db.execute(select(AuditEntry).where(AuditEntry.tenant_id == tenant).order_by(AuditEntry.id.desc()).limit(1)).scalar_one_or_none()
         previous = last.entry_hash if last else '0' * 64
         created_at = utcnow()
@@ -191,13 +193,18 @@ def record_audit(db: Session, actor: Principal | str, action: str, subject: str 
 
 
 def _serialize_tenant(db: Session, tenant_id: str) -> None:
-    """Transaction-scoped per-tenant lock so concurrent writers (request threads, workers, replicas) cannot fork
-    the chain by reading the same last entry. PostgreSQL is the production backend; on SQLite (development only)
-    the process-local lock above covers the single-process case and a fork under thread contention is reported by
-    verify_chain() rather than prevented."""
+    """Transaction-scoped lock so concurrent writers (request threads, workers, replicas) cannot fork the chain by
+    reading the same last entry. Taken before the process-local _lock and held until the transaction ends.
+
+    PostgreSQL: a per-tenant advisory lock. SQLite (development and tests): the database write lock, taken with a
+    no-op UPDATE, which waits out the busy timeout without holding _lock. SQLite has a single writer, so this also
+    serializes every tenant's chain."""
     bind = db.get_bind()
-    if bind is not None and bind.dialect.name == 'postgresql':
+    dialect = bind.dialect.name if bind is not None else ''
+    if dialect == 'postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:tenant))'), {'tenant': tenant_id})
+    elif dialect == 'sqlite':
+        db.execute(text(f'UPDATE {AuditEntry.__tablename__} SET id = id WHERE 0'))
 
 
 def _flush_outbox(session: Session) -> None:
