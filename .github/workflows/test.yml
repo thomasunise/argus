@@ -25,7 +25,7 @@ jobs:
       matrix:
         python: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -58,7 +58,7 @@ jobs:
       # tests/test_backup.py creates two scratch databases on this server for the backup / restore drill
       BACKUP_DRILL_DATABASE_URL: postgresql+psycopg://argus:argus@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -78,7 +78,7 @@ jobs:
     name: bandit + pip-audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -105,7 +105,7 @@ jobs:
     name: docker build + image smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build (not pushed)
         uses: docker/build-push-action@v6
@@ -161,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: argus-ci-image
@@ -212,7 +212,7 @@ jobs:
     name: yaml + terraform + helm
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
