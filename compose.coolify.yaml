@@ -1,0 +1,148 @@
+# Argus on Coolify (Docker Compose build pack). See docs/DEPLOYMENT.md, "Coolify".
+#
+# Coolify's proxy terminates TLS, so there is no Caddy and no host port here. In Coolify:
+#   1. New resource -> Public/Private Repository -> Build Pack "Docker Compose",
+#      Docker Compose Location: /compose.coolify.yaml
+#   2. Domains for "api": https://argus.example.com:8080  (the :8080 tells the proxy the container port;
+#      the public URL stays https://argus.example.com). No domain on any other service.
+#   3. Environment variables: fill every one marked required (generate them with
+#      `python scripts/generate_secrets.py`). ARGUS_DOMAIN is the bare host, e.g. argus.example.com.
+#   4. Deploy, then sign in as ADMIN_EMAIL / ADMIN_PASSWORD and enrol TOTP (docs/GO-LIVE.md step 3.5).
+#
+# Variables only reach the containers if they are listed below; add a line to x-argus-env for any other
+# setting from .env.example you want to set from the Coolify UI.
+
+x-argus-env: &argus-env
+  APP_ENV: production
+  COOKIE_SECURE: "true"
+  LOG_JSON: "true"
+  BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN to the public host name}
+  DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/argus
+  REDIS_URL: redis://redis:6379/0
+  SCAN_ROOT: /app/targets
+  AUDIT_JSONL_PATH: /app/data/audit.jsonl
+  # Required secrets
+  SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+  INGEST_API_KEY: ${INGEST_API_KEY:-}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY}
+  AUDIT_SIGNING_KEY: ${AUDIT_SIGNING_KEY:?set AUDIT_SIGNING_KEY}
+  # Sign-in: TOTP by default; set TOTP_REQUIRED=false only together with OIDC_*
+  TOTP_REQUIRED: ${TOTP_REQUIRED:-true}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  # AI agents (none = deterministic fallbacks, no model calls)
+  AI_PROVIDER: ${AI_PROVIDER:-none}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  # Autonomy: all off until you opt in (docs/AUTONOMOUS-RESPONSE.md, docs/AUTOPENTEST.md, docs/AI-GATEWAY.md)
+  ACTIONS_KILL_SWITCH: ${ACTIONS_KILL_SWITCH:-false}
+  AUTORESPONSE_ENABLED: ${AUTORESPONSE_ENABLED:-false}
+  AUTOPENTEST_ENABLED: ${AUTOPENTEST_ENABLED:-false}
+  AI_GATEWAY_ENABLED: ${AI_GATEWAY_ENABLED:-false}
+  INTEL_ENRICHMENT_ENABLED: ${INTEL_ENRICHMENT_ENABLED:-true}
+  INTEL_CACHE_DIR: /app/data/intel
+
+x-argus-common: &argus-common
+  build:
+    context: .
+    args:
+      EXTRAS: ${ARGUS_EXTRAS:-0}
+  volumes:
+    - argus-data:/app/data
+    - argus-targets:/app/targets:ro
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,noexec,nosuid
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 256
+  restart: always
+  logging: &json-logging
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "3"
+
+services:
+  api:
+    <<: *argus-common
+    command: ["api"]
+    environment:
+      <<: *argus-env
+      RUN_MIGRATIONS: "true"
+      WORKERS_INPROCESS: "false"
+      FORWARDED_ALLOW_IPS: "*"   # only Coolify's proxy can reach the API; it has no host port
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/ready"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    <<: *argus-common
+    command: ["worker"]
+    environment:
+      <<: *argus-env
+      RUN_MIGRATIONS: "false"
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 2g
+    healthcheck:
+      disable: true
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: argus
+      POSTGRES_USER: argus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U argus -d argus"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    logging: *json-logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    logging: *json-logging
+
+volumes:
+  argus-data:
+  argus-targets:
+  postgres-data:
+  redis-data:

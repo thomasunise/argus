@@ -95,6 +95,26 @@ docker compose -f compose.yaml -f compose.prod.yaml up -d
 Upgrades: pull or build the new image, `docker compose up -d`; the API applies migrations at
 start. Back up the Postgres volume first (`pg_dump` from the `postgres` container).
 
+### Coolify
+
+`compose.coolify.yaml` runs the same API, worker, PostgreSQL and Redis behind Coolify's proxy, which
+terminates TLS, so it has no Caddy and no host port.
+
+1. In Coolify: **New resource -> Public Repository** (or GitHub App for a private fork), build pack
+   **Docker Compose**, Docker Compose Location `/compose.coolify.yaml`.
+2. Point a DNS A record (for example `argus.example.com`) at the server, then set the domain of the
+   `api` service to `https://argus.example.com:8080`. The `:8080` is the container port; the public URL
+   has no port. Leave the other services without a domain.
+3. Fill the required environment variables: `ARGUS_DOMAIN` (bare host), `ADMIN_EMAIL`,
+   `POSTGRES_PASSWORD`, and the values printed by `python scripts/generate_secrets.py`
+   (`SESSION_SECRET`, `ADMIN_PASSWORD`, `INGEST_API_KEY`, `DATA_ENCRYPTION_KEY`, `AUDIT_SIGNING_KEY`).
+   Back up `DATA_ENCRYPTION_KEY` and `AUDIT_SIGNING_KEY`; losing them makes stored credentials and
+   TOTP seeds unreadable and breaks audit verification.
+4. Deploy. The API applies migrations on start. Sign in and enrol TOTP (`docs/GO-LIVE.md` step 3.5).
+
+Only variables listed in the file reach the containers; add a line to `x-argus-env` for any other
+setting. The image build needs roughly 2 GB of free disk; containers log with rotation (20 MB x 3).
+
 ## 4. Kubernetes (Helm)
 
 Chart: `infra/helm/argus`.
