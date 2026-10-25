@@ -113,7 +113,7 @@ terminates TLS, so it has no Caddy and no host port.
 4. Deploy. The API applies migrations on start. Sign in and enrol TOTP (`docs/GO-LIVE.md` step 3.5).
 
 Only variables listed in the file reach the containers; add a line to `x-argus-env` for any other
-setting. The image build needs roughly 2 GB of free disk; containers log with rotation (20 MB x 3).
+setting. Leave a few GB of free disk for the image build; containers log with rotation (20 MB x 3).
 
 ## 4. Kubernetes (Helm)
 
