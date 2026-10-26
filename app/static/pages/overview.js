@@ -1,7 +1,37 @@
 import { get } from '../api.js';
-import { store } from '../store.js';
+import { store, prefGet, prefSet, ROLES, ROLE_PERMS } from '../store.js';
 import { section } from '../common.js';
-import { $, esc, heading, metrics, panel, severityBar, meter, sparkline, sev, tag, time, num, nice, empty, link } from '../ui.js';
+import { $, bind, esc, heading, metrics, panel, severityBar, meter, sparkline, sev, tag, time, num, nice, empty, link } from '../ui.js';
+
+// ---------------------------------------------------------------- get-started checklist
+
+const hiddenKey = () => `onboarding-hidden:${store.tenant?.id || ''}:${store.user?.id || ''}`;
+const lowestRole = (perm) => ROLES.find((role) => ROLE_PERMS[role].has(perm)) || 'admin';
+
+function checklistStep(step) {
+  const can = store.can(step.perm);
+  const side = step.done ? '<span class="subtle">Done</span>'
+    : can ? `<a class="ghost-link" href="${esc(step.href)}">Start →</a>`
+      : `<span class="subtle" title="Your role cannot do this step">Needs ${esc(lowestRole(step.perm))}</span>`;
+  return `<li class="checklist-step${step.done ? ' done' : ''}" data-step="${esc(step.id)}"><span class="checklist-mark" aria-hidden="true">${step.done ? '✓' : ''}</span><div class="checklist-text"><strong>${esc(step.title)}</strong><span>${esc(step.description)}</span></div><div class="checklist-side">${side}<span class="visually-hidden">${step.done ? 'completed' : 'not completed'}</span></div></li>`;
+}
+
+/** Shown until every step is done or the user hides it. Steps come from the tenant's own data, never from clicks. */
+async function getStarted(node) {
+  if (prefGet(hiddenKey(), false)) return;
+  let data;
+  try { data = await get('/reports/onboarding', null, { silent: true }); } catch { return; }
+  const open = data.steps.filter((s) => !s.done);
+  if (!open.length || !open.some((s) => store.can(s.perm))) return;
+  node.innerHTML = panel({
+    cls: 'checklist',
+    title: 'Get started with Argus',
+    sub: `${data.completed} of ${data.total} done · steps tick off on their own as your workspace fills in`,
+    actions: '<button class="btn subtle small" data-act="hide-checklist">Hide</button>',
+    body: `${meter(data.completed, data.total)}<ol class="checklist-steps">${data.steps.map(checklistStep).join('')}</ol>`,
+  });
+  bind(node, { 'hide-checklist': () => { prefSet(hiddenKey(), true); node.innerHTML = ''; } });
+}
 
 function posturePanel(p) {
   const rows = Object.entries(p.components || {}).map(([name, c]) =>
@@ -23,6 +53,7 @@ export default {
   async render({ root }) {
     root.innerHTML = `${heading('Command center', 'Security overview', 'Live posture, detections and pending work for this tenant.',
       `${store.can('findings:read') ? '<a class="btn" href="#/findings">Open findings</a>' : ''}${store.can('reports:read') ? '<a class="btn" href="#/reports">Reports</a>' : ''}`)}
+      <div data-section="onboarding"></div>
       <div data-section="summary">${''}</div>
       <div class="content-grid"><section class="panel"><div class="panel-head"><div><h2>Posture</h2><small>Weighted components from /reports/posture</small></div><a class="ghost-link" href="#/reports/posture">Details →</a></div><div class="panel-body" data-section="posture"></div></section>
       <section class="panel"><div class="panel-head"><div><h2>Open findings</h2><small>By severity</small></div><a class="ghost-link" href="#/findings">View all →</a></div><div class="panel-body" data-section="severity"></div></section></div>
@@ -33,6 +64,7 @@ export default {
       <section class="panel"><div class="panel-head"><div><h2>Audit chain</h2><small>Tamper-evident hash chain</small></div><a class="ghost-link" href="#/audit">Open audit →</a></div><div class="panel-body" data-section="audit"></div></section></div>
       <p class="footer-note">Findings reflect only attached telemetry and enabled checks. A clean dashboard does not imply that an asset is secure.</p>`;
 
+    getStarted($('[data-section=onboarding]', root));
     section($('[data-section=summary]', root), () => get('/reports/summary'), (s) => {
       const f = s.findings || {};
       return metrics([

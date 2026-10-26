@@ -442,3 +442,18 @@ textarea.field-input{resize:vertical;line-height:1.5}
 @media(max-width:1160px){.graph-wrap{grid-template-columns:1fr}.three-col{grid-template-columns:1fr 1fr}}
 @media(max-width:860px){.two-col,.three-col,.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}.component{grid-template-columns:120px 1fr 48px}.kill-banner{padding:8px 16px}}
 @media(max-width:520px){.drawer-backdrop .overlay-head,.drawer-backdrop .overlay-body{padding-left:16px;padding-right:16px}.pager{flex-direction:column;align-items:flex-start;gap:8px}}
+
+/* Get-started checklist (overview) */
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.checklist{margin-bottom:16px}
+.checklist .meter{margin:2px 0 6px}
+.checklist-steps{list-style:none;margin:0;padding:0}
+.checklist-step{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border2);min-width:0}
+.checklist-step:first-child{border-top:0}
+.checklist-mark{flex:none;width:18px;height:18px;margin-top:1px;border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
+.checklist-step.done .checklist-mark{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok)}
+.checklist-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.checklist-text span{color:var(--muted);font-size:12px}
+.checklist-step.done .checklist-text strong{color:var(--muted)}
+.checklist-side{flex:none;font-size:12px;white-space:nowrap;padding-top:1px}
+@media(max-width:520px){.checklist-step{flex-wrap:wrap}.checklist-side{margin-left:30px}}

@@ -8,7 +8,7 @@ from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.errors import NotFound
 from ..core.rbac import Principal
-from ..reports import FRAMEWORKS, compliance, posture, summary, trends
+from ..reports import FRAMEWORKS, compliance, onboarding, posture, summary, trends
 from ..reports.controls import catalog
 from .deps import get_db, get_settings, require
 
@@ -18,6 +18,11 @@ router = APIRouter(prefix='/api/v1/reports', tags=['reports'])
 @router.get('/summary')
 def get_summary(db: Session = Depends(get_db), settings: Settings = Depends(get_settings), principal: Principal = Depends(require('reports:read'))):
     return summary(db, principal.tenant_id, settings)
+
+
+@router.get('/onboarding')
+def get_onboarding(db: Session = Depends(get_db), principal: Principal = Depends(require('reports:read'))):
+    return onboarding(db, principal.tenant_id)
 
 
 @router.get('/posture')

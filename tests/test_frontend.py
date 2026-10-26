@@ -390,6 +390,32 @@ def test_action_request_approved_by_second_user_and_executed(browser, server):
     assert not operator_errors, operator_errors
 
 
+def test_get_started_checklist_reflects_data_and_hides(session):
+    s = session.login(ADMIN_EMAIL, ADMIN_PASSWORD)
+    s.page.wait_for_selector('#main .checklist')
+    done = {step.get_attribute('data-step'): 'done' in (step.get_attribute('class') or '')
+            for step in s.page.locator('#main .checklist-step').all()}
+    # the demo seed has events, an agent run and three members, but no collector and no triaged detection
+    assert done == {'source': False, 'events': True, 'triage': False, 'agent': True, 'team': True}
+    assert '3 of 5 done' in s.page.inner_text('#main .checklist .panel-head')
+    assert s.page.get_attribute('#main [data-step=source] a', 'href') == '#/collectors/types'
+    s.page.click('#main [data-act=hide-checklist]')
+    assert s.page.locator('#main .checklist').count() == 0
+    s.page.reload()
+    wait_overview(s)
+    s.page.wait_for_timeout(500)
+    assert s.page.locator('#main .checklist').count() == 0
+    assert not s.errors, s.errors
+
+
+def test_get_started_checklist_respects_role(session):
+    s = session.login(ANALYST_EMAIL, ANALYST_PASSWORD)
+    s.page.wait_for_selector('#main .checklist')
+    assert 'Needs admin' in s.page.inner_text('#main [data-step=source]')
+    assert s.page.locator('#main [data-step=triage] a').count() == 1  # analysts can triage
+    assert not s.errors, s.errors
+
+
 def test_theme_toggle_persists_across_reload(session):
     s = session.login(ADMIN_EMAIL, ADMIN_PASSWORD)
     assert s.page.evaluate('document.documentElement.dataset.theme') is None
@@ -454,6 +480,8 @@ def test_api_key_is_shown_once(session):
 def test_screenshots_both_themes(session, server):
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     s = session.login(ADMIN_EMAIL, ADMIN_PASSWORD)
+    s.page.wait_for_selector('#main .checklist')
+    s.page.click('#main [data-act=hide-checklist]')  # keep the README screenshots on the dashboard itself
     shots = [('overview', 'overview'), ('findings', 'findings'), (f'graph/nodes/{server["portal_node_id"]}', 'graph'), ('actions/requests', 'actions')]
     for theme in ('light', 'dark'):
         s.page.goto(f'{s.url}/#/overview')

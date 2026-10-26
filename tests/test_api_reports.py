@@ -114,3 +114,42 @@ def test_viewer_can_read_and_cross_tenant(client, owner, second_tenant, db, defa
     acme_soc2 = {c['id']: c for c in other.get('/api/v1/reports/compliance/soc2').json()['controls']}
     assert {e['key']: e['ok'] for e in acme_soc2['CC7.4']['evidence']}['vulnerability_sla'] is True
     assert db.query(Finding).filter(Finding.tenant_id == second_tenant['tenant_id']).count() == 0
+
+
+def test_onboarding_checklist_tracks_tenant_data(owner, db, default_tenant_id, make_user, second_tenant):
+    from app.models import AgentRun
+    from app.models.collectors import CollectorConfig
+    from app.models.detections import Detection
+
+    client, _ = owner
+    fresh = client.get('/api/v1/reports/onboarding').json()
+    assert [s['id'] for s in fresh['steps']] == ['source', 'events', 'triage', 'agent', 'team']
+    assert fresh['completed'] == 0 and fresh['total'] == 5
+    assert all(s['href'].startswith('#/') and s['perm'] for s in fresh['steps'])
+
+    # Rows in another tenant never count towards this one.
+    other = second_tenant['tenant_id']
+    db.add(CollectorConfig(tenant_id=other, name='x', collector='aws'))
+    upsert_event(db, other, EventDraft(source='wazuh', external_id='o1', title='Other'))
+    db.commit()
+    assert client.get('/api/v1/reports/onboarding').json()['completed'] == 0
+
+    upsert_event(db, default_tenant_id, EventDraft(source='wazuh', external_id='e1', title='Login', severity='low'))
+    db.add(Detection(tenant_id=default_tenant_id, rule_id='r1', fingerprint='f1', title='Brute force', status='open'))
+    db.commit()
+    done = {s['id']: s['done'] for s in client.get('/api/v1/reports/onboarding').json()['steps']}
+    assert done == {'source': False, 'events': True, 'triage': False, 'agent': False, 'team': False}  # an open detection is not triaged yet
+
+    db.add(CollectorConfig(tenant_id=default_tenant_id, name='prod', collector='aws'))
+    db.add(Detection(tenant_id=default_tenant_id, rule_id='r2', fingerprint='f2', title='Impossible travel', status='false_positive'))
+    db.add(AgentRun(tenant_id=default_tenant_id, spec='triage', task='look'))
+    db.commit()
+    make_user('analyst@test.local', 'analyst-password-long-123456', 'analyst')
+    final = client.get('/api/v1/reports/onboarding').json()
+    assert final['completed'] == 5 and all(s['done'] for s in final['steps'])
+
+
+def test_onboarding_readable_by_viewer(client, make_user):
+    make_user('viewer@test.local', 'viewer-password-long-123456', 'viewer')
+    login(client, 'viewer@test.local', 'viewer-password-long-123456')
+    assert client.get('/api/v1/reports/onboarding').status_code == 200
