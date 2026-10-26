@@ -2,8 +2,8 @@
 #     pip install -r requirements.txt -r requirements-dev.txt
 # Never installed into the container image; the image uses requirements.lock.txt.
 -r requirements.txt
-pytest>=9.0.3,<10          # PYSEC-2026-1845 fixed in 9.0.3
-pytest-asyncio>=0.23,<2
-respx>=0.21,<1
+pytest>=9.1.1,<10          # PYSEC-2026-1845 fixed in 9.0.3
+pytest-asyncio>=1.4.0,<2
+respx>=0.23.1,<1
 bandit>=1.9,<2
 pip-audit>=2.10,<3
