@@ -6,4 +6,4 @@ pytest>=9.1.1,<10          # PYSEC-2026-1845 fixed in 9.0.3
 pytest-asyncio>=1.4.0,<2
 respx>=0.23.1,<1
 bandit>=1.9,<2
-pip-audit>=2.10,<3
+pip-audit>=2.10.1,<3
