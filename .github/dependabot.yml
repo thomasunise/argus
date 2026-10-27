@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     groups:
       runtime:
         patterns: ["fastapi", "uvicorn", "sqlalchemy", "alembic", "psycopg", "pydantic*", "httpx", "redis", "PyJWT", "prometheus-client", "PyYAML", "itsdangerous", "python-dotenv"]
@@ -22,25 +22,27 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    open-pull-requests-limit: 2
     labels: ["dependencies", "ci"]
 
   - package-ecosystem: docker
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    open-pull-requests-limit: 1
     labels: ["dependencies", "docker"]
 
   - package-ecosystem: terraform
     directory: "/infra/terraform"
     schedule:
       interval: monthly
+    open-pull-requests-limit: 1
     labels: ["dependencies", "terraform"]
 
   - package-ecosystem: terraform
     directory: "/infra/terraform-azure"
     schedule:
       interval: monthly
+    open-pull-requests-limit: 1
     labels: ["dependencies", "terraform"]
