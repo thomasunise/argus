@@ -13,6 +13,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
@@ -418,15 +419,24 @@ async def execute(app, principal: Principal, request_id: str, *, db: Session | N
         record_audit(db, principal, 'actions.denied', req.id, {'action_type': req.action_type, 'reason': decision.deny_reason, 'phase': 'execute'})
         raise PolicyDenied(decision.deny_reason)
     previous_status = req.status
+    claimed = db.execute(
+        update(ActionRequest)
+        .where(ActionRequest.id == req.id, ActionRequest.tenant_id == principal.tenant_id,
+               ActionRequest.status == previous_status)
+        .values(status='executing')
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        raise Conflict('action request was already claimed for execution')
+    db.refresh(req)
     run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal))
-    req.status = 'executing'
     db.add(run)
     db.flush()
     record_audit(db, principal, 'actions.execute_requested', req.id, {'action_type': req.action_type, 'run_id': run.id})
     db.commit()  # the worker may claim the job before this request finishes; the rows must be visible first
     job = await app.state.queue.enqueue('actions.execute', {'request_id': req.id, 'run_id': run.id, 'previous_status': previous_status,
                                                             'principal': _principal_payload(principal)},
-                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.execute:{run.id}', priority=2)
+                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.execute:{req.id}', priority=2)
     run.job_id = job.id
     db.commit()
     return run
@@ -547,6 +557,21 @@ async def handle_execute(job, ctx) -> dict:
         exec_ctx.dry_run = False
         if not dry.ok:
             _finish(run, req, run_status='failed', request_status='failed', error=f'pre-execution dry run failed: {dry.summary}', result={'dry_run': dry.as_dict()})
+            return _audit_failure(db, principal, req, run)
+        # Fail closed when the final plan exceeds the originally approved blast radius.
+        approved = (loads(req.dry_run_json, {}) or {}).get('blast_radius') or {}
+        current = dry.blast_radius or {}
+        try:
+            approved_count = int(approved.get('entities', 0))
+        except (TypeError, ValueError):
+            approved_count = 0
+        old_ids = set(str(x) for x in approved.get('ids', []) or [])
+        new_ids = set(str(x) for x in current.get('ids', []) or [])
+        if (dry.entities > approved_count or current.get('kind') != approved.get('kind')
+                or (new_ids and not new_ids.issubset(old_ids))):
+            _finish(run, req, run_status='failed', request_status='failed',
+                    error='pre-execution blast radius exceeds or differs from the approved plan',
+                    result={'dry_run': dry.as_dict()})
             return _audit_failure(db, principal, req, run)
         await ctx.heartbeat()
 

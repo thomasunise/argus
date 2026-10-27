@@ -25,6 +25,10 @@ STRUCTURAL_KEYS = {'model', 'role', 'type', 'id', 'tool_call_id', 'tool_use_id',
 MAX_SCAN_CHARS = 1_000_000
 
 
+class DLPScanLimitExceeded(ValueError):
+    pass
+
+
 def _luhn(digits: str) -> bool:
     total, parity = 0, len(digits) % 2
     for index, char in enumerate(digits):
@@ -87,9 +91,8 @@ def scan(strings: Iterable[str]) -> dict[str, int]:
     hits: Counter = Counter()
     budget = MAX_SCAN_CHARS
     for text in strings:
-        if budget <= 0:
-            break
-        text = text[:budget]
+        if len(text) > budget:
+            raise DLPScanLimitExceeded('DLP scanning limit exceeded')
         budget -= len(text)
         typed = 0
         for name, pattern, check in PATTERNS:

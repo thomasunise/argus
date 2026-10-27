@@ -448,10 +448,14 @@ class _AuthSnapshot:
     id: str
     allow_active: bool
     allow_intrusive: bool
+    allow_exploit: bool
+    scope_document_ref: str
     expires_at: datetime | None
     revoked_at: datetime | None
 
     @classmethod
     def of(cls, auth) -> '_AuthSnapshot':
         return cls(id=auth.id, allow_active=bool(auth.allow_active), allow_intrusive=bool(auth.allow_intrusive),
+                   allow_exploit=bool(getattr(auth, 'allow_exploit', False)),
+                   scope_document_ref=str(getattr(auth, 'scope_document_ref', '') or ''),
                    expires_at=_aware(auth.expires_at), revoked_at=_aware(auth.revoked_at))

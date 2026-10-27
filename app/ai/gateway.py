@@ -274,7 +274,12 @@ class Inspection:
 def inspect(provider: str, endpoint: str, body: dict, policy: GatewayPolicy) -> Inspection:
     model = str(body.get('model') or '')[:120]
     stream = bool(body.get('stream')) and endpoint != 'embeddings'
-    hits = dlp.scan(dlp.texts(body))
+    try:
+        hits = dlp.scan(dlp.texts(body))
+    except dlp.DLPScanLimitExceeded:
+        return Inspection(body=body, model=model, stream=stream, dlp_hits={}, dlp_action='blocked',
+                          prompt_injection=False, injection_signals=[],
+                          block_reason='DLP scanning limit exceeded; request cannot be safely inspected')
     enforced = {k: v for k, v in hits.items() if k in set(policy.dlp_types)}
     action = 'logged' if hits else ''
     result_body = body
@@ -291,8 +296,8 @@ def inspect(provider: str, endpoint: str, body: dict, policy: GatewayPolicy) -> 
         reason = 'prompt injection suspected: ' + '; '.join(signals[:3])
     if stream and provider == 'openai' and endpoint == 'chat.completions' and not reason:
         options = result_body.get('stream_options') if isinstance(result_body.get('stream_options'), dict) else {}
-        if 'include_usage' not in options:
-            result_body = {**result_body, 'stream_options': {**options, 'include_usage': True}}  # needed for metering
+        if options.get('include_usage') is not True:
+            result_body = {**result_body, 'stream_options': {**options, 'include_usage': True}}  # mandatory for metering
     return Inspection(body=result_body, model=model, stream=stream, dlp_hits=hits, dlp_action=action, prompt_injection=bool(signals),
                       injection_signals=signals, block_reason=reason)
 

@@ -158,6 +158,8 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     if not gw.model_allowed(policy, model):
         return call.reject(403, f'model {model} is not allowed by tenant policy')
     if policy.monthly_budget_usd is not None:
+        if gw.price_for(gw.prices(settings), model) is None:
+            return call.reject(403, f'model {model} has no configured price; cannot enforce the monthly budget')
         spent = gw.month_spend(db, principal.tenant_id)
         if spent >= policy.monthly_budget_usd:
             return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')

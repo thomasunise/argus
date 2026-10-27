@@ -331,3 +331,39 @@ def test_policy_validation_unit():
     policy = gw.validate_policy({'allowed_models': ['claude-*'], 'dlp_types': ['email']})
     assert gw.model_allowed(policy, 'claude-opus-5-5') and not gw.model_allowed(policy, 'gpt-5') and policy.dlp_types == ['email']
     assert gw.price_for({'gpt-4.1': (2.0, 8.0)}, 'gpt-4.1-2025-04-14') == (2.0, 8.0)
+
+
+def test_dlp_rejects_unscannable_payload(app, client, gw_key):
+    app.state.settings.ai_gateway_max_request_bytes = 2_000_000
+    oversized = 'x' * dlp.MAX_SCAN_CHARS + ' AKIA' + 'A' * 16
+    with respx.mock:
+        route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(200, json=openai_reply()))
+        response = client.post(f'{BASE}/openai/v1/chat/completions',
+                               json=chat(oversized), headers=bearer(gw_key))
+        assert response.status_code == 403
+        assert 'DLP scanning limit' in response.text
+        assert not route.called
+
+
+@respx.mock
+def test_stream_usage_opt_out_is_overridden(app, client, gw_key):
+    sse = (b'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}\n\n'
+           b'data: [DONE]\n\n')
+    route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(
+        200, content=sse, headers={'content-type': 'text/event-stream'}))
+    response = client.post(f'{BASE}/openai/v1/chat/completions',
+                           json=chat('hi', stream=True, stream_options={'include_usage': False}),
+                           headers=bearer(gw_key))
+    assert response.status_code == 200
+    assert json.loads(route.calls.last.request.content)['stream_options']['include_usage'] is True
+    assert rows(app)[0].cost_usd > 0
+
+
+def test_budget_rejects_unpriced_models(client, gw_key, owner):
+    set_policy(owner, monthly_budget_usd=10)
+    with respx.mock:
+        route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(200, json=openai_reply()))
+        response = client.post(f'{BASE}/openai/v1/chat/completions',
+                               json=chat('hello', model='unpriced-model-for-tests'), headers=bearer(gw_key))
+        assert response.status_code == 403 and 'no configured price' in response.text
+        assert not route.called
