@@ -175,3 +175,17 @@ def test_cross_tenant_isolation(owner, second_tenant):
     # The same target can exist in both tenants independently.
     assert other.post('/api/v1/assets', json={'name': 'Acme site', 'kind': 'web', 'target': 'https://example.org'}, headers=oh).status_code == 201
     assert len(client.get('/api/v1/assets').json()['items']) == 1
+
+
+def test_delete_asset_with_revoked_credentials(owner):
+    client, headers = owner
+    asset = make_asset(client, headers)
+    created = client.post(f"/api/v1/assets/{asset['id']}/credentials",
+                          json={'kind': 'bearer', 'name': 'token', 'value': 'secret-token'},
+                          headers=headers)
+    assert created.status_code == 201, created.text
+    revoked = client.delete(f"/api/v1/assets/{asset['id']}/credentials/{created.json()['id']}",
+                            headers=headers)
+    assert revoked.status_code == 200, revoked.text
+    deleted = client.delete(f"/api/v1/assets/{asset['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
