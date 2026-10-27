@@ -300,6 +300,19 @@ def create_api_key(body: ApiKeyBody, db: Session = Depends(get_db), principal: P
         from ..core.errors import ArgusError
 
         raise ArgusError('Too many scopes', code='invalid_scope', status=400)
+    if principal.auth == 'api_key' and principal.scopes:
+        if not body.scopes:
+            raise Forbidden('A scoped API key cannot mint an unrestricted API key')
+        for scope in body.scopes:
+            if scope == 'ingest':
+                permitted = 'ingest' in principal.scopes
+            elif scope.endswith(':*'):
+                prefix = scope[:-1]
+                permitted = all(has(principal, p) for p in ALL_PERMISSIONS if p.startswith(prefix))
+            else:
+                permitted = has(principal, scope)
+            if not permitted:
+                raise Forbidden(f'API key cannot delegate scope {scope!r}')
     plaintext, prefix, key_hash = generate_api_key()
     key = ApiKey(tenant_id=principal.tenant_id, name=body.name, prefix=prefix, key_hash=key_hash, role=body.role,
                  scopes=','.join(sorted(set(body.scopes))), created_by=principal.user_id or '')
