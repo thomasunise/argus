@@ -14,6 +14,6 @@ kubernetes>=29
 
 # Observability
 opentelemetry-api>=1.24
-opentelemetry-sdk>=1.24
-opentelemetry-exporter-otlp-proto-http>=1.24
-opentelemetry-instrumentation-fastapi>=0.45b0
+opentelemetry-sdk>=1.45.1
+opentelemetry-exporter-otlp-proto-http>=1.45.1
+opentelemetry-instrumentation-fastapi>=0.66b1
