@@ -19,7 +19,7 @@ OUTPUT_SCHEMA = obj({
 PROMPT = """Task: write a test plan for one asset. You plan; humans and the test harness run tests, and the harness re-checks scope at execution time.
 
 Procedure:
-1. get_asset (and asset_context) for the asset id. Read its authorizations: a plan may include the active tier only when a current, unrevoked authorization has allow_active, and the intrusive tier only when it also has allow_intrusive and the environment is staging or lab.
+1. get_asset (and asset_context) for the asset id. Read its authorizations: a plan may include the active tier only when a current, unrevoked authorization has allow_active, and the intrusive tier only when it also has allow_intrusive and the environment is staging or lab, and the exploit tier only when it has allow_exploit (that tier runs a proof of concept in the sandbox executor).
 2. If there is no valid authorization, return authorized=false, allowed_tiers=[] and an empty proposed_tests list, and say in objectives what authorization would be needed. Do not propose "passive" tests as a workaround.
 3. Otherwise choose adapters from available_test_adapters that fit the asset kind and allowed tiers, state why each test matters given the open findings and attack paths, and add safety constraints (rate limits, time window, no destructive payloads, abort conditions).
 4. List the signals the blue team should expect so the exercise also validates detection coverage.
@@ -31,8 +31,27 @@ TOOLS = ['get_asset', 'asset_context', 'list_findings', 'find_similar_findings',
 
 ADAPTERS_BY_KIND: dict[str, list[tuple[str, str, str]]] = {
     'web': [('web_baseline', 'passive', 'Header, TLS, cookie and disclosure hygiene without payloads.'),
+            ('js_analyze', 'passive', 'Reads the page and its bundles for endpoints and hardcoded secrets.'),
+            ('subdomain_enum', 'passive', 'Resolves common subdomains of the asset domain; reports, never tests them.'),
+            ('js_libs', 'passive', 'Detects vulnerable jQuery/Bootstrap/lodash/moment versions in bundles.'),
+            ('retire_js', 'passive', 'Scans loaded scripts against the Retire.js CVE repository.'),
+            ('waf_detect', 'active', 'Fingerprints the WAF/CDN in front of the asset.'),
             ('nuclei', 'active', 'Template checks for known exposures and misconfigurations on the live service.'),
-            ('zap', 'intrusive', 'Authenticated active scan with injection payloads.')],
+            ('dir_probe', 'active', 'Curated path discovery for backups, VCS metadata and debug endpoints.'),
+            ('port_probe', 'active', 'Connect-only scan of web, database and management ports.'),
+            ('jwt_analyze', 'active', 'Decodes issued JWTs and flags unsigned, expired or long-lived tokens.'),
+            ('param_probe', 'active', 'Benign marker probe for reflected query parameters (no payloads).'),
+            ('ffuf_dir', 'active', 'Wordlist-driven path discovery with auto-calibration and response clustering.'),
+            ('nmap_sv', 'active', 'Nmap service and version fingerprinting across top ports.'),
+            ('param_mine', 'active', 'Arjun-style differential HTTP parameter discovery.'),
+            ('trufflehog_verify', 'active', 'Secret detection and read-only provider verification across bundles.'),
+            ('zap', 'intrusive', 'Authenticated active scan with injection payloads.'),
+            ('payload_fuzz', 'intrusive', 'Curated SQLi, XSS and traversal payloads that detect evidence without exploiting.'),
+            ('oob_probe', 'intrusive', 'Blind SSRF/XXE probe whose proof is a callback to the Argus listener.'),
+            ('sqli_proof', 'intrusive', 'Proof-bounded SQLi verification (banner or boolean equivalence; never dumps data).'),
+            ('jwt_attack', 'intrusive', 'Verifies JWT signing weaknesses (placeholder HMAC secrets, alg:none, kid/jwk confusion).'),
+            ('browser_xss', 'intrusive', 'Confirms reflected XSS via HTML DOM sink parsing.'),
+            ('idor_probe', 'intrusive', 'Cross-role authorization check comparing owner vs attacker credentials.'),],
     'repo': [('semgrep', 'passive', 'Static analysis for injection, auth and crypto bugs.'),
              ('gitleaks', 'passive', 'Secret detection across the full history.'),
              ('trivy', 'passive', 'Dependency, container and IaC vulnerabilities.')],
@@ -50,8 +69,19 @@ EXPECTED_SIGNALS = {'web_baseline': 'No detections expected; findings for missin
                     'semgrep': 'Code findings only; no runtime signals.', 'gitleaks': 'Secret findings; rotate anything confirmed live.',
                     'trivy': 'Vulnerability findings with CVE ids; cross-check KEV.',
                     'prowler': 'Cloud audit-log reads from the Argus principal; no control-plane changes.',
-                    'caldera': 'EDR process-tree alerts, canary hits and detection rule matches for the emulated techniques.'}
-TIER_ORDER = {'passive': 0, 'active': 1, 'intrusive': 2}
+                    'caldera': 'EDR process-tree alerts, canary hits and detection rule matches for the emulated techniques.',
+                    'param_probe': 'No exploitation expected; a WAF may log marker query parameters.',
+                    'param_mine': 'Chunked GET requests with benign canary query parameters.',
+                    'ffuf_dir': 'Rate-limited HTTP path enumeration with auto-calibration.',
+                    'nmap_sv': 'TCP connect and light service banner probes across top ports.',
+                    'retire_js': 'Passive JavaScript bundle inspection; no payloads.',
+                    'trufflehog_verify': 'Secret extraction and optional read-only provider identity checks.',
+                    'payload_fuzz': 'WAF blocks, application error spikes and injection-pattern detections.',
+                    'sqli_proof': 'Bounded SQL predicate pairs or sqlmap level=1/risk=1 banner checks.',
+                    'jwt_attack': 'Authentication failures (401/403) alongside forged-token verification requests.',
+                    'browser_xss': 'Canary custom-element (<argus-xss>) query requests.',
+                    'idor_probe': 'Paired authenticated requests across distinct user roles.',}
+TIER_ORDER = {'passive': 0, 'active': 1, 'intrusive': 2, 'exploit': 3}
 
 
 def _refusal(asset: dict | None, reason: str, signals: list[str]) -> dict:
@@ -77,6 +107,8 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
         allowed.append('active')
     if any(a.get('allow_intrusive') for a in valid) and environment in ('staging', 'lab'):
         allowed.append('intrusive')
+    if any(a.get('allow_exploit') for a in valid):
+        allowed.append('exploit')
 
     context = await call(ctx, 'asset_context', asset_id=asset_id)
     open_findings = context.get('open_findings', [])

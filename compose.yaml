@@ -65,6 +65,7 @@ services:
 
   worker:
     <<: *argus-common
+    image: ${ARGUS_WORKER_IMAGE:-${ARGUS_IMAGE:-argus:local}}
     command: ["worker"]
     environment:
       <<: *argus-env

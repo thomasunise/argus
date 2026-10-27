@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
 
-TIERS = ('passive', 'active', 'intrusive')
+TIERS = ('passive', 'active', 'intrusive', 'exploit')
 RUN_STATUSES = ('queued', 'running', 'completed', 'failed', 'denied')
 
 
@@ -67,6 +67,7 @@ class TestRun(TenantMixin, Base):
     asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
     tier: Mapped[str] = mapped_column(String(12), default='passive')
     status: Mapped[str] = mapped_column(String(12), default='queued')
+    params_json: Mapped[str] = mapped_column(Text, default='{}')
     result_count: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')
@@ -75,6 +76,59 @@ class TestRun(TenantMixin, Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+PENTEST_STATUSES = ('queued', 'running', 'completed', 'failed', 'stopped')
+HYPOTHESIS_STATUSES = ('open', 'testing', 'confirmed', 'refuted')
+
+
+class PentestRun(TenantMixin, Base):
+    """One native autonomous pentest: agent-guided, scope-gated test execution with chaining."""
+
+    __tablename__ = 'pentest_runs'
+    __table_args__ = (Index('ix_pentest_runs_tenant_created', 'tenant_id', 'created_at'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    scope_id: Mapped[str] = mapped_column(String(36), ForeignKey('test_scopes.id'), index=True)
+    asset_ids_json: Mapped[str] = mapped_column(Text, default='[]')
+    objective: Mapped[str] = mapped_column(Text, default='')
+    max_tier: Mapped[str] = mapped_column(String(12), default='active')
+    max_steps: Mapped[int] = mapped_column(Integer, default=20)
+    max_rounds: Mapped[int] = mapped_column(Integer, default=3)
+    status: Mapped[str] = mapped_column(String(12), default='queued')
+    rounds_completed: Mapped[int] = mapped_column(Integer, default=0)
+    test_runs: Mapped[int] = mapped_column(Integer, default=0)
+    findings_new: Mapped[int] = mapped_column(Integer, default=0)
+    steps_json: Mapped[str] = mapped_column(Text, default='[]')
+    summary_json: Mapped[str] = mapped_column(Text, default='{}')
+    error: Mapped[str] = mapped_column(Text, default='')
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    job_id: Mapped[str] = mapped_column(String(36), default='')
+    agent_run_id: Mapped[str] = mapped_column(String(36), default='')
+    created_by: Mapped[str] = mapped_column(String(64), default='')
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class PentestHypothesis(TenantMixin, Base):
+    """A testable claim the orchestrator is pursuing, with its outcome and evidence."""
+
+    __tablename__ = 'pentest_hypotheses'
+    __table_args__ = (Index('ix_pentest_hypotheses_run', 'tenant_id', 'pentest_run_id'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    pentest_run_id: Mapped[str] = mapped_column(String(36), ForeignKey('pentest_runs.id'), index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
+    claim: Mapped[str] = mapped_column(Text, default='')
+    adapter: Mapped[str] = mapped_column(String(40), default='')
+    tier: Mapped[str] = mapped_column(String(12), default='passive')
+    params_hash: Mapped[str] = mapped_column(String(64), default='')
+    params_json: Mapped[str] = mapped_column(Text, default='{}')
+    status: Mapped[str] = mapped_column(String(12), default='open')
+    test_run_id: Mapped[str] = mapped_column(String(36), default='')
+    finding_ids_json: Mapped[str] = mapped_column(Text, default='[]')
+    rationale: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class TestResult(TenantMixin, Base):

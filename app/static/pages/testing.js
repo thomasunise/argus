@@ -79,7 +79,7 @@ async function renderIndex({ root, params, query, navigate }) {
   const state = newPager();
   root.innerHTML = `${heading('Authorized testing', 'Testing', 'Scopes define rules of engagement, plans schedule adapters inside them, runs record what happened.',
     `${tab === 'scopes' && store.can('tests:scopes') ? '<button class="btn primary" data-act="scope-new">Create scope</button>' : ''}${tab === 'plans' && store.can('tests:write') ? '<button class="btn primary" data-act="plan-new">Create plan</button>' : ''}`)}
-    ${tabs([{ id: 'scopes', label: 'Scopes' }, { id: 'plans', label: 'Plans' }, { id: 'runs', label: 'Runs' }, { id: 'adapters', label: 'Adapters' }], tab)}<div data-body></div>`;
+    <p class="info-line"><a href="#/pentest">Open the Pentest workspace →</a></p>${tabs([{ id: 'scopes', label: 'Scopes' }, { id: 'plans', label: 'Plans' }, { id: 'runs', label: 'Runs' }, { id: 'adapters', label: 'Adapters' }], tab)}<div data-body></div>`;
   const node = $('[data-body]', root);
   let list;
   if (tab === 'scopes') {

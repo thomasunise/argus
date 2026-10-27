@@ -161,6 +161,29 @@ auditVolume:
   size: 5Gi
   storageClass: ""
 
+# ---------------------------------------------------------------- sandbox executor (exploit authoring)
+# Hosts the sandbox executor: the only workload with a cluster credential, bound to `namespace` and
+# limited to jobs, pods/log, configmaps and networkpolicies. Off by default. When you enable it, also
+# set config.EXPLOIT_ENABLED=true, config.EXPLOIT_EXECUTOR_URL=http://<fullname>-sandbox-executor:8080
+# and config.EXPLOIT_SANDBOX_IMAGE=<digest-pinned runtime image>.
+sandbox:
+  enabled: false
+  namespace: argus-sandbox
+  runtimeClassName: gvisor       # install the gVisor RuntimeClass first; use "runc" only for a lab
+  engineImages: ""             # comma separated digest-pinned engine images (Strix); empty refuses every engine
+  engineMaxWallSeconds: 14400  # upper bound the executor accepts for an engine job
+  executor:
+    image: ghcr.io/thomasunise/argus-sandbox-executor:1.0.0
+    replicas: 1
+    token: ""                    # bearer token Argus sends; generate with scripts/generate_secrets.py
+    existingTokenSecret: ""      # name a Secret with the token instead of rendering one
+    existingTokenSecretKey: EXECUTOR_TOKEN
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: "1", memory: 512Mi}
+  runtime:
+    image: ghcr.io/thomasunise/argus-sandbox:1.0.0   # must be pinned as image@sha256:... for EXPLOIT_REQUIRE_IMAGE_DIGEST
+
 # ---------------------------------------------------------------- application config (ConfigMap)
 # Keys map to app/core/config.py settings. Values are strings.
 config:
@@ -217,8 +240,40 @@ config:
   AGENT_MODEL_PRICES: ""
   SCAN_ROOT: /app/targets
   ENABLE_TRIVY: "false"
+  NMAP_BIN: nmap
+  FFUF_BIN: ffuf
+  ARJUN_BIN: arjun
+  RETIREJS_BIN: retire
+  TRUFFLEHOG_BIN: trufflehog
+  TRUFFLEHOG_VERIFY_LIVE: "false"
+  PENTEST_ENABLED: "true"
+  PENTEST_KILL_SWITCH: "false"
   TEST_RATE_LIMIT_RPS: "5.0"
   TEST_TOOL_TIMEOUT_SECONDS: "900"
+  EXPLOIT_ENABLED: "false"
+  EXPLOIT_KILL_SWITCH: "false"
+  EXPLOIT_EXECUTOR_URL: ""
+  EXPLOIT_SANDBOX_IMAGE: ""
+  EXPLOIT_REQUIRE_IMAGE_DIGEST: "true"
+  EXPLOIT_ENVIRONMENTS: staging,lab
+  EXPLOIT_MAX_WALL_SECONDS: "300"
+  EXPLOIT_MAX_MEMORY_MB: "512"
+  DISCOVERY_ENABLED: "false"
+  DISCOVERY_IMAGE: ""
+  DISCOVERY_BROWSER_IMAGE: ""
+  DISCOVERY_MAX_ENDPOINTS: "100"
+  DISCOVERY_FOLLOW_UP_LIMIT: "5"
+  DISCOVERY_MAX_WALL_SECONDS: "900"
+  DISCOVERY_MAX_REQUESTS: "300"
+  EXPLOIT_APPROVAL_TTL_HOURS: "24"
+  STRIX_ENABLED: "false"
+  STRIX_IMAGE: ""
+  STRIX_MODEL: ""
+  STRIX_LLM_API_BASE: ""
+  STRIX_EXTRA_ARGS: ""
+  STRIX_EGRESS_HOSTS: api.anthropic.com,api.openai.com,openrouter.ai
+  STRIX_MAX_BUDGET_USD: "25"
+  STRIX_MAX_WALL_SECONDS: "3600"
   ALLOW_PRIVATE_TARGETS: "false"
   PRIVATE_TARGET_CIDRS: ""
   AUTOSCAN_ENABLED: "false"
@@ -248,6 +303,7 @@ secrets:
   redisUrl: ""             # redis://:pass@host:6379/0  or rediss://
   oidcClientSecret: ""
   anthropicApiKey: ""
+  strixLlmApiKey: ""      # LLM key the Strix engine uses; keep it separate from the agent key
   openaiApiKey: ""
   zapApiKey: ""
   calderaApiKey: ""

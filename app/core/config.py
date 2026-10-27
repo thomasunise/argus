@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     semgrep_bin: str = 'semgrep'
     gitleaks_bin: str = 'gitleaks'
     prowler_bin: str = 'prowler'
+    nmap_bin: str = 'nmap'
+    ffuf_bin: str = 'ffuf'
+    ffuf_wordlist: str = ''
+    arjun_bin: str = 'arjun'
+    retirejs_bin: str = 'retire'
+    retirejs_db_path: str = ''
+    trufflehog_bin: str = 'trufflehog'
+    trufflehog_verify_live: bool = False
+    sqlmap_bin: str = 'sqlmap'
     zap_url: str = ''
     zap_api_key: str = ''
     caldera_url: str = ''
@@ -103,6 +112,56 @@ class Settings(BaseSettings):
     # --- autonomous pentesting (autopilot) ---
     autopentest_enabled: bool = False
     autopentest_kill_switch: bool = False
+    # --- native autonomous pentest (app.pentest; installed by default, gated by scope) ---
+    pentest_enabled: bool = True
+    pentest_kill_switch: bool = False
+    pentest_max_steps: int = 20
+    pentest_max_rounds: int = 3
+    pentest_max_test_runs: int = 20
+
+    # --- exploit authoring / PoC verification (docs/EXPLOIT-AUTHORING.md; off by default) ---
+    exploit_enabled: bool = False
+    exploit_kill_switch: bool = False
+    exploit_executor_url: str = ''  # sandbox executor control API; https required in production
+    exploit_executor_token: str = ''
+    exploit_sandbox_image: str = 'ghcr.io/thomasunise/argus-sandbox:latest'
+    exploit_require_image_digest: bool = True  # the image must be pinned as image@sha256:...
+    exploit_environments: str = 'staging,lab'  # production additionally needs a scope_document_ref
+    exploit_max_code_bytes: int = 65_536
+    exploit_max_artifact_bytes: int = 5 * 1024 * 1024
+    exploit_max_wall_seconds: int = 300
+    exploit_max_cpu: float = 1.0
+    exploit_max_memory_mb: int = 512
+    exploit_max_pids: int = 64
+    exploit_approval_ttl_hours: int = 24
+
+    # --- discovery loop (docs/DISCOVERY.md) ---
+    discovery_enabled: bool = False
+    discovery_kill_switch: bool = False
+    discovery_image: str = ''  # digest-pinned recon image (sandbox/recon.Dockerfile)
+    discovery_browser_image: str = ''  # optional browser image (sandbox/browser.Dockerfile)
+    discovery_max_endpoints: int = 100
+    discovery_follow_up_limit: int = 5
+    discovery_max_wall_seconds: int = 900
+    discovery_max_requests: int = 300
+    # --- out-of-band verification (docs/DISCOVERY.md) ---
+    oob_enabled: bool = False
+    oob_base_url: str = ''          # public base URL for callbacks; defaults to BASE_URL
+    oob_wait_seconds: int = 5       # how long a probe waits for a callback
+
+    # --- governed Strix engine (docs/STRIX.md) ---
+    strix_enabled: bool = False
+    strix_image: str = ''  # digest-pinned engine image (sandbox/strix.Dockerfile)
+    strix_model: str = ''  # e.g. openrouter/z-ai/glm-5.3
+    strix_llm_api_key: str = ''
+    strix_llm_api_base: str = ''
+    strix_extra_args: str = ''  # appended to the strix command line (e.g. single-container flags)
+    strix_egress_hosts: str = 'api.anthropic.com,api.openai.com,openrouter.ai'
+    strix_max_budget_usd: float = 25.0
+    strix_max_wall_seconds: int = 3600
+    strix_max_cpu: float = 2.0
+    strix_max_memory_mb: int = 2048
+    strix_max_pids: int = 512
 
     # --- actions ---
     actions_kill_switch: bool = False
@@ -275,6 +334,37 @@ def assert_safe_config(settings: Settings) -> None:
             raise RuntimeError('ALLOW_PRIVATE_TARGETS requires an explicit PRIVATE_TARGET_CIDRS allowlist')
         settings_dict = settings.__dict__
         settings_dict['allow_literal_secret_refs'] = False
+    if settings.exploit_enabled:
+        if not settings.exploit_sandbox_image.strip():
+            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_SANDBOX_IMAGE')
+        if settings.exploit_require_image_digest and '@sha256:' not in settings.exploit_sandbox_image:
+            raise RuntimeError('EXPLOIT_SANDBOX_IMAGE must be pinned by digest (image@sha256:...) unless EXPLOIT_REQUIRE_IMAGE_DIGEST=false')
+        if not settings.exploit_executor_url.strip():
+            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_EXECUTOR_URL (the sandbox executor control API)')
+        if settings.is_production and not settings.exploit_executor_url.startswith('https://'):
+            raise RuntimeError('Production requires EXPLOIT_EXECUTOR_URL to be an https:// URL')
+        if settings.exploit_max_wall_seconds < 10 or settings.exploit_max_memory_mb < 64 or settings.exploit_max_pids < 16:
+            raise RuntimeError('Exploit sandbox limits are too low: require EXPLOIT_MAX_WALL_SECONDS >= 10, EXPLOIT_MAX_MEMORY_MB >= 64, EXPLOIT_MAX_PIDS >= 16')
+
+    if settings.discovery_enabled:
+        if not settings.exploit_executor_url:
+            raise RuntimeError('DISCOVERY_ENABLED requires EXPLOIT_EXECUTOR_URL (discovery runs in the sandbox executor)')
+        if '@sha256:' not in settings.discovery_image:
+            raise RuntimeError('DISCOVERY_IMAGE must be pinned by digest (image@sha256:...)')
+        if settings.discovery_max_endpoints < 1 or settings.discovery_max_wall_seconds < 30:
+            raise RuntimeError('DISCOVERY_MAX_ENDPOINTS must be >= 1 and DISCOVERY_MAX_WALL_SECONDS >= 30')
+
+    if settings.strix_enabled:
+        if not settings.exploit_enabled:
+            raise RuntimeError('STRIX_ENABLED requires EXPLOIT_ENABLED: the engine runs at tier exploit')
+        if '@sha256:' not in settings.strix_image:
+            raise RuntimeError('STRIX_IMAGE must be pinned by digest (image@sha256:...)')
+        if not settings.strix_model:
+            raise RuntimeError('STRIX_ENABLED requires STRIX_MODEL')
+        if not settings.strix_llm_api_key:
+            raise RuntimeError('STRIX_ENABLED requires STRIX_LLM_API_KEY')
+        if settings.strix_max_budget_usd <= 0 or settings.strix_max_wall_seconds < 60:
+            raise RuntimeError('STRIX_MAX_BUDGET_USD must be > 0 and STRIX_MAX_WALL_SECONDS >= 60')
     try:
         parse_model_prices(settings.ai_gateway_model_prices)
     except ValueError as exc:

@@ -1,4 +1,4 @@
-// Shell: boot, hash router, navigation, login, user menu, tenant switcher, kill-switch banner, theme.
+﻿// Shell: boot, hash router, navigation, login, user menu, tenant switcher, kill-switch banner, theme.
 import { api, get, post } from './api.js';
 import { store, prefSet } from './store.js';
 import { $, $$, bind, closeDrawer, closeModal, esc, fields, formActions, loading, errorBox, modal, nice, onSubmit, readFields, toast } from './ui.js';
@@ -17,6 +17,7 @@ const NAV = [
     { id: 'collectors', label: 'Collectors', perm: 'collectors:read' },
     { id: 'agents', label: 'Agents', perm: 'agents:read' },
     { id: 'testing', label: 'Testing', perm: 'tests:read' },
+    { id: 'pentest', label: 'Pentest', perm: 'tests:read' },
   ] },
   { group: 'Response', items: [
     { id: 'actions', label: 'Actions', perm: 'actions:read' },
@@ -69,7 +70,7 @@ async function route() {
   }
   $$('.nav-item').forEach((node) => node.classList.toggle('active', node.dataset.page === page));
   $('#breadcrumb').innerHTML = `Security / <strong>${esc(PAGE_LABELS[page] || nice(page))}</strong>`;
-  document.title = `${PAGE_LABELS[page] || nice(page)} — Argus`;
+  document.title = `${PAGE_LABELS[page] || nice(page)} â€” Argus`;
   $('#sidebar').classList.remove('is-open');
   closeDrawer();
   closeModal();
@@ -105,7 +106,7 @@ function renderNav() {
   }).join('');
   const session = store.session;
   $('#profile-name').textContent = session.user?.display_name || session.user?.email || 'User';
-  $('#profile-role').textContent = `${nice(session.role)} · ${session.tenant?.name || session.tenant?.slug || ''}`;
+  $('#profile-role').textContent = `${nice(session.role)} Â· ${session.tenant?.name || session.tenant?.slug || ''}`;
   $('#tenant-pill').textContent = session.tenant?.name || 'Connected';
   const switcher = $('#tenant-switch');
   if ((session.tenants || []).length > 1) {
@@ -131,7 +132,7 @@ function renderNav() {
 function renderUserMenu() {
   const menu = $('#user-menu');
   const session = store.session;
-  menu.innerHTML = `<div class="menu-head"><strong>${esc(session.user?.email || '')}</strong><small>${esc(nice(session.role))} · ${esc(session.auth)}${session.user?.totp_enabled ? ' · TOTP on' : ''}</small></div>
+  menu.innerHTML = `<div class="menu-head"><strong>${esc(session.user?.email || '')}</strong><small>${esc(nice(session.role))} Â· ${esc(session.auth)}${session.user?.totp_enabled ? ' Â· TOTP on' : ''}</small></div>
     ${session.user?.totp_enabled ? '' : '<button role="menuitem" data-act="enroll-totp">Enrol authenticator (TOTP)</button>'}
     <button role="menuitem" data-act="session-info">Session details</button>
     <button role="menuitem" data-act="logout">Sign out</button>`;
@@ -163,7 +164,7 @@ async function enrolTotp() {
 
 function sessionInfo() {
   const s = store.session;
-  modal('Session', `<dl class="kv stack"><div><dt>User</dt><dd>${esc(s.user?.email)} (${esc(s.user?.display_name || '')})</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>Tenant</dt><dd>${esc(s.tenant?.name)} <span class="mono">${esc(s.tenant?.slug)}</span></dd></div><div><dt>Actions enabled</dt><dd>${s.tenant?.actions_enabled ? 'yes' : 'no'}</dd></div><div><dt>Authentication</dt><dd>${esc(s.auth)}${s.user?.totp_enabled ? ', TOTP enrolled' : ''}</dd></div><div><dt>Memberships</dt><dd>${(s.tenants || []).map((t) => `${esc(t.name)} (${esc(t.role)})`).join(', ') || '—'}</dd></div></dl>`);
+  modal('Session', `<dl class="kv stack"><div><dt>User</dt><dd>${esc(s.user?.email)} (${esc(s.user?.display_name || '')})</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>Tenant</dt><dd>${esc(s.tenant?.name)} <span class="mono">${esc(s.tenant?.slug)}</span></dd></div><div><dt>Actions enabled</dt><dd>${s.tenant?.actions_enabled ? 'yes' : 'no'}</dd></div><div><dt>Authentication</dt><dd>${esc(s.auth)}${s.user?.totp_enabled ? ', TOTP enrolled' : ''}</dd></div><div><dt>Memberships</dt><dd>${(s.tenants || []).map((t) => `${esc(t.name)} (${esc(t.role)})`).join(', ') || 'â€”'}</dd></div></dl>`);
 }
 
 async function logout() {
@@ -188,7 +189,7 @@ export function applyKillSwitch(state) {
   const banner = $('#kill-banner');
   if (state?.effective) {
     const why = state.global ? 'the global ACTIONS_KILL_SWITCH is set' : `the tenant kill switch is engaged${state.detail?.reason ? `: ${state.detail.reason}` : ''}`;
-    banner.innerHTML = `<span><strong>Actions are halted</strong> — ${esc(why)}. Requests are recorded but nothing executes.</span><a href="#/actions">Open actions</a>`;
+    banner.innerHTML = `<span><strong>Actions are halted</strong> â€” ${esc(why)}. Requests are recorded but nothing executes.</span><a href="#/actions">Open actions</a>`;
     banner.classList.remove('hidden');
     $('.topbar').classList.add('under-banner');
   } else {
@@ -205,7 +206,7 @@ function showLogin(step = 'password', context = {}) {
   closeDrawer();
   closeModal();
   const card = $('#login-card');
-  const foot = '<div class="login-foot"><span class="status-led"></span> Self-hosted · Restricted access</div>';
+  const foot = '<div class="login-foot"><span class="status-led"></span> Self-hosted Â· Restricted access</div>';
   if (step === 'totp') {
     card.innerHTML = `<h1>Argus</h1><p>Two-factor verification</p><form id="login-form" class="form-stack">${fields([{ name: 'code', label: 'Authenticator code', type: 'text', required: true, autocomplete: 'one-time-code', minlength: 6, maxlength: 8 }])}<button type="submit" class="btn primary full">Verify</button><div class="login-error" id="login-error"></div></form><button class="ghost-link" data-act="restart">Start over</button>${foot}`;
   } else if (step === 'enroll') {
@@ -286,7 +287,7 @@ async function pollHealth() {
   try {
     const response = await fetch('/ready', { credentials: 'same-origin' });
     const data = await response.json();
-    $('#side-health').textContent = response.ok ? `${data.queue} queue · ${data.provider}` : 'Degraded';
+    $('#side-health').textContent = response.ok ? `${data.queue} queue Â· ${data.provider}` : 'Degraded';
     $('#side-led').style.background = response.ok ? 'var(--ok)' : 'var(--bad)';
   } catch {
     $('#side-health').textContent = 'Unreachable';

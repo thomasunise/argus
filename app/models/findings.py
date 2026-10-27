@@ -32,6 +32,10 @@ class Finding(TenantMixin, Base):
     epss: Mapped[float | None] = mapped_column(Float)
     kev: Mapped[int] = mapped_column(Integer, default=0)
     assignee: Mapped[str] = mapped_column(String(36), default='')
+    # Exploit-verification state. Only a stored PoC transcript may set 'verified'/'exploited'.
+    validation_status: Mapped[str] = mapped_column(String(18), default='unverified')
+    validation_poc_id: Mapped[str | None] = mapped_column(String(36))
+    validated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     tags_json: Mapped[str] = mapped_column(Text, default='[]')
     occurrences: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

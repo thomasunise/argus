@@ -61,7 +61,8 @@ def authorization_to_dict(auth: AssetAuthorization, now: datetime | None = None)
     expires = aware(auth.expires_at)
     active = auth.revoked_at is None and (expires is None or expires > now)
     return {'id': auth.id, 'asset_id': auth.asset_id, 'authorized_by': auth.authorized_by, 'attestation': auth.attestation,
-            'allow_active': bool(auth.allow_active), 'allow_intrusive': bool(auth.allow_intrusive), 'scope_document_ref': auth.scope_document_ref,
+            'allow_active': bool(auth.allow_active), 'allow_intrusive': bool(auth.allow_intrusive),
+            'allow_exploit': bool(getattr(auth, 'allow_exploit', False)), 'scope_document_ref': auth.scope_document_ref,
             'created_at': auth.created_at, 'expires_at': auth.expires_at, 'revoked_at': auth.revoked_at, 'active': active}
 
 

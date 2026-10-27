@@ -134,6 +134,7 @@ def authorization_valid(auth: AssetAuthorization, now: datetime | None = None) -
 def authorization_dict(auth: AssetAuthorization, now: datetime | None = None) -> dict:
     now = now or utcnow()
     return {'id': auth.id, 'asset_id': auth.asset_id, 'allow_active': bool(auth.allow_active), 'allow_intrusive': bool(auth.allow_intrusive),
+            'allow_exploit': bool(getattr(auth, 'allow_exploit', False)),
             'attestation': auth.attestation[:300], 'scope_document_ref': auth.scope_document_ref, 'created_at': auth.created_at,
             'expires_at': auth.expires_at, 'revoked_at': auth.revoked_at, 'valid': authorization_valid(auth, now)}
 

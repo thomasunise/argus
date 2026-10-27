@@ -18,16 +18,17 @@ _VIEWER = {
     'assets:read', 'findings:read', 'events:read', 'graph:read', 'detections:read', 'collectors:read',
     'agents:read', 'tests:read', 'actions:read', 'integrations:read', 'audit:read', 'reports:read',
     'investigations:read', 'approvals:read', 'canaries:read', 'scans:read', 'evals:read',
-    'autoresponse:read', 'ai:read',
+    'autoresponse:read', 'ai:read', 'exploit:read',
 }
 _ANALYST = _VIEWER | {
     'findings:write', 'investigations:write', 'agents:run', 'detections:write', 'canaries:write',
     'approvals:write', 'evals:run',
-    'ai_gateway:use',
+    'ai_gateway:use', 'exploit:run',
 }
 _OPERATOR = _ANALYST | {
     'assets:write', 'assets:authorize', 'tests:run', 'tests:write', 'scans:run', 'collectors:run',
     'actions:request', 'actions:approve', 'actions:execute', 'actions:rollback', 'detections:run',
+    'exploit:approve',
 }
 _ADMIN = _OPERATOR | {
     'admin:users', 'admin:api_keys', 'admin:settings', 'collectors:write', 'integrations:write',

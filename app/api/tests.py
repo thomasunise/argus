@@ -22,7 +22,7 @@ from .deps import Page, get_db, require
 
 router = APIRouter(prefix='/api/v1/tests', tags=['tests'])
 
-TIERS = ('passive', 'active', 'intrusive')
+TIERS = ('passive', 'active', 'intrusive', 'exploit')
 _HHMM = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 MAX_SCOPE_ASSETS = 500
 MAX_PARAMS_BYTES = 16_000
@@ -111,8 +111,13 @@ class PlanBody(BaseModel):
 @router.get('/adapters')
 def list_adapters(request: Request, principal: Principal = Depends(require('tests:read'))):
     settings = request.app.state.settings
-    items = [{'name': a.name, 'tier': a.tier, 'target_kinds': list(a.target_kinds), 'description': a.description,
-              'available': bool(a.available(settings))} for a in harness.ADAPTERS.values()]
+    items = []
+    for adapter in harness.ADAPTERS.values():
+        available = bool(adapter.available(settings))
+        if getattr(adapter, 'optional', False) and not available:
+            continue  # an optional integration is not part of the surface until it is configured
+        items.append({'name': adapter.name, 'tier': adapter.tier, 'target_kinds': list(adapter.target_kinds),
+                      'description': adapter.description, 'available': available})
     return {'items': sorted(items, key=lambda x: x['name'])}
 
 

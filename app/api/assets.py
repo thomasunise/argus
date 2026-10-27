@@ -32,6 +32,7 @@ router = APIRouter(prefix='/api/v1/assets', tags=['assets'])
 
 CRITICALITIES = ('low', 'medium', 'high', 'critical')
 INTRUSIVE_ENVIRONMENTS = {'staging', 'lab'}
+EXPLOIT_ENVIRONMENTS = {'staging', 'lab'}
 MAX_IMPORT_ROWS = 1000
 MIN_ATTESTATION_CHARS = 20
 
@@ -67,6 +68,7 @@ class AuthorizeBody(BaseModel):
     attestation: str = Field(min_length=1, max_length=4000)
     allow_active: bool = False
     allow_intrusive: bool = False
+    allow_exploit: bool = False
     expires_in_days: int = Field(default=90, ge=1, le=365)
     scope_document_ref: str = Field(default='', max_length=512)
 
@@ -307,6 +309,14 @@ def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(ge
         raise PolicyDenied('Intrusive testing can only be authorized for staging or lab assets')
     if body.allow_intrusive and not body.allow_active:
         raise BadRequest('allow_intrusive requires allow_active', code='invalid_tiers')
+    if body.allow_exploit:
+        if asset.kind != 'web':
+            raise BadRequest('Exploit authoring is only available for web assets', code='invalid_kind')
+        if not body.allow_active:
+            raise BadRequest('allow_exploit requires allow_active', code='invalid_tiers')
+        if asset.environment not in EXPLOIT_ENVIRONMENTS and not body.scope_document_ref.strip():
+            raise BadRequest('Exploit authorization outside staging/lab requires a signed scope_document_ref',
+                             code='scope_document_required')
     now = utcnow()
     superseded = []
     for previous in active_authorizations(db, principal.tenant_id, asset.id, now):
@@ -314,12 +324,14 @@ def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(ge
         superseded.append(previous.id)
     auth = AssetAuthorization(tenant_id=principal.tenant_id, asset_id=asset.id, authorized_by=principal.user_id or principal.actor,
                               attestation=attestation, allow_active=body.allow_active, allow_intrusive=body.allow_intrusive,
+                              allow_exploit=body.allow_exploit,
                               scope_document_ref=body.scope_document_ref.strip(), expires_at=now + timedelta(days=body.expires_in_days))
     db.add(auth)
     asset.approved = True
     db.flush()
     record_audit(db, principal, 'assets.authorized', asset.id, {'authorization_id': auth.id, 'attestation': attestation,
                                                                 'allow_active': body.allow_active, 'allow_intrusive': body.allow_intrusive,
+                                                                'allow_exploit': body.allow_exploit,
                                                                 'expires_at': auth.expires_at.isoformat(), 'scope_document_ref': auth.scope_document_ref,
                                                                 'superseded': superseded})
     return {**asset_to_dict(asset), 'authorization': authorization_to_dict(auth, now)}
@@ -359,3 +371,63 @@ def asset_graph(asset_id: str, depth: int = 1, db: Session = Depends(get_db), pr
         return {'available': True, 'node_id': None, 'nodes': [], 'edges': []}
     data = neighbors(db, principal.tenant_id, asset.graph_node_id, depth=max(1, min(3, depth)))
     return {'available': True, 'node_id': asset.graph_node_id, **data}
+
+
+# ---------------------------------------------------------------- testing credentials
+
+
+class CredentialBody(BaseModel):
+    kind: str = Field(default='header', max_length=8)
+    name: str = Field(default='', max_length=120)
+    role: str = Field(default='default', max_length=40)
+    value: str = Field(min_length=1, max_length=4000)
+
+
+@router.post('/{asset_id}/credentials', status_code=201)
+def add_credential(asset_id: str, body: CredentialBody, db: Session = Depends(get_db),
+                   principal: Principal = Depends(require('assets:authorize'))):
+    """Store a credential used only to reach this asset during authorized testing (encrypted at rest)."""
+    from ..models import AssetCredential
+    from ..testing.auth import KINDS, credential_to_dict
+
+    asset = _get_asset(db, principal, asset_id)
+    if body.kind not in KINDS:
+        raise BadRequest(f'kind must be one of {list(KINDS)}', code='invalid_kind')
+    if body.kind in ('header', 'basic') and not body.name.strip():
+        raise BadRequest('a header or basic credential needs a name', code='invalid_name')
+    row = AssetCredential(tenant_id=principal.tenant_id, asset_id=asset.id, kind=body.kind,
+                          name=body.name.strip(), role=body.role.strip() or 'default', secret=body.value, created_by=principal.actor[:64])
+    db.add(row)
+    db.flush()
+    record_audit(db, principal, 'assets.credential.added', asset.id,
+                 {'credential_id': row.id, 'kind': row.kind, 'name': row.name})
+    return credential_to_dict(row)
+
+
+@router.get('/{asset_id}/credentials')
+def list_credentials(asset_id: str, db: Session = Depends(get_db),
+                     principal: Principal = Depends(require('assets:read'))):
+    from ..models import AssetCredential
+    from ..testing.auth import credential_to_dict
+
+    asset = _get_asset(db, principal, asset_id)
+    rows = db.execute(select(AssetCredential).where(AssetCredential.tenant_id == principal.tenant_id,
+                                                    AssetCredential.asset_id == asset.id)
+                      .order_by(AssetCredential.created_at.desc())).scalars().all()
+    return {'items': [credential_to_dict(row) for row in rows]}
+
+
+@router.delete('/{asset_id}/credentials/{credential_id}')
+def revoke_credential(asset_id: str, credential_id: str, db: Session = Depends(get_db),
+                      principal: Principal = Depends(require('assets:authorize'))):
+    from ..models import AssetCredential
+
+    asset = _get_asset(db, principal, asset_id)
+    row = db.execute(select(AssetCredential).where(AssetCredential.id == credential_id,
+                                                   AssetCredential.tenant_id == principal.tenant_id,
+                                                   AssetCredential.asset_id == asset.id)).scalar_one_or_none()
+    if row is None:
+        raise NotFound('credential not found')
+    row.revoked_at = utcnow()
+    record_audit(db, principal, 'assets.credential.revoked', asset.id, {'credential_id': row.id, 'kind': row.kind})
+    return {'ok': True, 'id': row.id}

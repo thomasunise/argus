@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 ASSET_KINDS = {'web', 'repo', 'cloud_account', 'host', 'k8s_cluster', 'database', 'identity_provider', 'saas', 'network'}
 ENVIRONMENTS = {'production', 'staging', 'lab', 'development'}
@@ -41,7 +41,25 @@ class AssetAuthorization(TenantMixin, Base):
     attestation: Mapped[str] = mapped_column(Text)
     allow_active: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_intrusive: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Permits executing model-authored proof-of-concept code against this asset (docs/EXPLOIT-AUTHORING.md).
+    allow_exploit: Mapped[bool] = mapped_column(Boolean, default=False)
     scope_document_ref: Mapped[str] = mapped_column(String(512), default='')
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class AssetCredential(TenantMixin, Base):
+    """A credential used only to reach an asset during authorized testing. Secret is encrypted at rest."""
+
+    __tablename__ = 'asset_credentials'
+    __table_args__ = (Index('ix_asset_credentials_tenant_asset', 'tenant_id', 'asset_id'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(8), default='header')  # header | bearer | basic | cookie
+    name: Mapped[str] = mapped_column(String(120), default='')       # header name, or the basic username
+    role: Mapped[str] = mapped_column(String(40), default='default')  # e.g. default, user_a, user_b, admin
+    secret: Mapped[str] = mapped_column(EncryptedText, default='')
+    created_by: Mapped[str] = mapped_column(String(64), default='')
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

@@ -108,7 +108,7 @@ class AgentRuntime:
 
     async def run(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, *,
                   run_id: str | None = None, finding_id: str | None = None, parent_run_id: str | None = None,
-                  job_id: str = '', heartbeat=None) -> RunResult:
+                  job_id: str = '', heartbeat=None, scratch: dict | None = None) -> RunResult:
         from ..core.db import session_scope
 
         # Create or load the run row.
@@ -126,7 +126,7 @@ class AgentRuntime:
             run_id = run.id
         provider = self.provider_for(spec)
         if provider.name == 'none':
-            return await self._fallback(spec, task, inputs, principal, db_factory, run_id)
+            return await self._fallback(spec, task, inputs, principal, db_factory, run_id, scratch=scratch)
         if provider.price() is None:
             log.warning('agent run %s: no price for %s model %r, so AGENT_COST_CEILING_USD is not enforced; '
                         'set AGENT_MODEL_PRICES', run_id, provider.name, provider.model)
@@ -191,7 +191,7 @@ class AgentRuntime:
                         break
                     messages.append({'role': 'user', 'content': 'You stopped without calling submit_result. Call submit_result now with your best structured answer.'})
                     continue
-                results, submitted = await self._execute_tools(turn, tool_map, principal, db_factory, run_id, spec, steps)
+                results, submitted = await self._execute_tools(turn, tool_map, principal, db_factory, run_id, spec, steps, scratch=scratch)
                 steps += len(results)
                 messages.append({'role': 'tool', 'results': results})
                 if submitted is not None:
@@ -220,7 +220,7 @@ class AgentRuntime:
                          usage={'input_tokens': total_in, 'output_tokens': total_out})
 
     async def _execute_tools(self, turn: ModelTurn, tool_map: dict[str, Tool], principal: Principal, db_factory, run_id: str,
-                             spec: AgentSpec, step_base: int) -> tuple[list[dict], dict | None]:
+                             spec: AgentSpec, step_base: int, scratch: dict | None = None) -> tuple[list[dict], dict | None]:
         from ..core.db import session_scope
 
         submitted: dict | None = None
@@ -242,7 +242,7 @@ class AgentRuntime:
                 else:
                     try:
                         with session_scope(db_factory) as db:
-                            ctx = ToolContext(db=db, principal=principal, settings=self.settings, run_id=run_id, spec_name=spec.name, app=self.app)
+                            ctx = ToolContext(db=db, principal=principal, settings=self.settings, run_id=run_id, spec_name=spec.name, app=self.app, scratch=scratch if scratch is not None else {})
                             out = await asyncio.wait_for(tool.invoke(call.args, ctx), timeout=60)
                         content, is_error = wrap_untrusted(call.name, out, self.settings.agent_tool_result_limit), False
                     except Exception as exc:
@@ -264,7 +264,8 @@ class AgentRuntime:
                              output_json=dumps(output_obj, limit=20000), input_hash=input_hash, tokens_in=tokens_in,
                              tokens_out=tokens_out, latency_ms=latency_ms, error=error[:2000]))
 
-    async def _fallback(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, run_id: str) -> RunResult:
+    async def _fallback(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, run_id: str,
+                        scratch: dict | None = None) -> RunResult:
         from ..core.db import session_scope
 
         status, error, output = 'completed', '', {}
@@ -273,7 +274,8 @@ class AgentRuntime:
                 status, error = 'failed', 'No AI provider configured and this agent has no rule-based fallback'
             else:
                 with session_scope(db_factory) as db:
-                    ctx = ToolContext(db=db, principal=principal, settings=self.settings, run_id=run_id, spec_name=spec.name, app=self.app)
+                    ctx = ToolContext(db=db, principal=principal, settings=self.settings, run_id=run_id, spec_name=spec.name, app=self.app,
+                                      scratch=scratch if scratch is not None else {})
                     output = spec.fallback(inputs, ctx)
                     if asyncio.iscoroutine(output):
                         output = await output

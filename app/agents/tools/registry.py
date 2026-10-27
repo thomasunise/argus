@@ -1,7 +1,8 @@
 """Tool registry for the agent runtime.
 
 Tools are read-only views over Argus data, except tools with risk='propose' which may
-create pending ActionRequest rows. No tool may execute anything against the estate.
+create pending ActionRequest rows, and risk='execute_testing' which may launch scoped
+tests only through testing.service.launch_scan (scope is re-checked at execution).
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ class Tool:
     description: str
     input_schema: dict
     handler: ToolHandler
-    risk: str = 'read'  # read | propose
+    risk: str = 'read'  # read | propose | execute_testing
     tags: tuple[str, ...] = ()
 
     def __post_init__(self):
@@ -45,8 +46,8 @@ class Tool:
         schema.setdefault('required', [k for k in schema['properties'] if k not in schema.get('optional', [])] if 'required' not in schema else schema['required'])
         schema.pop('optional', None)
         self.input_schema = schema
-        if self.risk not in {'read', 'propose'}:
-            raise ValueError('tool risk must be read or propose')
+        if self.risk not in {'read', 'propose', 'execute_testing'}:
+            raise ValueError('tool risk must be read, propose or execute_testing')
 
     def validate(self, args: dict) -> list[str]:
         problems: list[str] = []

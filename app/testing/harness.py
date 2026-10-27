@@ -41,6 +41,7 @@ class NormalizedFinding:
     evidence: dict = field(default_factory=dict)
     cve_ids: list[str] = field(default_factory=list)
     cvss: float | None = None
+    verified: bool = False
 
 
 @dataclass
@@ -54,6 +55,9 @@ class HarnessContext:
     scan_root: Any  # pathlib.Path
     tier: str = 'passive'
     target: str = ''  # normalized target produced by scope.check (web origin / repo relative path)
+    auth_headers: dict = field(default_factory=dict)  # decrypted per-asset credentials, this run only
+    role_headers: dict = field(default_factory=dict)  # role -> decrypted headers map for multi-role / IDOR probes
+    db_factory: Any = None  # only adapters that persist their own state (out-of-band probes)
 
 
 class TestAdapter:
@@ -160,6 +164,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
     from ..core.findings import upsert_finding
     from ..core.rbac import system_principal
     from ..models import Asset, AssetAuthorization, utcnow
+    from .auth import load_auth_headers, load_role_headers
     from ..models.testing import TestResult, TestRun, TestScope
     from sqlalchemy import select
 
@@ -198,6 +203,8 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
         asset_snapshot = _AssetSnapshot.of(asset) if asset else None
         scope_snapshot = _ScopeSnapshot.of(scope) if scope else None
         auth_snapshot = _AuthSnapshot.of(authorization) if authorization else None
+        auth_headers = load_auth_headers(db, tenant_id, run.asset_id)
+        role_headers = load_role_headers(db, tenant_id, run.asset_id)
 
     principal = system_principal(tenant_id)
 
@@ -233,7 +240,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
 
     ctx = HarnessContext(settings=settings, tenant_id=tenant_id, run_id=run_id, heartbeat=_heartbeat,
                          rate_limiter=limiter, logger=log, scan_root=settings.scan_root, tier=run_tier,
-                         target=normalized_target)
+                         target=normalized_target, auth_headers=auth_headers, role_headers=role_headers, db_factory=db_factory)
 
     # 4) run adapter under a timeout; build plain NormalizedFindings (no DB held)
     try:
@@ -270,6 +277,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
                 db, tenant_id, source=adapter.name, rule=nf.rule, title=nf.title, description=nf.description,
                 severity_name=nf.severity, asset_id=run.asset_id, remediation=nf.remediation,
                 evidence=dict(nf.evidence or {}), cve_ids=list(nf.cve_ids or []), cvss=nf.cvss,
+                validation_status='verified' if (getattr(nf, 'verified', False) or bool((nf.evidence or {}).get('verified'))) else None,
             )
             evidence_text = _json_dumps(nf.evidence or {})
             db.add(TestResult(tenant_id=tenant_id, run_id=run_id, finding_id=finding.id, rule=nf.rule[:160],
@@ -371,7 +379,12 @@ def _plan_params_for(db_factory, run_id: str) -> dict:
 
     with session_scope(db_factory) as db:
         run = db.get(TestRun, run_id)
-        if run is None or not run.plan_id:
+        if run is None:
+            return {}
+        own = loads(run.params_json, {})
+        if isinstance(own, dict) and own:
+            return own
+        if not run.plan_id:
             return {}
         plan = db.get(TestPlan, run.plan_id)
         if plan is None or plan.tenant_id != run.tenant_id:

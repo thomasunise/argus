@@ -1,4 +1,4 @@
-"""Agent tools against seeded data, graceful degradation for missing sibling packages, and
+﻿"""Agent tools against seeded data, graceful degradation for missing sibling packages, and
 tenant isolation."""
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def test_registry_contents():
                 'get_detection', 'detection_rules', 'cve_lookup', 'kev_check', 'epss_scores', 'list_test_runs', 'test_results',
                 'available_test_adapters', 'action_catalog', 'propose_action', 'note', 'recall'}
     assert expected <= set(names)
-    assert [t.name for t in registry.all() if t.risk == 'propose'] == ['propose_action']
+    assert [t.name for t in registry.all() if t.risk == 'propose'] == ['propose_action', 'propose_poc']
     for tool in registry.all():
         assert tool.input_schema['additionalProperties'] is False
 

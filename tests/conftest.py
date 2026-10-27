@@ -15,6 +15,30 @@ Fixtures:
 from __future__ import annotations
 
 import os
+import sys
+import types
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parents[1])
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+_SCRIPTS_DIR = str(Path(_REPO_ROOT) / 'scripts')
+sys.path[:] = [_REPO_ROOT] + [
+    p for p in sys.path
+    if os.path.abspath(p or '.') != os.path.abspath(_REPO_ROOT)
+    and 'risk manager pro' not in (p or '').lower()
+]
+for _mod_name in list(sys.modules):
+    if _mod_name in ('app', 'tests', 'scripts') or _mod_name.startswith(('app.', 'tests.', 'scripts.')):
+        _mod = sys.modules.get(_mod_name)
+        _mod_file = getattr(_mod, '__file__', None) or ''
+        if not _mod_file or not os.path.abspath(_mod_file).startswith(os.path.abspath(_REPO_ROOT)):
+            sys.modules.pop(_mod_name, None)
+for _pkg_name, _pkg_dir in (('tests', _TESTS_DIR), ('scripts', _SCRIPTS_DIR)):
+    if _pkg_name not in sys.modules:
+        _pkg = types.ModuleType(_pkg_name)
+        _pkg.__file__ = str(Path(_pkg_dir) / '__init__.py')
+        _pkg.__path__ = [_pkg_dir]
+        sys.modules[_pkg_name] = _pkg
 
 import pytest
 from fastapi.testclient import TestClient

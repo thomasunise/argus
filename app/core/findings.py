@@ -52,7 +52,8 @@ def upsert_finding(db: Session, tenant_id: str, *, source: str, rule: str, title
                    severity_name: str | int | float, asset_id: str | None = None, remediation: str = '',
                    evidence: dict | None = None, cve_ids: list[str] | None = None, cvss: float | None = None,
                    epss: float | None = None, kev: bool = False, detection_id: str | None = None,
-                   tags: list[str] | None = None, reopen: bool = True) -> tuple[Finding, bool]:
+                   tags: list[str] | None = None, reopen: bool = True,
+                   validation_status: str | None = None) -> tuple[Finding, bool]:
     """Returns (finding, created). Re-detection bumps occurrences and reopens resolved findings,
     but never reopens accepted risks or false positives."""
     fp = fingerprint(tenant_id, asset_id, source, rule)
@@ -71,13 +72,19 @@ def upsert_finding(db: Session, tenant_id: str, *, source: str, rule: str, title
             record.kev = 1
         if detection_id:
             record.detection_id = detection_id
+        if validation_status in ('verified', 'exploited') and record.validation_status not in ('verified', 'exploited'):
+            record.validation_status = validation_status
+            record.validated_at = utcnow()
         if reopen and record.status == 'resolved':
             record.status = 'open'
         return record, False
+    val_status = validation_status if validation_status in ('verified', 'not_reproducible', 'exploited') else 'unverified'
+    val_at = utcnow() if val_status in ('verified', 'exploited') else None
     record = Finding(tenant_id=tenant_id, asset_id=asset_id, detection_id=detection_id, fingerprint=fp, rule=rule[:160], source=source[:40],
                      title=redact(title)[:240], description=redact(description)[:4000], remediation=redact(remediation)[:4000],
                      evidence=evidence_text, severity=severity(severity_name), cve_ids=','.join(sorted(set(cve_ids or [])))[:512],
-                     cvss=cvss, epss=epss, kev=1 if kev else 0, tags_json=dumps(tags or []))
+                     cvss=cvss, epss=epss, kev=1 if kev else 0, tags_json=dumps(tags or []),
+                     validation_status=val_status, validated_at=val_at)
     db.add(record)
     db.flush()
     publish_soon('finding.created', {'tenant_id': tenant_id, 'finding_id': record.id, 'severity': record.severity, 'title': record.title,
@@ -134,6 +141,7 @@ def finding_to_dict(f: Finding) -> dict:
     return {'id': f.id, 'asset_id': f.asset_id, 'detection_id': f.detection_id, 'rule': f.rule, 'title': f.title, 'description': f.description,
             'remediation': f.remediation, 'evidence': loads(f.evidence), 'severity': f.severity, 'status': f.status, 'source': f.source,
             'cve_ids': [c for c in f.cve_ids.split(',') if c], 'cvss': f.cvss, 'epss': f.epss, 'kev': bool(f.kev), 'assignee': f.assignee,
+            'validation_status': f.validation_status, 'validated_at': f.validated_at,
             'tags': loads(f.tags_json, []), 'occurrences': f.occurrences, 'created_at': f.created_at, 'updated_at': f.updated_at}
 
 

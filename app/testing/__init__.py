@@ -38,6 +38,12 @@ def setup(app) -> None:
 
     from . import autopilot
 
+    from ..pentest import orchestrator as pentest_orchestrator
+
+    @queue.handler('testing.pentest')
+    async def _pentest(job, ctx):
+        return await pentest_orchestrator.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+
     @queue.handler('testing.autopilot')
     async def _autopilot(job, ctx):
         return await autopilot.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)

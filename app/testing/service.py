@@ -14,7 +14,7 @@ from ..core.audit import record_audit
 from ..core.db import get_scoped, session_scope
 from ..core.errors import NotFound, ScopeDenied
 from ..core.rbac import Principal, system_principal
-from ..models import Asset, loads, utcnow
+from ..models import Asset, dumps, loads, utcnow
 from ..models.testing import TestPlan, TestRun, TestScope
 from . import harness
 from .scope import TIER_RANK
@@ -42,7 +42,7 @@ def plan_to_dict(p) -> dict:
 
 
 def run_to_dict(r) -> dict:
-    return {'id': r.id, 'plan_id': r.plan_id, 'scope_id': r.scope_id, 'adapter': r.adapter, 'asset_id': r.asset_id,
+    return {'id': r.id, 'plan_id': r.plan_id, 'scope_id': r.scope_id, 'adapter': r.adapter, 'asset_id': r.asset_id, 'params': loads(r.params_json, {}),
             'tier': r.tier, 'status': r.status, 'result_count': r.result_count, 'error': r.error, 'job_id': r.job_id,
             'stats': loads(r.stats_json, {}), 'triggered_by': r.triggered_by, 'created_at': r.created_at,
             'started_at': r.started_at, 'finished_at': r.finished_at}
@@ -67,12 +67,12 @@ def _adapter_tier(adapter_name: str, requested: str | None) -> tuple[object, str
 
 
 async def _enqueue_run(app, tenant_id: str, *, adapter_name: str, asset_id: str, scope_id: str, tier: str,
-                       plan_id: str | None, triggered_by: str, principal: Principal) -> dict:
+                       plan_id: str | None, triggered_by: str, principal: Principal, params: dict | None = None) -> dict:
     """Create a TestRun (request-time scope check already passed) and enqueue its job."""
     settings = app.state.settings
     with session_scope(app.state.db_factory) as db:
         run = TestRun(tenant_id=tenant_id, plan_id=plan_id, scope_id=scope_id, adapter=adapter_name, asset_id=asset_id,
-                      tier=tier, status='queued', triggered_by=triggered_by[:64])
+                      tier=tier, status='queued', triggered_by=triggered_by[:64], params_json=dumps(params or {}))
         db.add(run)
         db.flush()
         run_id = run.id
@@ -88,7 +88,7 @@ async def _enqueue_run(app, tenant_id: str, *, adapter_name: str, asset_id: str,
 
 
 async def launch_scan(app, principal: Principal, *, asset_id: str, adapter_name: str, scope_id: str,
-                      requested_tier: str | None = None, triggered_by: str = 'manual') -> dict:
+                      requested_tier: str | None = None, triggered_by: str = 'manual', params: dict | None = None) -> dict:
     """Ad-hoc single-asset scan. Resolves the scope and runs the request-time check."""
     settings = app.state.settings
     tenant_id = principal.tenant_id
@@ -102,7 +102,7 @@ async def launch_scan(app, principal: Principal, *, asset_id: str, adapter_name:
             raise NotFound('test scope not found')
         harness.precheck(db, adapter, asset, scope, settings, tier=tier)  # raises ScopeDenied
     return await _enqueue_run(app, tenant_id, adapter_name=adapter_name, asset_id=asset_id, scope_id=scope_id,
-                              tier=tier, plan_id=None, triggered_by=triggered_by, principal=principal)
+                              tier=tier, plan_id=None, triggered_by=triggered_by, principal=principal, params=params)
 
 
 async def launch_plan(app, plan_id: str, tenant_id: str, *, principal: Principal | None = None,

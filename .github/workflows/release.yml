@@ -1,4 +1,4 @@
-name: Release
+﻿name: Release
 
 # On a version tag: build the image, push to GHCR with the tag and the digest, attach an
 # SPDX SBOM (syft), sign image and SBOM with cosign (keyless, GitHub OIDC), and publish a
@@ -79,6 +79,45 @@ jobs:
           sbom: false
           cache-from: type=gha
 
+
+      # ---- sandbox images (exploit authoring)
+      # The runtime image runs one generated PoC inside a gVisor Job; the executor image is the
+      # only workload with a namespaced cluster credential. Both are signed like the main image.
+      - name: Build sandbox runtime image
+        id: build_sandbox
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}-sandbox:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Build sandbox executor image
+        id: build_executor
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/executor.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}-sandbox-executor:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Generate SBOM for the sandbox runtime image
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}-sandbox@${{ steps.build_sandbox.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-sandbox.spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
       - name: Generate SBOM (syft, SPDX JSON)
         uses: anchore/sbom-action@v0
         with:
@@ -96,6 +135,8 @@ jobs:
         run: |
           cosign sign --recursive "${IMAGE}@${{ steps.build.outputs.digest }}"
           cosign sign --recursive "${IMAGE}@${{ steps.build_extras.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}-sandbox@${{ steps.build_sandbox.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}-sandbox-executor@${{ steps.build_executor.outputs.digest }}"
 
       - name: Attach and sign SBOM attestation
         env:
