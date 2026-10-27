@@ -15,7 +15,7 @@ prometheus-client>=0.20,<1
 PyYAML>=6,<7
 
 # Model providers
-anthropic>=0.60
-openai>=1.40,<3
+anthropic>=2.3.0
+openai>=3.37.0,<4
 
 # Test-only dependencies live in requirements-dev.txt (not shipped in the image).
