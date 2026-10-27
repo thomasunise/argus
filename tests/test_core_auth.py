@@ -112,3 +112,18 @@ def test_redaction():
     out = redact(text)
     assert 'AKIAIOSFODNN7EXAMPLE' not in out and 'SuperSecret123' not in out and 'abcdefghijklmnopqrstuvwxyz' not in out
     assert 'password=' in out
+
+
+def test_scoped_key_cannot_mint_unrestricted_or_escalated_keys(owner):
+    client, headers = owner
+    result = client.post('/api/v1/auth/api-keys', json={
+        'name': 'key-manager', 'role': 'owner', 'scopes': ['admin:api_keys']}, headers=headers)
+    assert result.status_code == 201, result.text
+    scoped = {'X-API-Key': result.json()['key']}
+    for scopes in ([], ['assets:read'], ['admin:*']):
+        denied = client.post('/api/v1/auth/api-keys', json={
+            'name': 'escalation', 'role': 'owner', 'scopes': scopes}, headers=scoped)
+        assert denied.status_code == 403, denied.text
+    allowed = client.post('/api/v1/auth/api-keys', json={
+        'name': 'delegated', 'role': 'owner', 'scopes': ['admin:api_keys']}, headers=scoped)
+    assert allowed.status_code == 201, allowed.text
