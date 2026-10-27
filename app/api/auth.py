@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
-from ..core.rbac import ALL_PERMISSIONS, Principal, Role
+from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
 from ..core.security import (generate_api_key, oidc_authorize_url, oidc_discover, oidc_exchange_code, pkce_pair,
                              totp_generate_secret, totp_match, totp_provisioning_uri, verify_password)
 from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, utcnow
