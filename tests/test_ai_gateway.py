@@ -333,7 +333,8 @@ def test_policy_validation_unit():
     assert gw.price_for({'gpt-4.1': (2.0, 8.0)}, 'gpt-4.1-2025-04-14') == (2.0, 8.0)
 
 
-def test_dlp_rejects_unscannable_payload(client, gw_key):
+def test_dlp_rejects_unscannable_payload(app, client, gw_key):
+    app.state.settings.ai_gateway_max_request_bytes = 2_000_000
     oversized = 'x' * dlp.MAX_SCAN_CHARS + ' AKIA' + 'A' * 16
     with respx.mock:
         route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(200, json=openai_reply()))
