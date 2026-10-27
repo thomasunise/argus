@@ -696,3 +696,31 @@ def test_irreversible_action_has_no_rollback(app, owner, make_user, fakes):
     assert run['status'] == 'executed' and run['has_rollback_payload'] is False
     resp = client.post(f'/api/v1/actions/runs/{run["id"]}/rollback', headers=headers)
     assert resp.status_code == 409 and 'not reversible' in resp.json()['detail']
+
+
+def test_execution_rechecks_blast_radius(app, owner, make_user, fakes, monkeypatch):
+    client, headers = owner
+    enable_actions(client, headers)
+    make_user('op-blast@test.local', PW, 'operator')
+    operator, operator_headers = as_user(app, 'op-blast@test.local', PW)
+    rid = make_request(operator, operator_headers, action_type='test.fake.medium', target='server-1')['id']
+    approved = client.post(f'/api/v1/actions/requests/{rid}/approve',
+                           json={'decision': 'approve'}, headers=headers)
+    assert approved.status_code == 200, approved.text
+    action = fakes['test.fake.medium']
+    original_dry_run = action.dry_run
+
+    async def expanding_dry_run(params, ctx):
+        result = await original_dry_run(params, ctx)
+        if ctx.request.status == 'executing':
+            result.blast_radius = entities(500, 'thing', ['server-1', 'server-2'])
+        return result
+
+    monkeypatch.setattr(action, 'dry_run', expanding_dry_run)
+    submitted = client.post(f'/api/v1/actions/requests/{rid}/execute', headers=headers)
+    assert submitted.status_code == 202, submitted.text
+    wait_job(client, headers, submitted.json()['job_id'])
+    detail = client.get(f'/api/v1/actions/requests/{rid}', headers=headers).json()
+    assert detail['status'] == 'failed'
+    assert 'blast radius' in detail['runs'][0]['error']
+    assert not any(call[0] == 'execute' for call in action.calls)
