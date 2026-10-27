@@ -290,6 +290,10 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), principal: Princi
     for auth in db.execute(select(AssetAuthorization).where(AssetAuthorization.tenant_id == principal.tenant_id,
                                                             AssetAuthorization.asset_id == asset.id)).scalars():
         db.delete(auth)
+    from ..models import AssetCredential
+    for credential in db.execute(select(AssetCredential).where(AssetCredential.tenant_id == principal.tenant_id,
+                                                              AssetCredential.asset_id == asset.id)).scalars():
+        db.delete(credential)
     record_audit(db, principal, 'assets.deleted', asset.id, {'name': asset.name, 'kind': asset.kind, 'target': asset.target, 'detached': detached})
     db.delete(asset)
     return {'ok': True, 'detached': detached}
