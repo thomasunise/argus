@@ -1,11 +1,11 @@
 // Session state shared by every page. Mirrors app/core/rbac.py so write actions can be hidden client-side;
 // the server remains the authority.
 const VIEWER = ['assets:read', 'findings:read', 'events:read', 'graph:read', 'detections:read', 'collectors:read', 'agents:read', 'tests:read',
-  'actions:read', 'integrations:read', 'audit:read', 'reports:read', 'investigations:read', 'approvals:read', 'canaries:read', 'scans:read', 'evals:read'];
-const ANALYST = [...VIEWER, 'findings:write', 'investigations:write', 'agents:run', 'detections:write', 'canaries:write', 'approvals:write', 'evals:run'];
+  'actions:read', 'integrations:read', 'audit:read', 'reports:read', 'investigations:read', 'approvals:read', 'canaries:read', 'scans:read', 'evals:read', 'autoresponse:read', 'ai:read', 'exploit:read'];
+const ANALYST = [...VIEWER, 'findings:write', 'investigations:write', 'agents:run', 'detections:write', 'canaries:write', 'approvals:write', 'evals:run', 'ai_gateway:use', 'exploit:run'];
 const OPERATOR = [...ANALYST, 'assets:write', 'assets:authorize', 'tests:run', 'tests:write', 'scans:run', 'collectors:run', 'actions:request',
-  'actions:approve', 'actions:execute', 'actions:rollback', 'detections:run'];
-const ADMIN = [...OPERATOR, 'admin:users', 'admin:api_keys', 'admin:settings', 'collectors:write', 'integrations:write', 'actions:kill_switch', 'tests:scopes'];
+  'actions:approve', 'actions:execute', 'actions:rollback', 'detections:run', 'exploit:approve'];
+const ADMIN = [...OPERATOR, 'admin:users', 'admin:api_keys', 'admin:settings', 'collectors:write', 'integrations:write', 'actions:kill_switch', 'tests:scopes', 'autoresponse:write', 'ai:write'];
 const OWNER = [...ADMIN, 'admin:tenant', 'actions:approve_critical'];
 export const ROLE_PERMS = { viewer: new Set(VIEWER), analyst: new Set(ANALYST), operator: new Set(OPERATOR), admin: new Set(ADMIN), owner: new Set(OWNER) };
 export const ROLES = ['viewer', 'analyst', 'operator', 'admin', 'owner'];
