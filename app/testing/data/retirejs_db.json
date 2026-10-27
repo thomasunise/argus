@@ -1,0 +1,561 @@
+{
+  "jquery": {
+    "extractors": {
+      "uri": ["[0-9.]+/jquery(?:\\.min)?\\.js", "jquery-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["jquery-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": [
+        "/\\*!?\\s*jQuery\\s+v?(§§version§§)\\b",
+        "jQuery\\s+JavaScript\\s+Library\\s+v?(§§version§§)\\b",
+        "jQuery=\"(§§version§§)\""
+      ]
+    },
+    "vulnerabilities": [
+      {
+        "below": "1.9.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2012-6708"],
+          "summary": "Selector interpreted as HTML in jQuery before 1.9.0"
+        }
+      },
+      {
+        "below": "3.0.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2015-9251"],
+          "summary": "Cross-domain ajax request execution of text/javascript responses"
+        }
+      },
+      {
+        "below": "3.4.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2019-11358"],
+          "summary": "jQuery.extend(true, {}, ...) prototype pollution"
+        }
+      },
+      {
+        "atOrAbove": "1.2.0",
+        "below": "3.5.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2020-11022", "CVE-2020-11023"],
+          "summary": "Regex in jQuery.htmlPrefilter may introduce XSS"
+        }
+      }
+    ]
+  },
+  "jquery-ui": {
+    "extractors": {
+      "uri": ["jquery-ui-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["jquery-ui-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["jQuery\\s+UI\\s+(?:Core\\s+)?v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "1.13.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2021-41182", "CVE-2021-41183", "CVE-2021-41184"],
+          "summary": "XSS in Datepicker altField and position option in jQuery UI before 1.13.0"
+        }
+      },
+      {
+        "below": "1.13.2",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2022-31160"],
+          "summary": "Checkboxradio widget XSS when refreshing from untrusted HTML"
+        }
+      }
+    ]
+  },
+  "jquery-migrate": {
+    "extractors": {
+      "uri": ["jquery-migrate-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["jquery-migrate-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["jQuery\\s+Migrate\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "1.2.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2013-4969"],
+          "summary": "Cross-site scripting via selector parsing in jQuery Migrate"
+        }
+      }
+    ]
+  },
+  "bootstrap": {
+    "extractors": {
+      "uri": ["bootstrap-(§§version§§)(?:\\.min)?\\.js", "/bootstrap/(§§version§§)/"],
+      "filename": ["bootstrap-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Bootstrap\\s+v(§§version§§)\\b", "Bootstrap\\.VERSION\\s*=\\s*['\"](§§version§§)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "3.4.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2018-14040", "CVE-2018-14042"],
+          "summary": "XSS in Bootstrap collapse data-parent and data-container attributes"
+        }
+      },
+      {
+        "below": "3.4.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2019-8331"],
+          "summary": "XSS in Bootstrap tooltip or popover data-template attribute"
+        }
+      },
+      {
+        "atOrAbove": "4.0.0",
+        "below": "4.3.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2019-8331"],
+          "summary": "XSS in Bootstrap 4 tooltip or popover data-template attribute"
+        }
+      }
+    ]
+  },
+  "lodash": {
+    "extractors": {
+      "uri": ["lodash-(§§version§§)(?:\\.min)?\\.js", "/lodash/(§§version§§)/"],
+      "filename": ["lodash-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": [
+        "lodash\\s+(?:v)?(§§version§§)\\b",
+        "VERSION\\s*=\\s*['\"](§§version§§)['\"][^\\n]{0,80}lodash"
+      ]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.17.12",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2019-10744"],
+          "summary": "Prototype pollution in lodash defaultsDeep"
+        }
+      },
+      {
+        "below": "4.17.19",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2020-8203"],
+          "summary": "Prototype pollution in lodash zipObjectDeep"
+        }
+      },
+      {
+        "below": "4.17.21",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2021-23337", "CVE-2020-28500"],
+          "summary": "Command injection in lodash template and ReDoS in trim"
+        }
+      }
+    ]
+  },
+  "underscore": {
+    "extractors": {
+      "uri": ["underscore-(§§version§§)(?:\\.min)?\\.js", "/underscore\\.js/(§§version§§)/"],
+      "filename": ["underscore-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Underscore\\.js\\s+v?(§§version§§)\\b", "_\\.VERSION\\s*=\\s*['\"](§§version§§)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "1.13.0-2",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2021-23358"],
+          "summary": "Arbitrary code execution in underscore template function"
+        }
+      },
+      {
+        "atOrAbove": "1.13.0",
+        "below": "1.13.3",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2021-23358"],
+          "summary": "Template variable property injection in underscore before 1.13.3"
+        }
+      }
+    ]
+  },
+  "moment": {
+    "extractors": {
+      "uri": ["moment-(§§version§§)(?:\\.min)?\\.js", "/moment\\.js/(§§version§§)/"],
+      "filename": ["moment-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["//!\\s*moment\\.js[\\s\\S]{0,60}?version\\s*:\\s*(§§version§§)\\b", "moment(?:\\.js)?\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.29.2",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2022-24785"],
+          "summary": "Path traversal in moment.locale"
+        }
+      },
+      {
+        "below": "2.29.4",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2022-31129"],
+          "summary": "Inefficient regular expression complexity (ReDoS) in moment RFC2822 parser"
+        }
+      }
+    ]
+  },
+  "handlebars": {
+    "extractors": {
+      "uri": ["handlebars-(§§version§§)(?:\\.min)?\\.js", "/handlebars\\.js/(§§version§§)/"],
+      "filename": ["handlebars-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Handlebars(?:\\.js)?\\s+v?(§§version§§)\\b", "Handlebars\\.VERSION\\s*=\\s*['\"](§§version§§)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.7.7",
+        "severity": "critical",
+        "identifiers": {
+          "CVE": ["CVE-2021-23369", "CVE-2021-23383"],
+          "summary": "Remote code execution and prototype pollution in Handlebars templates"
+        }
+      }
+    ]
+  },
+  "angularjs": {
+    "extractors": {
+      "uri": ["angular-(§§version§§)(?:\\.min)?\\.js", "/angular\\.js/(§§version§§)/"],
+      "filename": ["angular-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["AngularJS\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "1.8.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2020-7676"],
+          "summary": "XSS via JQLite DOM manipulation in AngularJS before 1.8.0"
+        }
+      },
+      {
+        "below": "1.8.3",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2022-25869", "CVE-2023-26116", "CVE-2023-26117"],
+          "summary": "ReDoS and XSS in AngularJS 1.x (End-of-Life)"
+        }
+      }
+    ]
+  },
+  "vue": {
+    "extractors": {
+      "uri": ["vue-(§§version§§)(?:\\.min)?\\.js", "/vue@(§§version§§)/"],
+      "filename": ["vue-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Vue\\.js\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.5.17",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2018-11235"],
+          "summary": "SSR template injection and XSS in older Vue.js 2.x releases"
+        }
+      }
+    ]
+  },
+  "react-dom": {
+    "extractors": {
+      "uri": ["react-dom-(§§version§§)(?:\\.min)?\\.js", "/react-dom@(§§version§§)/"],
+      "filename": ["react-dom-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["ReactDOM\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "atOrAbove": "16.0.0",
+        "below": "16.4.2",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2018-6341"],
+          "summary": "XSS via user-supplied attribute names in ReactDOMServer before 16.4.2"
+        }
+      }
+    ]
+  },
+  "axios": {
+    "extractors": {
+      "uri": ["axios-(§§version§§)(?:\\.min)?\\.js", "/axios/(§§version§§)/", "/axios@(§§version§§)/"],
+      "filename": ["axios-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["axios\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "0.21.2",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2021-3749", "CVE-2020-28168"],
+          "summary": "SSRF and ReDoS in axios before 0.21.2"
+        }
+      },
+      {
+        "atOrAbove": "0.8.1",
+        "below": "1.6.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2023-45857"],
+          "summary": "CSRF token leakage in XSRF-TOKEN header on cross-origin requests in axios before 1.6.0"
+        }
+      }
+    ]
+  },
+  "dompurify": {
+    "extractors": {
+      "uri": ["purify-(§§version§§)(?:\\.min)?\\.js", "/dompurify/(§§version§§)/", "/dompurify@(§§version§§)/"],
+      "filename": ["purify-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["DOMPurify\\s+(§§version§§)\\b", "DOMPurify\\.version\\s*=\\s*['\"](§§version§§)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.4.1",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2022-25887"],
+          "summary": "Mutation XSS bypass in DOMPurify before 2.4.1"
+        }
+      },
+      {
+        "below": "3.0.9",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2024-45801"],
+          "summary": "DOM clobbering and nesting mXSS bypass in DOMPurify before 3.0.9"
+        }
+      }
+    ]
+  },
+  "marked": {
+    "extractors": {
+      "uri": ["marked-(§§version§§)(?:\\.min)?\\.js", "/marked/(§§version§§)/"],
+      "filename": ["marked-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["marked\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.0.10",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2022-21680", "CVE-2022-21681"],
+          "summary": "Regular expression denial of service (ReDoS) in marked before 4.0.10"
+        }
+      }
+    ]
+  },
+  "mustache": {
+    "extractors": {
+      "uri": ["mustache-(§§version§§)(?:\\.min)?\\.js", "/mustache\\.js/(§§version§§)/"],
+      "filename": ["mustache-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["mustache\\.js\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.2.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2015-8862"],
+          "summary": "XSS in unquoted attributes in mustache.js before 2.2.1"
+        }
+      }
+    ]
+  },
+  "backbone": {
+    "extractors": {
+      "uri": ["backbone-(§§version§§)(?:\\.min)?\\.js", "/backbone\\.js/(§§version§§)/"],
+      "filename": ["backbone-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Backbone\\.js\\s+(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "0.5.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2011-5034"],
+          "summary": "Cross-site scripting in Backbone.js model escape"
+        }
+      }
+    ]
+  },
+  "ember": {
+    "extractors": {
+      "uri": ["ember-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["ember-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Ember\\s+(?:v)?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "3.28.11",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2023-25170"],
+          "summary": "Prototype pollution in Ember.js"
+        }
+      }
+    ]
+  },
+  "knockout": {
+    "extractors": {
+      "uri": ["knockout-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["knockout-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Knockout\\s+JavaScript\\s+library\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "3.5.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2019-14862"],
+          "summary": "XSS via unescaped attribute binding in Knockout before 3.5.0"
+        }
+      }
+    ]
+  },
+  "chart.js": {
+    "extractors": {
+      "uri": ["chart-(§§version§§)(?:\\.min)?\\.js", "/Chart\\.js/(§§version§§)/"],
+      "filename": ["chart-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Chart\\.js\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.9.4",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2020-7746"],
+          "summary": "Prototype pollution in Chart.js options merge before 2.9.4"
+        }
+      }
+    ]
+  },
+  "d3": {
+    "extractors": {
+      "uri": ["d3-(§§version§§)(?:\\.min)?\\.js", "/d3/(§§version§§)/"],
+      "filename": ["d3-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["d3\\.js\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "6.3.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2021-23346"],
+          "summary": "ReDoS in d3-color before d3 6.3.1"
+        }
+      }
+    ]
+  },
+  "sweetalert2": {
+    "extractors": {
+      "uri": ["sweetalert2-(§§version§§)(?:\\.min)?\\.js", "/sweetalert2@(§§version§§)/"],
+      "filename": ["sweetalert2-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["sweetalert2\\s+v(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "atOrAbove": "11.6.13",
+        "below": "11.6.14",
+        "severity": "high",
+        "identifiers": {
+          "CVE": ["CVE-2022-25967"],
+          "summary": "Protestware / unwanted behavior in sweetalert2"
+        }
+      }
+    ]
+  },
+  "select2": {
+    "extractors": {
+      "uri": ["select2-(§§version§§)(?:\\.min)?\\.js", "/select2/(§§version§§)/"],
+      "filename": ["select2-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["Select2\\s+(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.0.6",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2016-10744"],
+          "summary": "XSS in Select2 result rendering before 4.0.6"
+        }
+      }
+    ]
+  },
+  "tinymce": {
+    "extractors": {
+      "uri": ["tinymce-(§§version§§)(?:\\.min)?\\.js", "/tinymce/(§§version§§)/"],
+      "filename": ["tinymce-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["tinymce\\s+v?(§§version§§)\\b", "majorVersion\\s*:\\s*['\"](\\d+)['\"]\\s*,\\s*minorVersion\\s*:\\s*['\"]([\\d.]+)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "6.8.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2024-29881", "CVE-2024-29199"],
+          "summary": "Mutation XSS in TinyMCE content parser before 6.8.1"
+        }
+      }
+    ]
+  },
+  "ckeditor": {
+    "extractors": {
+      "uri": ["ckeditor-(§§version§§)(?:\\.min)?\\.js", "/ckeditor/(§§version§§)/"],
+      "filename": ["ckeditor-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["CKEDITOR\\.version\\s*=\\s*['\"](§§version§§)['\"]"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.21.0",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2023-28439"],
+          "summary": "XSS in CKEditor 4 Iframe dialog plugin before 4.21.0"
+        }
+      }
+    ]
+  },
+  "socket.io-client": {
+    "extractors": {
+      "uri": ["socket\\.io-(§§version§§)(?:\\.min)?\\.js", "/socket\\.io/(§§version§§)/"],
+      "filename": ["socket\\.io-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["socket\\.io-client\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "4.7.5",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2024-38355"],
+          "summary": "Denial of service via crafted packet in socket.io before 4.7.5"
+        }
+      }
+    ]
+  },
+  "sanitize-html": {
+    "extractors": {
+      "uri": ["sanitize-html-(§§version§§)(?:\\.min)?\\.js"],
+      "filename": ["sanitize-html-(§§version§§)(?:\\.min)?\\.js"],
+      "filecontent": ["sanitize-html\\s+v?(§§version§§)\\b"]
+    },
+    "vulnerabilities": [
+      {
+        "below": "2.12.1",
+        "severity": "medium",
+        "identifiers": {
+          "CVE": ["CVE-2024-21501"],
+          "summary": "Style attribute sanitization bypass in sanitize-html before 2.12.1"
+        }
+      }
+    ]
+  }
+}

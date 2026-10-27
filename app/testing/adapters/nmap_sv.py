@@ -87,7 +87,7 @@ def parse_xml(xml_text: str) -> list[NormalizedFinding]:
     # Strip any standard DOCTYPE line nmap emits before parsing with ElementTree.
     cleaned = re.sub(r'<!DOCTYPE[^>]*>', '', text, count=1)
     try:
-        root = ET.fromstring(cleaned)
+        root = ET.fromstring(cleaned)  # nosec B314 - DOCTYPE/ENTITY declarations stripped above
     except ET.ParseError:
         return []
 
