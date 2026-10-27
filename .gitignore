@@ -1,5 +1,6 @@
 .env
 .venv/
+.claude/
 __pycache__/
 .pytest_cache/
 *.pyc
@@ -11,7 +12,7 @@ targets/
 *.log
 # Collector sample data under tests/fixtures is synthetic and needed by the tests.
 !tests/fixtures/**/*.log
-!app/testing//data/**
+!app/testing/data/**
 
 # Terraform working directories (providers are cached in TF_PLUGIN_CACHE_DIR); keep .terraform.lock.hcl
 .terraform/
