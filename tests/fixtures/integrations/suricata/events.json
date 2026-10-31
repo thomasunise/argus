@@ -1,0 +1,1 @@
+{"events":[{"event_type":"alert","timestamp":"2026-10-31T03:30:00Z","flow_id":123,"src_ip":"10.0.0.1","dest_ip":"203.0.113.10","alert":{"signature":"Synthetic test alert","severity":2}}]}

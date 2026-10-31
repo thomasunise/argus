@@ -20,8 +20,8 @@ router = APIRouter(prefix='/api/v1/identity-risk', tags=['identity'])
 
 def _signals(action: str) -> tuple[bool, bool]:
     action = action.lower()
-    failed = any(x in action for x in ('login.fail', 'sign.in.fail', 'auth.failure', 'password.invalid'))
-    privileged = any(x in action for x in ('grant.permission', 'attach.role', 'add.role', 'assume.role',
+    failed = any(x in action for x in ('login.fail', 'login.failed', 'sign.in.fail', 'auth.failure', 'password.invalid'))
+    privileged = any(x in action for x in ('grant.permission', 'attach.role', 'attach_role', 'add.role', 'add_role', 'assume.role', 'assume_role',
                                             'privilege.escalat', 'create.access.key', 'grant.admin'))
     return failed, privileged
 

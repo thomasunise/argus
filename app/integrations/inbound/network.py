@@ -14,6 +14,7 @@ class SuricataParser(Parser):
     source = 'suricata'
     description = 'Suricata EVE JSON alerts, flows, DNS and network metadata.'
     kind = 'events'
+    example = 'tests/fixtures/integrations/suricata/events.json'
 
     def items(self, payload: Any) -> list[Any]:
         return payload.get('events', [payload]) if isinstance(payload, dict) else payload
@@ -41,6 +42,7 @@ class ZeekParser(Parser):
     source = 'zeek'
     description = 'Zeek JSON connection, DNS, HTTP and SSL log metadata.'
     kind = 'events'
+    example = 'tests/fixtures/integrations/zeek/events.json'
 
     def items(self, payload: Any) -> list[Any]:
         return payload.get('events', [payload]) if isinstance(payload, dict) else payload

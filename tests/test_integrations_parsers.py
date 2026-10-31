@@ -34,7 +34,7 @@ def parse(source: str, name: str, headers: dict | None = None):
 
 def test_registry_names_aliases_and_examples():
     assert registry.names() == ['aws_cloudtrail', 'aws_guardduty', 'azure_defender', 'crowdstrike', 'falco', 'gcp_scc', 'generic', 'github_webhook',
-                                'k8s_audit', 'okta_logs', 'sentinelone', 'trivy', 'wazuh']
+                                'k8s_audit', 'okta_logs', 'sentinelone', 'suricata', 'trivy', 'wazuh', 'zeek']
     assert registry.resolve('cloudtrail') == 'aws_cloudtrail' and registry.resolve('guardduty') == 'aws_guardduty'
     assert registry.resolve('okta') == 'okta_logs' and registry.resolve('github') == 'github_webhook' and registry.resolve('K8S') == 'k8s_audit'
     assert not registry.has('nope')
