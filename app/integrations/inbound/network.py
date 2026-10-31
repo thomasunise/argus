@@ -26,14 +26,23 @@ class SuricataParser(Parser):
         severity = {1: 'critical', 2: 'high', 3: 'medium'}.get(level, 'low') if kind == 'alert' else 'informational'
         src = str(item.get('src_ip') or '')
         dst = str(item.get('dest_ip') or '')
-        metadata = {'src_ip': src, 'dst_ip': dst, 'dst_port': item.get('dest_port'),
+        modbus = item.get('modbus') if isinstance(item.get('modbus'), dict) else {}
+        try:
+            fc = int(modbus.get('function_code')) if modbus.get('function_code') is not None else 0
+        except (ValueError, TypeError):
+            fc = 0
+        is_write = str(item.get('app_proto') or '').lower() == 'modbus' and fc in {5, 6, 15, 16}
+        metadata = {'industrial_protocol': 'modbus' if modbus or str(item.get('app_proto') or '').lower() == 'modbus' else '',
+                    'function_code': fc or None, 'modbus_unit': modbus.get('unit'),
+                    'src_ip': src, 'dst_ip': dst, 'dst_port': item.get('dest_port'),
                     'protocol': item.get('proto') or '', 'signature': alert.get('signature') or '',
                     'signature_id': alert.get('signature_id'), 'category': alert.get('category') or '',
                     'flow_id': item.get('flow_id'), 'service': 'suricata'}
         title = str(alert.get('signature') or f'Suricata {kind}')
         return [event(self.source, item.get('event_id') or hash_item(item), title,
                       severity=severity, category='network', actor=src, entity=dst,
-                      action=f'network.{kind}', occurred_at=item.get('timestamp'), metadata=metadata)]
+                      action='network.modbus.write' if is_write else f'network.{kind}',
+                      occurred_at=item.get('timestamp'), metadata=metadata)]
 
 
 class ZeekParser(Parser):

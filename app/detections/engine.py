@@ -32,7 +32,7 @@ from .util import aware, bucket_start, event_time, window_bucket
 
 log = logging.getLogger('argus.detections')
 
-CATEGORIES = ('swarm', 'identity', 'canary', 'anomaly', 'cloud', 'k8s', 'code', 'agentic')
+CATEGORIES = ('swarm', 'identity', 'canary', 'anomaly', 'cloud', 'k8s', 'code', 'agentic', 'industrial')
 DEFAULT_LOOKBACK_MINUTES = 60
 DEFAULT_MAX_EVENTS = 20_000
 MAX_DRAFTS_PER_RULE = 200

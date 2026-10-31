@@ -76,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.db_factory = factory
     app.state.login_attempts = {}
-    app.state.rate_limiter = RateLimiter()
+    app.state.rate_limiter = RateLimiter(redis_url=settings.redis_url)
     app.state.queue = JobQueue(settings, db_factory=factory, app=app)
     app.state.startup_hooks = []
     app.state.shutdown_hooks = []
