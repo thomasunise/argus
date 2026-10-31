@@ -136,5 +136,5 @@ def install(app) -> None:
             if not enabled(db.get(Tenant, tenant_id)):
                 return
         await app.state.queue.enqueue(JOB_KIND, {'action_run_id': action_run_id, 'tenant_id': tenant_id},
-                                      tenant_id=tenant_id, idempotency_key=f'auto-verify:{action_run_id}', priority=6)
+                                      tenant_id=tenant_id, idempotency_key=f'auto-verify:{action_run_id}', delay_seconds=2, priority=6)
     subscribe('action.executed', on_action)

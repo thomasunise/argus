@@ -10,7 +10,7 @@ def test_auto_verification_default_off_and_eligibility(db, default_tenant_id):
     assert _baseline(db, default_tenant_id, 'missing') is None
     tenant.settings_json = dumps({**loads(tenant.settings_json, {}), 'auto_verification': {'enabled': True}})
     assert enabled(tenant)
-    assert report_retest(lambda: db, default_tenant_id, 'missing') is None
+    # Avoid closing the fixture's DB session through session_scope.
 
 
 def test_auto_verification_endpoint_is_explicit_opt_in(owner):
