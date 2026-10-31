@@ -1,14 +1,14 @@
-"""DOM-context XSS verification adapter (intrusive, web): `browser_xss`.
+"""HTML injection context adapter (intrusive, web): `browser_xss`.
 
 Replaces raw substring reflection checks with HTML DOM parser sink confirmation:
 - Sends a benign custom-element canary (`"><argus-xss data-canary="{nonce}">`) to candidate
   endpoints/parameters.
-- Parses the response HTML document with `HTMLParser` (and optionally headless Playwright DOM
-  inspection when enabled) to verify whether the canary broke out of its surrounding attribute/text
-  context to create a live `<argus-xss>` DOM element or landed unescaped inside an executable
+- Parses the response HTML document with `HTMLParser` to detect whether the canary broke out
+  of its surrounding attribute/text context to create an injected DOM element or landed inside a
   `<script>` block.
 - Reflections trapped inside HTML comments, `<textarea>`, `<title>`, `<style>`, `<noscript>`, or
-  properly quoted non-event attributes are rejected as non-executable.
+  properly quoted non-event attributes are rejected. Parser evidence is NOT proof of script
+  execution and must never automatically mark a finding as verified.
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ class BrowserXssAdapter(TestAdapter):
     name = 'browser_xss'
     tier = 'intrusive'
     target_kinds = ('web',)
-    description = 'Confirms reflected XSS via HTML DOM sink parsing (distinguishing live DOM element/attribute breakout from safe contexts).'
+    description = 'Identifies suspicious HTML injection contexts; browser execution verification is not performed.'
 
     def available(self, settings: Settings) -> bool:
         return True
@@ -132,23 +132,25 @@ class BrowserXssAdapter(TestAdapter):
                     if sink is None:
                         continue
                     findings.append(NormalizedFinding(
-                        rule=f'xss-proof:{endpoint}:{param}',
-                        title=f'Verified DOM XSS sink ({sink["sink_type"]}) in {param!r} on {endpoint}'[:240],
+                        rule=f'xss-injection:{endpoint}:{param}',
+                        title=f'HTML injection sink ({sink["sink_type"]}) in {param!r} on {endpoint}'[:240],
                         description=(
                             f'Canary input in parameter {param!r} on {endpoint} broke out of its surrounding HTML '
-                            f'context and produced a live DOM sink ({sink["sink_type"]} on <{sink.get("tag", "unknown")}>).'
+                            f'context and produced a parsed HTML sink ({sink["sink_type"]} on <{sink.get("tag", "unknown")}>). '
+                            'JavaScript execution was not verified.'
                         ),
                         remediation='Apply context-aware HTML/attribute encoding and enforce a strict Content-Security-Policy.',
                         severity='high',
-                        verified=True,
+                        verified=False,
                         evidence={
                             'endpoint': endpoint,
                             'parameter': param,
                             'canary_nonce': nonce,
                             'sink': sink,
                             'status': resp.status_code,
-                            'proof_type': 'dom_sink_parser',
-                            'verified': True,
+                            'proof_type': 'html_sink_parser',
+                            'verified': False,
+                            'validation_level': 'injection_context',
                         },
                     ))
         return findings
