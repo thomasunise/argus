@@ -11,6 +11,7 @@ from ..core.db import get_scoped, scoped
 from ..core.errors import NotFound
 from ..core.rbac import Principal
 from ..graph import service
+from ..graph.validation import validate_path
 from ..models import utcnow
 from ..models.graph import ATTACK_PATH_STATUSES, AttackPath, GraphNode
 from .deps import Page, get_db, require, write_off_loop
@@ -72,6 +73,15 @@ def get_attack_path(path_id: str, db: Session = Depends(get_db), principal: Prin
     if not path:
         raise NotFound('Attack path not found')
     return service.path_to_dict(path)
+
+
+@router.get('/attack-paths/{path_id}/validation')
+def get_path_validation(path_id: str, db: Session = Depends(get_db),
+                        principal: Principal = Depends(require('graph:read'))):
+    path = get_scoped(db, AttackPath, principal, path_id)
+    if path is None:
+        raise NotFound('Attack path not found')
+    return validate_path(db, principal.tenant_id, path)
 
 
 @router.patch('/attack-paths/{path_id}')

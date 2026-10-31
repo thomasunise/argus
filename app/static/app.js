@@ -14,6 +14,7 @@ const NAV = [
   ] },
   { group: 'Detection', items: [
     { id: 'detections', label: 'Detections', perm: 'detections:read' },
+    { id: 'defense', label: 'Defense intelligence', perm: 'detections:read' },
     { id: 'collectors', label: 'Collectors', perm: 'collectors:read' },
     { id: 'agents', label: 'Agents', perm: 'agents:read' },
     { id: 'testing', label: 'Testing', perm: 'tests:read' },

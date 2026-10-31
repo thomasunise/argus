@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..core.config import Settings
 from ..core.rbac import Principal
 from ..core.security import redact
+from ..ai.tool_guard import evaluate as evaluate_tool_call, policy_for as tool_guard_policy
 from ..core.telemetry import AGENT_RUNS, AGENT_TOKENS
 from ..models import AgentRun, AgentStep, dumps, utcnow
 from .providers import ModelTurn, Provider, get_provider
@@ -243,7 +244,12 @@ class AgentRuntime:
                     try:
                         with session_scope(db_factory) as db:
                             ctx = ToolContext(db=db, principal=principal, settings=self.settings, run_id=run_id, spec_name=spec.name, app=self.app, scratch=scratch if scratch is not None else {})
-                            out = await asyncio.wait_for(tool.invoke(call.args, ctx), timeout=60)
+                            guard = evaluate_tool_call(tool.name, tool.risk, call.args,
+                                                       tool_guard_policy(db, principal.tenant_id))
+                            if not guard.allowed:
+                                out = {'blocked': True, 'reasons': list(guard.reasons)}
+                            else:
+                                out = await asyncio.wait_for(tool.invoke(call.args, ctx), timeout=60)
                         content, is_error = wrap_untrusted(call.name, out, self.settings.agent_tool_result_limit), False
                     except Exception as exc:
                         content, is_error, out = f'Tool error: {type(exc).__name__}: {redact(str(exc))[:400]}', True, {}

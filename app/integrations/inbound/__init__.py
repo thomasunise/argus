@@ -12,7 +12,7 @@ import importlib
 from ._common import FindingDraft, ParseContext, Parser, clean_metadata, parse_time, snake  # noqa: F401
 
 BUILTIN = ['wazuh', 'falco', 'trivy', 'aws_guardduty', 'aws_cloudtrail', 'azure_defender', 'gcp_scc', 'crowdstrike', 'sentinelone',
-           'okta_logs', 'k8s_audit', 'github_webhook', 'generic']
+           'okta_logs', 'k8s_audit', 'github_webhook', 'generic', 'network']
 
 
 class Registry:
