@@ -46,7 +46,7 @@ def _baseline(db, tenant_id: str, action_run_id: str):
                TestScope.tenant_id == tenant_id, TestScope.autonomous.is_(True),
                TestResult.finding_id == request.finding_id, TestRun.status == 'completed',
                TestRun.tier.in_(['passive', 'active']),
-               TestRun.created_at <= run.started_at))
+               TestRun.created_at <= run.started_at)
         .order_by(TestRun.created_at.desc())
     ).scalars().first()
     if row is None or (run.started_at is not None and row.created_at > run.started_at):
