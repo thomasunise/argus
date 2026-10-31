@@ -33,8 +33,20 @@ def setup(app) -> None:
 
     @queue.handler('testing.run')
     async def _run(job, ctx):
-        return await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id,
-                                 deferrals=int(job.payload.get('deferrals', 0) or 0))
+        result = await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id,
+                                   deferrals=int(job.payload.get('deferrals', 0) or 0))
+        if result.get('status') == 'completed':
+            from .auto_verification import report_retest
+            import asyncio
+
+            verification = await asyncio.to_thread(report_retest, ctx.db_factory, job.tenant_id, job.payload['run_id'])
+            if verification is not None:
+                result['auto_verification'] = verification
+        return result
+
+    from . import auto_verification
+
+    auto_verification.install(app)
 
     from . import autopilot
 

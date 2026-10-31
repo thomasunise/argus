@@ -1,6 +1,7 @@
 """FastAPI dependencies: database session, settings, principal resolution, permission checks."""
 from __future__ import annotations
 
+import hashlib
 import secrets
 import time
 from collections import defaultdict, deque
@@ -53,11 +54,25 @@ def get_db(request: Request) -> Iterator[Session]:
 
 
 class RateLimiter:
-    """Sliding window limiter keyed by an arbitrary string. In-process; put an edge limiter in front for production."""
+    """Bounded in-process limiter, or Redis-backed atomic limiter when configured.
 
-    def __init__(self):
+    Production with Redis enabled fails closed if the shared limiter is unavailable.
+    A separate edge limiter is still recommended for anonymous traffic.
+    """
+    REDIS_SCRIPT = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+return n
+"""
+
+    def __init__(self, redis_url: str = ''):
         self._hits: dict[str, deque] = defaultdict(deque)
         self._checks = 0
+        self._redis = None
+        if redis_url:
+            import redis
+            self._redis = redis.Redis.from_url(redis_url, socket_connect_timeout=0.5,
+                                                socket_timeout=0.5, decode_responses=True)
 
     def _sweep(self, now: float) -> None:
         """Drop idle buckets so unauthenticated endpoints (canary hits) cannot grow memory without bound."""
@@ -65,6 +80,18 @@ class RateLimiter:
             del self._hits[key]
 
     def check(self, key: str, limit: int, window: float = 60.0) -> None:
+        if self._redis is not None:
+            hashed = hashlib.sha256(key.encode('utf-8')).hexdigest()
+            # Fixed window from the first accepted hit, executed atomically on all workers.
+            try:
+                seen = int(self._redis.eval(self.REDIS_SCRIPT, 1,
+                                           'argus:rate:' + hashed, max(1, int(window * 1000))))
+            except Exception as exc:
+                from ..core.errors import Unavailable
+                raise Unavailable('Distributed rate limiter is unavailable') from exc
+            if seen > limit:
+                raise RateLimited('Rate limit exceeded')
+            return
         now = time.monotonic()
         self._checks += 1
         if self._checks % 1000 == 0 or len(self._hits) > 50000:

@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 from ..core.db import get_scoped, scoped
 from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
-from ..models import loads
+from ..models import Tenant, dumps, loads
+from ..core.audit import record_audit
+from ..testing.auto_verification import config as auto_config
 from ..models.testing import TestRun, TestResult
 from ..models.actions import ActionRequest, ActionRun
 from ..testing.service import launch_scan
@@ -100,3 +102,32 @@ async def retest_remediation(action_run_id: str, request: Request,
                                params=loads(baseline.params_json, {}))
     return {'action_run_id': action_run_id, 'baseline_run_id': baseline.id,
             'followup': queued, 'remediation_confirmed': False}
+
+
+from pydantic import BaseModel
+
+
+class AutoVerifySettings(BaseModel):
+    enabled: bool
+
+
+@router.get('/auto-settings')
+def get_auto_verification_settings(db: Session = Depends(get_db),
+                                   principal: Principal = Depends(require('tests:read'))):
+    tenant = db.get(Tenant, principal.tenant_id)
+    return {'enabled': auto_config(tenant).get('enabled', False) is True,
+            'required_scope_autonomous': True,
+            'supported_tiers': ['passive', 'active']}
+
+
+@router.put('/auto-settings')
+def set_auto_verification_settings(body: AutoVerifySettings, db: Session = Depends(get_db),
+                                   principal: Principal = Depends(require('tests:scopes'))):
+    tenant = db.get(Tenant, principal.tenant_id)
+    data = loads(tenant.settings_json, {})
+    data = data if isinstance(data, dict) else {}
+    data['auto_verification'] = {'enabled': bool(body.enabled)}
+    tenant.settings_json = dumps(data)
+    record_audit(db, principal, 'verification.auto_settings', tenant.id, {'enabled': bool(body.enabled)})
+    return {'enabled': bool(body.enabled), 'required_scope_autonomous': True,
+            'supported_tiers': ['passive', 'active']}
