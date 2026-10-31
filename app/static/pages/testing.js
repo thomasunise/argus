@@ -57,20 +57,27 @@ async function planForm(reload) {
   });
 }
 
-async function renderRunDetail({ root, params }) {
+async function renderRunDetail({ root, params, navigate }) {
   const id = params[1];
   root.innerHTML = `<p><a href="#/testing/runs" class="ghost-link">← Runs</a></p><div data-run></div>`;
   let timer = null;
   const view = section($('[data-run]', root), async () => { const [run, assets] = await Promise.all([get(`/tests/runs/${id}`), assetMap().catch(() => new Map())]); return { run, assets }; }, ({ run: r, assets }) => {
     if (['queued', 'running'].includes(r.status)) timer = setTimeout(() => view.reload(true), 2000);
-    return `${heading('Test run', `${r.adapter} · ${assetName(assets, r.asset_id)}`, '')}<div class="chip-row">${tag(r.status)}<span class="pill">${esc(r.tier)}</span><span class="pill">${esc(r.triggered_by)}</span>${r.plan_id ? `<span class="pill">plan ${esc(r.plan_id.slice(0, 8))}</span>` : '<span class="pill">ad-hoc scan</span>'}</div>
+    return `${heading('Test run', `${r.adapter} · ${assetName(assets, r.asset_id)}`, '', store.can('tests:run') && r.status === 'completed' ? '<button class="btn" data-act="retest">Retest using this scope</button>' : '')}<div class="chip-row">${tag(r.status)}<span class="pill">${esc(r.tier)}</span><span class="pill">${esc(r.triggered_by)}</span>${r.plan_id ? `<span class="pill">plan ${esc(r.plan_id.slice(0, 8))}</span>` : '<span class="pill">ad-hoc scan</span>'}</div>
       ${r.error ? `<div class="callout warning-callout"><strong>Error</strong> ${esc(r.error)}</div>` : ''}
       <div class="two-col">${panel({ title: 'Run', body: kv([['Asset', r.asset_id ? link(`#/assets/${r.asset_id}`, assetName(assets, r.asset_id)) : ''], ['Scope', mono(r.scope_id)], ['Created', esc(fmt(r.created_at))], ['Started', esc(fmt(r.started_at))], ['Finished', esc(fmt(r.finished_at))], ['Results', esc(num(r.result_count))], ['Job', mono(r.job_id)]]) })}${panel({ title: 'Stats', body: json(r.stats) })}</div>
       ${panel({ title: `Results (${(r.results || []).length})`, flush: true, body: table({ columns: [
         { label: 'Result', render: (x) => `<span class="cell-main limit-lines" style="max-width:420px">${esc(x.title)}</span><span class="cell-sub">${esc(x.rule)}</span>` }, { label: 'Severity', render: (x) => sev(x.severity) }, { label: 'Finding', render: (x) => (x.finding_id ? link(`#/findings/${x.finding_id}`, x.finding_id.slice(0, 8)) : '—') }, { label: '', render: (x) => `<button class="btn small" data-act="evidence" data-id="${esc(x.id)}">Evidence</button>` }],
       rows: r.results || [], empty: 'No results', emptySub: r.status === 'completed' ? 'The adapter reported nothing for this target.' : 'Results appear when the run completes.' }) })}`;
   });
-  bind(root, { evidence: async (el) => { const r = await get(`/tests/runs/${id}`); const x = r.results.find((y) => y.id === el.dataset.id); drawer(x.title, `<div class="chip-row">${sev(x.severity)}<span class="pill">${esc(x.rule)}</span></div>${json(x.evidence)}`); } });
+  bind(root, {
+    evidence: async (el) => { const r = await get(`/tests/runs/${id}`); const x = r.results.find((y) => y.id === el.dataset.id); drawer(x.title, `<div class="chip-row">${sev(x.severity)}<span class="pill">${esc(x.rule)}</span></div>${json(x.evidence)}`); },
+    retest: async () => {
+      const next = await post(`/verification/retest/${id}`, {}, { silent: true });
+      toast('Authorized retest queued');
+      navigate(`testing/runs/${next.id}`);
+    },
+  });
   return () => clearTimeout(timer);
 }
 
