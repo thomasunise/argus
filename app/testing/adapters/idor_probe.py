@@ -120,17 +120,23 @@ class IdorProbeAdapter(TestAdapter):
                 if not matched:
                     continue
 
+                # Similar HTML templates are not proof that the same protected object
+                # was returned. Likewise an unknown unauthenticated response is not
+                # evidence that access controls were enforced.
+                if match_reason.startswith('body_similarity:'):
+                    continue
                 unauth_status = unauth_resp.status_code if unauth_resp is not None else 0
+                proven = unauth_status in (401, 403)
                 findings.append(NormalizedFinding(
-                    rule=f'idor-proof:{endpoint}',
-                    title=f'Verified cross-role authorization bypass (IDOR) on {endpoint}'[:240],
+                    rule=f'{"idor-proof" if proven else "idor-suspected"}:{endpoint}',
+                    title=f'{"Verified" if proven else "Possible"} cross-role authorization bypass (IDOR) on {endpoint}'[:240],
                     description=(
                         f'Protected endpoint {endpoint} returned {owner_role!r} resource data to {attacker_role!r} '
                         f'({attacker_resp.status_code}, {match_reason}) while unauthenticated access returned {unauth_status}.'
                     ),
                     remediation='Enforce object-level ownership checks against the authenticated principal on every resource read/write.',
-                    severity='high',
-                    verified=True,
+                    severity='high' if proven else 'medium',
+                    verified=proven,
                     evidence={
                         'endpoint': endpoint,
                         'owner_role': owner_role,
@@ -140,7 +146,7 @@ class IdorProbeAdapter(TestAdapter):
                         'unauth_status': unauth_status,
                         'match_reason': match_reason,
                         'proof_type': 'cross_role_differential',
-                        'verified': True,
+                        'verified': proven,
                     },
                 ))
         return findings

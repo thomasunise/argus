@@ -192,8 +192,9 @@ def test_browser_xss_confirms_dom_sink_and_ignores_inert_contexts(settings, monk
         asset, _scope(), _intrusive_ctx(settings, target='https://web.example.test'),
     ))
     assert len(findings) == 1
-    assert findings[0].rule == 'xss-proof:/search:q'
-    assert findings[0].verified is True
+    assert findings[0].rule == 'xss-injection:/search:q'
+    assert findings[0].verified is False
+    assert findings[0].evidence['validation_level'] == 'injection_context'
 
 
 # ------------------------------------------------------------------ idor_probe

@@ -79,7 +79,7 @@ class TestRun(TenantMixin, Base):
 
 
 PENTEST_STATUSES = ('queued', 'running', 'completed', 'failed', 'stopped')
-HYPOTHESIS_STATUSES = ('open', 'testing', 'confirmed', 'refuted')
+HYPOTHESIS_STATUSES = ('open', 'testing', 'confirmed', 'refuted', 'inconclusive')
 
 
 class PentestRun(TenantMixin, Base):
