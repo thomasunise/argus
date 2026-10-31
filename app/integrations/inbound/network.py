@@ -30,7 +30,7 @@ class SuricataParser(Parser):
                     'signature_id': alert.get('signature_id'), 'category': alert.get('category') or '',
                     'flow_id': item.get('flow_id'), 'service': 'suricata'}
         title = str(alert.get('signature') or f'Suricata {kind}')
-        return [event(self.source, item.get('flow_id') or hash_item(item), title,
+        return [event(self.source, item.get('event_id') or hash_item(item), title,
                       severity=severity, category='network', actor=src, entity=dst,
                       action=f'network.{kind}', occurred_at=item.get('timestamp'), metadata=metadata)]
 
@@ -53,7 +53,7 @@ class ZeekParser(Parser):
                     'protocol': item.get('proto') or '', 'service': item.get('service') or 'zeek',
                     'dns_query': item.get('query') or '', 'uid': item.get('uid') or '',
                     'duration': item.get('duration')}
-        return [event(self.source, item.get('uid') or hash_item(item), f'Zeek {kind}',
+        return [event(self.source, hash_item(item), f'Zeek {kind}',
                       severity='informational', category='network', actor=src, entity=dst,
                       action=f'network.{kind}', occurred_at=item.get('ts'), metadata=metadata)]
 
