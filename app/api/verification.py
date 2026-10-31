@@ -14,6 +14,7 @@ from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
 from ..models import loads
 from ..models.testing import TestRun, TestResult
+from ..models.actions import ActionRequest, ActionRun
 from ..testing.service import launch_scan
 from .deps import get_db, require
 
@@ -62,3 +63,40 @@ def compare(baseline: str, followup: str, db: Session = Depends(get_db),
             'baseline_run_id': a.id, 'followup_run_id': b.id, 'remediation_confirmed': False,
             'note': 'A missing finding in one follow-up scan is not sufficient proof of remediation.',
             **compare_rules(old, new)}
+
+
+@router.post('/actions/{action_run_id}/retest', status_code=202)
+async def retest_remediation(action_run_id: str, request: Request,
+                             db: Session = Depends(get_db),
+                             principal: Principal = Depends(require('tests:run', 'actions:read'))):
+    """Safely retest the exact finding associated with an executed action.
+
+    Requires a completed baseline scanner result and a *fresh* active scope.
+    This never executes another remediation action.
+    """
+    action_run = get_scoped(db, ActionRun, principal, action_run_id)
+    if action_run is None:
+        raise NotFound('Action run not found')
+    if action_run.status != 'executed':
+        raise ArgusError('Action must have executed successfully', status=409, code='action_not_executed')
+    action = get_scoped(db, ActionRequest, principal, action_run.request_id)
+    if action is None or not action.finding_id:
+        raise ArgusError('Action has no linked finding to verify', status=409, code='finding_not_linked')
+    baseline = db.execute(
+        select(TestRun)
+        .join(TestResult, TestResult.run_id == TestRun.id)
+        .where(TestRun.tenant_id == principal.tenant_id,
+               TestResult.tenant_id == principal.tenant_id,
+               TestResult.finding_id == action.finding_id,
+               TestRun.status == 'completed')
+        .order_by(TestRun.created_at.desc())
+    ).scalars().first()
+    if baseline is None or not baseline.scope_id:
+        raise ArgusError('No completed scoped baseline test for linked finding', status=409, code='baseline_unavailable')
+    queued = await launch_scan(request.app, principal, asset_id=baseline.asset_id,
+                               adapter_name=baseline.adapter, scope_id=baseline.scope_id,
+                               requested_tier=baseline.tier,
+                               triggered_by=f'action_verify:{action_run_id[:36]}',
+                               params=loads(baseline.params_json, {}))
+    return {'action_run_id': action_run_id, 'baseline_run_id': baseline.id,
+            'followup': queued, 'remediation_confirmed': False}
