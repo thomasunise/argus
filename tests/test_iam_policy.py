@@ -36,7 +36,8 @@ def test_permission_api_requires_auth(owner, client):
     c, headers = owner
     body = {'policies': [{'Statement': {'Effect': 'Allow', 'Action': '*', 'Resource': '*'}}],
             'action': 's3:GetObject', 'resource': '*'}
-    assert client.post('/api/v1/cloud-permissions/aws/identity-policy/evaluate', json=body).status_code == 401
+    # The shared client already has the owner's session; mutating without CSRF is forbidden.
+    assert client.post('/api/v1/cloud-permissions/aws/identity-policy/evaluate', json=body).status_code == 403
     r = c.post('/api/v1/cloud-permissions/aws/identity-policy/evaluate', json=body, headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()['effective_access_confirmed'] is False
