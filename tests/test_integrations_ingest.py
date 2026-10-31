@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import pathlib
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import respx
@@ -182,8 +183,16 @@ def test_wazuh_sync_job_pulls_since_last_run(owner, db, default_tenant_id, monke
                                                         'secret_refs': {'username': 'env:WZ_USER', 'password': 'env:WZ_PASS'}}, headers=headers)
     assert created.status_code == 201, created.text
     integration_id = created.json()['id']
+    # Keep the fixture inside the seven-day safety bound enforced by Wazuh sync.
+    # A fixed 2026 timestamp made CI fail once that date became stale.
+    fixture = load('wazuh', 'indexer_hits.json')
+    latest = (datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0)
+    earlier = latest - timedelta(minutes=1)
+    hits = fixture['hits']['hits']
+    hits[0]['_source']['timestamp'] = earlier.strftime('%Y-%m-%dT%H:%M:%S.000+0000')
+    hits[1]['_source']['timestamp'] = latest.strftime('%Y-%m-%dT%H:%M:%S.000+0000')
     with respx.mock(assert_all_called=True) as mock:
-        route = mock.post('https://indexer.test:9200/wazuh-alerts-*/_search').mock(return_value=httpx.Response(200, json=load('wazuh', 'indexer_hits.json')))
+        route = mock.post('https://indexer.test:9200/wazuh-alerts-*/_search').mock(return_value=httpx.Response(200, json=fixture))
         started = client.post(f'/api/v1/integrations/{integration_id}/sync', headers=headers)
         assert started.status_code == 200, started.text
         job = wait_job(client, headers, started.json()['job_id'])
@@ -196,9 +205,9 @@ def test_wazuh_sync_job_pulls_since_last_run(owner, db, default_tenant_id, monke
         first_since = json.loads(route.calls[0].request.content)['query']['range']['timestamp']['gt']
         second_since = json.loads(route.calls[1].request.content)['query']['range']['timestamp']['gt']
         assert first_since != second_since and second['result']['since'] == second_since
-        assert second_since.startswith('2026-10-23T12:51:40')   # resumes from the newest alert seen, not from "now - lookback"
+        assert datetime.fromisoformat(second_since) == latest   # resumes from newest alert, not now - lookback
     state = client.get(f'/api/v1/integrations/{integration_id}', headers=headers).json()['state']
-    assert state['last_sync_at'].startswith('2026-10-23T12:51:40') and state['last_count'] == 2   # newest alert timestamp in the fixture
+    assert datetime.fromisoformat(state['last_sync_at']) == latest and state['last_count'] == 2
     assert db.execute(select(SecurityEvent).where(SecurityEvent.tenant_id == default_tenant_id, SecurityEvent.source == 'wazuh')).scalars().all()
     assert client.post(f'/api/v1/integrations/{integration_id}/sync', headers=headers).status_code == 200
     plain = client.post('/api/v1/integrations', json={'name': 'plain http', 'kind': 'wazuh', 'config': {'indexer_url': 'http://indexer.test:9200'}}, headers=headers)
