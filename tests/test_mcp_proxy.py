@@ -1,5 +1,5 @@
 """Enforcing proxy must never forward rejected or unverified tool calls."""
-from app.ai.mcp_proxy import _validate_argus_url, gate_message
+from app.ai.mcp_proxy import _validate_argus_url, gate_message, make_policy_check
 import pytest
 
 
@@ -36,3 +36,26 @@ def test_invalid_call_blocked_and_argus_url_validation():
         _validate_argus_url('http://public.example')
     with pytest.raises(ValueError):
         _validate_argus_url('https://user:pass@argus.example')
+
+
+
+def test_mcp_proxy_refuses_redirect(monkeypatch):
+    class Response:
+        status = 302
+        def read(self, amount):
+            return b''
+
+    class FakeConnection:
+        def __init__(self, *a, **kw):
+            pass
+        def request(self, *a, **kw):
+            pass
+        def getresponse(self):
+            return Response()
+        def close(self):
+            pass
+
+    monkeypatch.setattr('app.ai.mcp_proxy.HTTPSConnection', FakeConnection)
+    check = make_policy_check('https://argus.example', 'scoped-test-key')
+    with pytest.raises(RuntimeError):
+        check('mcp.tool', 'unknown', {})

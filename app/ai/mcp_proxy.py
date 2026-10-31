@@ -17,9 +17,8 @@ import os
 import subprocess
 import sys
 import threading
-from urllib.error import HTTPError, URLError
+from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
 
 MAX_MESSAGE_BYTES = 1_048_576
 MAX_POLICY_BYTES = 64_000
@@ -59,6 +58,8 @@ def _validate_argus_url(base: str) -> str:
         raise ValueError('An HTTP ARGUS connection is permitted only on loopback')
     if parsed.query:
         raise ValueError('ARGUS URL must not contain a query string')
+    if parsed.path not in ('', '/'):
+        raise ValueError('ARGUS URL must be the service root')
     return base.rstrip('/') + '/api/v1/ai/tool-guard/evaluate'
 
 
@@ -72,16 +73,25 @@ def make_policy_check(base_url: str, api_key: str):
         data = json.dumps({'tool': tool, 'risk': risk, 'arguments': arguments}, separators=(',', ':')).encode()
         if len(data) > MAX_MESSAGE_BYTES:
             raise ValueError('Tool call exceeds policy request limit')
-        req = Request(endpoint, data=data, headers={'X-API-Key': api_key, 'Content-Type': 'application/json',
-                                                     'Accept': 'application/json'}, method='POST')
+        parsed = urlsplit(endpoint)
+        conn = (HTTPSConnection if parsed.scheme == 'https' else HTTPConnection)(
+            parsed.hostname, parsed.port, timeout=5)
         try:
-            with urlopen(req, timeout=5) as response:
-                raw = response.read(MAX_POLICY_BYTES + 1)
-                if len(raw) > MAX_POLICY_BYTES:
-                    raise ValueError('ARGUS policy response too large')
-                answer = json.loads(raw)
-        except (HTTPError, URLError, TimeoutError) as exc:
+            # http.client does not follow redirects; a policy result must come from ARGUS.
+            conn.request('POST', parsed.path, body=data,
+                         headers={'X-API-Key': api_key, 'Content-Type': 'application/json',
+                                  'Accept': 'application/json'})
+            response = conn.getresponse()
+            if response.status != 200:
+                raise RuntimeError('ARGUS policy endpoint rejected the request')
+            raw = response.read(MAX_POLICY_BYTES + 1)
+            if len(raw) > MAX_POLICY_BYTES:
+                raise ValueError('ARGUS policy response too large')
+            answer = json.loads(raw)
+        except (OSError, TimeoutError) as exc:
             raise RuntimeError('ARGUS policy endpoint unavailable') from exc
+        finally:
+            conn.close()
         if not isinstance(answer, dict) or not isinstance(answer.get('allowed'), bool):
             raise ValueError('ARGUS policy response malformed')
         return answer
