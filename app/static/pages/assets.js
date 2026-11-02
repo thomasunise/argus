@@ -110,6 +110,7 @@ function authorizeDrawer(asset, reload) {
     { name: 'attestation', label: 'Attestation', type: 'textarea', required: true, rows: 4, placeholder: 'I confirm that my organization controls this asset and I am authorized to request security testing of it.', hint: 'At least 20 characters. Recorded verbatim in the audit log.' },
     { name: 'allow_active', label: 'Allow active testing', type: 'checkbox', text: 'Allow active testing (authenticated probes, non-destructive scanners)' },
     { name: 'allow_intrusive', label: 'Allow intrusive testing', type: 'checkbox', text: 'Allow intrusive testing (staging and lab assets only)', disabled: !['staging', 'lab'].includes(asset.environment) },
+    { name: 'allow_exploit', label: 'Allow exploit / PoC validation', type: 'checkbox', text: 'Allow sandboxed exploit / PoC validation (web assets only; requires scope document outside staging/lab)', disabled: asset.kind !== 'web' },
     { name: 'expires_in_days', label: 'Expires in (days)', type: 'number', value: 90, min: 1, max: 365, required: true },
     { name: 'scope_document_ref', label: 'Scope document reference', type: 'text', placeholder: 'SOW-2026-014 or a document URL', maxlength: 512 },
   ];
@@ -131,7 +132,7 @@ function scanDrawer(asset, adapters, scopes, reload) {
   const defs = [
     { name: 'adapter', label: 'Adapter', type: 'select', required: true, options: usable.map((a) => ({ value: a.name, label: `${a.name} · ${a.tier}${a.available ? '' : ' (not installed)'}` })) },
     { name: 'scope_id', label: 'Scope', type: 'select', required: true, options: activeScopes.map((s) => ({ value: s.id, label: `${s.name} · tiers ${s.allowed_tiers.join('/')}` })), hint: activeScopes.length ? 'The scope is re-checked at execution time.' : 'No active scope covers this asset. Create one under Testing → Scopes.' },
-    { name: 'tier', label: 'Tier (optional)', type: 'select', options: [{ value: '', label: 'adapter default' }, 'passive', 'active', 'intrusive'] },
+    { name: 'tier', label: 'Tier (optional)', type: 'select', options: [{ value: '', label: 'adapter default' }, 'passive', 'active', 'intrusive', 'exploit'] },
   ];
   const body = drawer(`Launch scan · ${asset.name}`, `<form class="form-stack">${fields(defs)}${formActions('Queue scan')}</form>${usable.length ? '' : `<p class="form-hint">No adapter targets kind ${esc(asset.kind)}.</p>`}`);
   bind(body, { close: closeDrawer });
@@ -170,7 +171,7 @@ async function renderDetail({ root, params, navigate }) {
         ['Created', esc(fmt(asset.created_at))], ['Last seen', time(asset.last_seen_at)], ['Last scan', time(asset.last_scan_at)], ['Graph node', asset.graph_node_id ? link(`#/graph/nodes/${asset.graph_node_id}`, asset.graph_node_id.slice(0, 8)) : ''],
       ]) })}
       ${panel({ title: 'Authorization', sub: `Status: ${asset.authorization_status}`, body: auth ? kv([
-        ['Active', yesno(auth.active, 'active', 'inactive')], ['Active testing', yesno(auth.allow_active)], ['Intrusive testing', yesno(auth.allow_intrusive)],
+        ['Active', yesno(auth.active, 'active', 'inactive')], ['Active testing', yesno(auth.allow_active)], ['Intrusive testing', yesno(auth.allow_intrusive)], ['Exploit testing', yesno(Boolean(auth.allow_exploit))],
         ['Expires', `${esc(fmt(auth.expires_at))} (${esc(ago(auth.expires_at))})`], ['Authorized by', mono(auth.authorized_by)], ['Scope document', esc(auth.scope_document_ref)],
         ['Attestation', `<span class="wrap-text">${esc(auth.attestation)}</span>`],
       ]) : empty('No current authorization', canAuth ? 'Record an attestation to enable testing of this asset.' : 'An operator must record an attestation before testing.') })}</div>
@@ -180,7 +181,7 @@ async function renderDetail({ root, params, navigate }) {
       rows: findings.slice(0, 10), rowAttr: (f) => `data-act="finding" data-id="${esc(f.id)}"`, empty: 'No findings for this asset' }) })}
       ${panel({ title: 'Graph neighbours', sub: graph ? (graph.available ? `${nodes.length} nodes · ${edges.length} edges` : 'graph package not loaded') : 'not visible to your role', actions: asset.graph_node_id ? link(`#/graph/nodes/${asset.graph_node_id}`, 'Explore →', 'ghost-link') : '', body: edges.length ? `<div class="stat-list">${edges.slice(0, 12).map((e) => `<div class="stat-item"><span>${esc(byId.get(e.src_id)?.label || byId.get(e.src_id)?.key || e.src_id.slice(0, 8))} <span class="subtle">→ ${esc(e.rel)} →</span> ${esc(byId.get(e.dst_id)?.label || byId.get(e.dst_id)?.key || e.dst_id.slice(0, 8))}</span><strong>${esc(byId.get(e.dst_id)?.kind || '')}</strong></div>`).join('')}</div>` : empty('No neighbours yet', 'Collectors and test runs populate the evidence graph.') })}</div>
       ${panel({ title: 'Authorization history', flush: true, body: table({ columns: [
-        { label: 'Created', render: (a) => esc(fmt(a.created_at)) }, { label: 'Active', render: (a) => yesno(a.active, 'active', a.revoked_at ? 'revoked' : 'expired') }, { label: 'Tiers', render: (a) => `${a.allow_intrusive ? 'intrusive' : a.allow_active ? 'active' : 'passive'}` },
+        { label: 'Created', render: (a) => esc(fmt(a.created_at)) }, { label: 'Active', render: (a) => yesno(a.active, 'active', a.revoked_at ? 'revoked' : 'expired') }, { label: 'Tiers', render: (a) => `${a.allow_exploit ? 'exploit' : a.allow_intrusive ? 'intrusive' : a.allow_active ? 'active' : 'passive'}` },
         { label: 'Expires', render: (a) => esc(fmt(a.expires_at)) }, { label: 'By', render: (a) => mono(a.authorized_by) }, { label: 'Scope doc', render: (a) => esc(a.scope_document_ref || '—') }], rows: auths, empty: 'No authorizations recorded' }) })}
       <div style="margin-top:16px">${panel({ title: 'Recent test runs', flush: true, body: table({ columns: [
         { label: 'Adapter', render: (r) => esc(r.adapter) }, { label: 'Tier', render: (r) => esc(r.tier) }, { label: 'Status', render: (r) => tag(r.status) }, { label: 'Results', render: (r) => esc(r.result_count) }, { label: 'Started', render: (r) => time(r.created_at) }, { label: 'Error', cls: 'wrap', render: (r) => esc(r.error || '') }],

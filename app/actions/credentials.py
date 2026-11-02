@@ -63,7 +63,8 @@ def literal_refs_allowed(settings: Settings) -> bool:
 
 
 def _from_env(platform: str, key: str, settings: Settings) -> str:
-    raw = os.getenv(env_name(platform, key), '')
+    env_key = env_name(platform, key)
+    raw = os.getenv(env_key, '') or str(getattr(settings, env_key.lower(), '') or '')
     if not raw:
         return ''
     if raw.startswith('literal:'):
@@ -75,7 +76,16 @@ def _from_env(platform: str, key: str, settings: Settings) -> str:
 
 def _from_tenant(platform: str, key: str, settings: Settings, tenant_settings: dict | None) -> str:
     overrides = (tenant_settings or {}).get('action_credentials') or {}
-    ref = (overrides.get(platform) or {}).get(key, '') if isinstance(overrides, dict) else ''
+    if not isinstance(overrides, dict):
+        return ''
+    plat_val = overrides.get(platform)
+    ref = ''
+    if isinstance(plat_val, dict):
+        ref = plat_val.get(key, '')
+    elif isinstance(plat_val, str) and key in ('token', 'role_arn', 'kubeconfig', 'access_token'):
+        ref = plat_val
+    if not ref:
+        ref = overrides.get(f'{platform}_{key}', '')
     if not isinstance(ref, str) or ref.startswith('literal:') or not ref.startswith(_REF_PREFIXES):
         return ''  # refs only; a literal secret in tenant settings is ignored on purpose (never resolved, whatever the setting)
     return resolve_secret(ref, settings)

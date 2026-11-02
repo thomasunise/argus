@@ -70,7 +70,7 @@ def engine_exit_code(text: str) -> int | None:
     return None
 
 
-def _ips(hosts: list[str], port: int) -> list[tuple[str, int]]:
+def _ips(hosts: list[str], port: int, *, max_per_host: int = 3) -> list[tuple[str, int]]:
     pairs: list[tuple[str, int]] = []
     for host in hosts:
         host = (host or '').strip()
@@ -80,6 +80,7 @@ def _ips(hosts: list[str], port: int) -> list[tuple[str, int]]:
             infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         except socket.gaierror as exc:
             raise ScopeDenied(f'could not resolve {host!r}: {exc}') from exc
+        added = 0
         for info in infos:
             ip = info[4][0]
             if ':' in ip:  # the engine profile is IPv4-only for now
@@ -87,6 +88,9 @@ def _ips(hosts: list[str], port: int) -> list[tuple[str, int]]:
             pair = (ip, port)
             if pair not in pairs:
                 pairs.append(pair)
+                added += 1
+                if added >= max_per_host:
+                    break
     return pairs
 
 
@@ -115,7 +119,7 @@ class StrixAdapter(TestAdapter):
         host = target.split('://', 1)[-1].split('/', 1)[0].split(':')[0]
         port = 8443 if target.endswith(':8443') else 443
         providers = [h.strip() for h in str(getattr(settings, 'strix_egress_hosts', DEFAULT_PROVIDER_HOSTS)).split(',') if h.strip()]
-        egress = _ips([host], port) + _ips(providers, 443)
+        egress = (_ips([host], port, max_per_host=2) + _ips(providers, 443, max_per_host=2))[:16]
         if not egress:
             raise ScopeDenied('the engine has no permitted egress destination')
 

@@ -59,6 +59,13 @@ spec:
               value: {{ .Values.api.forwardedAllowIps | quote }}
             - name: WORKERS_INPROCESS
               value: {{ if .Values.worker.enabled }}"false"{{ else }}"true"{{ end }}
+            {{- if .Values.sandbox.enabled }}
+            - name: EXPLOIT_EXECUTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-sandbox-executor" (include "argus.fullname" .)) .Values.sandbox.executor.existingTokenSecret }}
+                  key: {{ .Values.sandbox.executor.existingTokenSecretKey }}
+            {{- end }}
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

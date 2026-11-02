@@ -9,7 +9,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
-from ..core.errors import NotFound
+from ..core.db import session_scope
+from ..core.errors import NotFound, RateLimited
 from ..models import utcnow
 from ..models.oob import OobToken
 
@@ -19,16 +20,21 @@ _PIXEL = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x
 
 
 def _record(app, token: str, request: Request) -> OobToken:
-    with app.state.db_factory() as db:
+    limiter = getattr(app.state, 'rate_limiter', None)
+    client_ip = (request.client.host if request.client else 'unknown')[:64]
+    if limiter is not None:
+        limiter.check(f'oob:{client_ip}', 120, 60.0)
+    with session_scope(app.state.db_factory) as db:
         row = db.execute(select(OobToken).where(OobToken.token == token)).scalar_one_or_none()
         if row is None:
             raise NotFound('unknown out-of-band token')
         row.hit_count += 1
         if row.first_hit_at is None:
             row.first_hit_at = utcnow()
-            row.source_ip = (request.client.host if request.client else '')[:64]
+            row.source_ip = client_ip
             row.user_agent = (request.headers.get('user-agent') or '')[:256]
-        db.commit()
+        db.flush()
+        db.expunge(row)
         return row
 
 

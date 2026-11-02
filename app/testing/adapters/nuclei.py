@@ -73,6 +73,9 @@ class NucleiAdapter(TestAdapter):
     async def run(self, plan_params: dict, asset, scope, ctx: HarnessContext) -> list[NormalizedFinding]:
         settings = ctx.settings
         target = ctx.target or asset.target
+        endpoint = str(plan_params.get('endpoint') or '').strip()
+        if endpoint and endpoint.startswith('/') and '://' not in endpoint and '..' not in endpoint:
+            target = target.rstrip('/') + endpoint
         rps = max(1, int(scope.max_rps if scope else settings.test_rate_limit_rps))
         argv = [settings.nuclei_bin, '-u', target, '-jsonl', '-severity', 'low,medium,high,critical',
                 '-rate-limit', str(rps), '-timeout', '10', '-no-interactsh', '-silent']

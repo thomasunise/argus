@@ -29,6 +29,9 @@ class OobProbeAdapter(TestAdapter):
     target_kinds = ('web',)
     description = 'Blind SSRF/XXE probe using single-use callback tokens recorded by /api/v1/oob.'
 
+    def available(self, settings) -> bool:
+        return bool(getattr(settings, 'oob_enabled', False))
+
     async def run(self, plan_params: dict, asset, scope, ctx: HarnessContext) -> list[NormalizedFinding]:
         settings = ctx.settings
         if not getattr(settings, 'oob_enabled', False):
@@ -86,7 +89,9 @@ class OobProbeAdapter(TestAdapter):
                 remediation='Allowlist outbound destinations; do not fetch user-supplied URLs from the server.',
                 severity='high',
                 evidence={'endpoint': endpoint, 'parameter': param, 'source_ip': source_ip,
-                          'user_agent': user_agent[:120], 'hits': count, 'callback': f'/api/v1/oob/{token}'}))
+                          'user_agent': user_agent[:120], 'hits': count, 'callback': f'/api/v1/oob/{token}',
+                          'verified': True},
+                verified=True))
         return findings
 
 

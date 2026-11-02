@@ -92,7 +92,8 @@ async function renderExplorer({ root, params, query, navigate }) {
   const bodyNode = $('[data-tab-body]', root);
   let list;
   if (tab === 'nodes') {
-    bodyNode.innerHTML = `<div class="toolbar"><div class="tool-filters" data-filters><input class="field-input" name="search" placeholder="Search label or key" value="${esc(query.search || '')}" data-enter="apply"><input class="field-input" name="kind" placeholder="Kind (asset, identity, …)" value="${esc(query.kind || '')}" style="min-width:160px" data-enter="apply"><label class="check"><input type="checkbox" name="include_stale" ${query.include_stale ? 'checked' : ''} data-change="apply"> <span>Include stale</span></label></div></div><div class="panel" data-list></div>`;
+    const includeStaleChecked = query.include_stale === '1' || query.include_stale === 'true' || query.include_stale === true;
+    bodyNode.innerHTML = `<div class="toolbar"><div class="tool-filters" data-filters><input class="field-input" name="search" placeholder="Search label or key" value="${esc(query.search || '')}" data-enter="apply"><input class="field-input" name="kind" placeholder="Kind (asset, identity, …)" value="${esc(query.kind || '')}" style="min-width:160px" data-enter="apply"><label class="check"><input type="checkbox" name="include_stale" ${includeStaleChecked ? 'checked' : ''} data-change="apply"> <span>Include stale</span></label></div></div><div class="panel" data-list></div>`;
     const filters = () => { const f = readFilters($('[data-filters]', bodyNode)); return { ...f, include_stale: Boolean(f.include_stale) }; };
     list = section($('[data-list]', bodyNode), () => get('/graph/nodes', { ...filters(), limit: 50, cursor: state.cursor }), (data) => {
       state.next_cursor = data.next_cursor;

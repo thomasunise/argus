@@ -1,4 +1,4 @@
-﻿name: Release
+name: Release
 
 # On a version tag: build the image, push to GHCR with the tag and the digest, attach an
 # SPDX SBOM (syft), sign image and SBOM with cosign (keyless, GitHub OIDC), and publish a
@@ -80,7 +80,7 @@ jobs:
           cache-from: type=gha
 
 
-      # ---- sandbox images (exploit authoring)
+      # ---- sandbox images (exploit authoring, discovery, offensive tools)
       # The runtime image runs one generated PoC inside a gVisor Job; the executor image is the
       # only workload with a namespaced cluster credential. Both are signed like the main image.
       - name: Build sandbox runtime image
@@ -105,6 +105,60 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ env.IMAGE }}-sandbox-executor:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Build sandbox Strix engine image
+        id: build_strix
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/strix.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}-sandbox-strix:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Build sandbox recon engine image
+        id: build_recon
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/recon.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}-sandbox-recon:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Build sandbox browser engine image
+        id: build_browser
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/browser.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}-sandbox-browser:${{ github.ref_name }}
+          provenance: mode=max
+          sbom: false
+          cache-from: type=gha
+
+      - name: Build offensive tools worker image
+        id: build_offensive_tools
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sandbox/offensive-tools.Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}-offensive-tools
+          build-args: |
+            BASE_IMAGE=${{ env.IMAGE }}:${{ github.ref_name }}
           provenance: mode=max
           sbom: false
           cache-from: type=gha
@@ -137,6 +191,10 @@ jobs:
           cosign sign --recursive "${IMAGE}@${{ steps.build_extras.outputs.digest }}"
           cosign sign --recursive "${IMAGE}-sandbox@${{ steps.build_sandbox.outputs.digest }}"
           cosign sign --recursive "${IMAGE}-sandbox-executor@${{ steps.build_executor.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}-sandbox-strix@${{ steps.build_strix.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}-sandbox-recon@${{ steps.build_recon.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}-sandbox-browser@${{ steps.build_browser.outputs.digest }}"
+          cosign sign --recursive "${IMAGE}@${{ steps.build_offensive_tools.outputs.digest }}"
 
       - name: Attach and sign SBOM attestation
         env:

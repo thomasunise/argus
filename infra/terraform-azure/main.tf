@@ -11,6 +11,7 @@ locals {
     APP_ENV                  = var.environment
     BASE_URL                 = "https://${var.domain_name}"
     COOKIE_SECURE            = "true"
+    TOTP_REQUIRED            = "true"
     DB_AUTO_CREATE           = "false"
     LOG_JSON                 = "true"
     METRICS_ENABLED          = "true"

@@ -150,10 +150,29 @@ def _has_run_history(db: Session, tenant_id: str, asset_id: str) -> bool:
     if db.scalar(select(func.count()).select_from(ScanRun).where(ScanRun.tenant_id == tenant_id, ScanRun.asset_id == asset_id)):
         return True
     try:
-        from ..models.testing import TestRun
+        from ..models.testing import PentestHypothesis, TestRun
+
+        if db.scalar(select(func.count()).select_from(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)):
+            return True
+        if db.scalar(select(func.count()).select_from(PentestHypothesis).where(PentestHypothesis.tenant_id == tenant_id, PentestHypothesis.asset_id == asset_id)):
+            return True
     except ImportError:
-        return False
-    return bool(db.scalar(select(func.count()).select_from(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)))
+        pass
+    try:
+        from ..models.discovery import DiscoveryRun
+
+        if db.scalar(select(func.count()).select_from(DiscoveryRun).where(DiscoveryRun.tenant_id == tenant_id, DiscoveryRun.asset_id == asset_id)):
+            return True
+    except ImportError:
+        pass
+    try:
+        from ..models.exploit import PocRequest
+
+        if db.scalar(select(func.count()).select_from(PocRequest).where(PocRequest.tenant_id == tenant_id, PocRequest.asset_id == asset_id)):
+            return True
+    except ImportError:
+        pass
+    return False
 
 
 # ---------------------------------------------------------------- collection
@@ -281,19 +300,38 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), principal: Princi
     asset = _get_asset(db, principal, asset_id)
     if _has_run_history(db, principal.tenant_id, asset.id):
         raise Conflict('This asset has test or scan history; it is preserved for audit integrity')
-    # Keep evidence; detach findings and events before removing the inventory row.
+    # Keep evidence; detach findings, events, and optional foreign references before removing the inventory row.
     detached = 0
-    for model in (Finding, SecurityEvent):
+    detach_models: list[Any] = [Finding, SecurityEvent]
+    for mod_path, cls_name in (
+        ('..models.simulation', 'Canary'),
+        ('..models.actions', 'ActionRequest'),
+        ('..models.ai', 'AiService'),
+    ):
+        try:
+            mod = __import__(mod_path, fromlist=[cls_name], globals=globals(), level=1)
+            detach_models.append(getattr(mod, cls_name))
+        except (ImportError, AttributeError):
+            pass
+    for model in detach_models:
         for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
             row.asset_id = None
             detached += 1
-    for auth in db.execute(select(AssetAuthorization).where(AssetAuthorization.tenant_id == principal.tenant_id,
-                                                            AssetAuthorization.asset_id == asset.id)).scalars():
-        db.delete(auth)
-    from ..models import AssetCredential
-    for credential in db.execute(select(AssetCredential).where(AssetCredential.tenant_id == principal.tenant_id,
-                                                              AssetCredential.asset_id == asset.id)).scalars():
-        db.delete(credential)
+    delete_models: list[Any] = [AssetAuthorization]
+    for mod_path, cls_name in (
+        ('..models.testing', 'AssetCredential'),
+        ('..models.testing', 'OobToken'),
+        ('..models.discovery', 'Discovery'),
+        ('..models.discovery', 'RequestCapture'),
+    ):
+        try:
+            mod = __import__(mod_path, fromlist=[cls_name], globals=globals(), level=1)
+            delete_models.append(getattr(mod, cls_name))
+        except (ImportError, AttributeError):
+            pass
+    for model in delete_models:
+        for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
+            db.delete(row)
     record_audit(db, principal, 'assets.deleted', asset.id, {'name': asset.name, 'kind': asset.kind, 'target': asset.target, 'detached': detached})
     db.delete(asset)
     return {'ok': True, 'detached': detached}
@@ -418,7 +456,7 @@ def list_credentials(asset_id: str, db: Session = Depends(get_db),
     rows = db.execute(select(AssetCredential).where(AssetCredential.tenant_id == principal.tenant_id,
                                                     AssetCredential.asset_id == asset.id)
                       .order_by(AssetCredential.created_at.desc())).scalars().all()
-    return {'items': [credential_to_dict(row) for row in rows]}
+    return {'items': [credential_to_dict(row) for r in rows for row in [r]]}
 
 
 @router.delete('/{asset_id}/credentials/{credential_id}')

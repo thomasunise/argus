@@ -110,10 +110,12 @@ async def run_sync(db_factory, settings: Settings, tenant_id: str, integration_i
             state = {}
         lookback = int(config.get('lookback_minutes') or DEFAULT_LOOKBACK_MINUTES)
         last = state.get('last_sync_at')
-        since = datetime.fromisoformat(last) if isinstance(last, str) and last else utcnow() - timedelta(minutes=lookback)
+        if isinstance(last, str) and last:
+            since = datetime.fromisoformat(last)
+        else:
+            since = max(utcnow() - timedelta(minutes=lookback), utcnow() - timedelta(days=7))
         if since.tzinfo is None:
             since = since.replace(tzinfo=timezone.utc)
-        since = max(since, utcnow() - timedelta(days=7))
         url, index, ca_bundle, size = str(config.get('indexer_url') or ''), str(config.get('index_pattern') or DEFAULT_INDEX), str(config.get('ca_bundle') or ''), \
             int(config.get('page_size') or DEFAULT_PAGE_SIZE)
     started = utcnow()

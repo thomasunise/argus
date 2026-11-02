@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..actions.broker import same_identity
 from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
 from ..core.errors import Conflict, Forbidden, NotFound
@@ -75,7 +76,7 @@ def decide_approval(approval_id: str, body: DecisionBody, db: Session = Depends(
     if approval.status != 'pending':
         raise Conflict('Decision already recorded')
     decider = principal.user_id or principal.actor
-    if approval.requested_by and approval.requested_by == decider:
+    if approval.requested_by and same_identity(db, decider, approval.requested_by):
         raise Forbidden('The requester cannot decide their own approval', code='self_approval')
     approval.status, approval.decided_by, approval.decided_at = body.decision, decider, utcnow()
     record_audit(db, principal, 'approvals.decided', approval.id, {'decision': body.decision, 'finding_id': approval.finding_id,

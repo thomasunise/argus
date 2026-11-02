@@ -309,7 +309,8 @@ async def investigate_finding(finding_id: str, request: Request, body: Investiga
     record_audit(db, principal, 'findings.investigate_requested', finding.id, {'agent_run_id': run.id, 'spec': spec.name})
     db.commit()  # the worker may claim the job before this request finishes; the row must be visible first
     payload = {'run_id': run.id, 'spec': spec.name, 'task': task, 'inputs': inputs, 'finding_id': finding.id, 'role': principal.role.value,
-               'user_id': principal.user_id, 'email': principal.email, 'system': principal.auth == 'system'}
+               'user_id': principal.user_id, 'email': principal.email, 'auth': principal.auth, 'api_key_id': principal.api_key_id,
+               'scopes': sorted(principal.scopes), 'system': principal.auth == 'system'}
     try:
         job = await request.app.state.queue.enqueue('agents.run', payload, tenant_id=principal.tenant_id,
                                                     lease_seconds=max(600, (spec.max_seconds or 300) + 120))

@@ -34,7 +34,16 @@ EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 SETTING_KEY_RE = re.compile(r'^[a-z][a-z0-9_]{0,63}$')
 SECRET_REF_PREFIXES = ('env:', 'file:', 'secrets:')
 MIN_PASSWORD = 14
-SETTINGS_WHITELIST = {'ai_provider', 'actions_enabled', 'default_min_severity_for_notifications', 'retention_days', 'action_credentials'}
+SETTINGS_WHITELIST = {
+    'ai_provider',
+    'actions_enabled',
+    'default_min_severity_for_notifications',
+    'retention_days',
+    'action_credentials',
+    'autopentest',
+    'discovery',
+    'exploit',
+}
 OWNER_ONLY_SETTINGS = {'actions_enabled'}
 RETENTION_RANGE = (7, 3650)
 
@@ -320,6 +329,9 @@ def _settings_view(tenant: Tenant, settings: Settings) -> dict[str, Any]:
     return {'ai_provider': stored.get('ai_provider'), 'effective_ai_provider': stored.get('ai_provider') or settings.ai_provider,
             'actions_enabled': bool(tenant.actions_enabled), 'default_min_severity_for_notifications': stored.get('default_min_severity_for_notifications', 'high'),
             'retention_days': stored.get('retention_days'), 'action_credentials': stored.get('action_credentials', {}),
+            'autopentest': stored.get('autopentest', {'enabled': False}),
+            'discovery': stored.get('discovery', {'enabled': False}),
+            'exploit': stored.get('exploit', {'enabled': False}),
             'available_providers': sorted(AI_PROVIDERS), 'kill_switch': settings.actions_kill_switch}
 
 
@@ -347,15 +359,47 @@ def _validate_setting(key: str, value: Any) -> Any:
     if key == 'action_credentials':
         if not isinstance(value, dict) or len(value) > 50:
             raise BadRequest('action_credentials must be an object of at most 50 entries', code='invalid_setting')
-        cleaned: dict[str, str] = {}
+        cleaned: dict[str, Any] = {}
         for name, ref in value.items():
             if not isinstance(name, str) or not SETTING_KEY_RE.match(name):
                 raise BadRequest(f'action_credentials key {name!r} is not a valid identifier', code='invalid_setting')
+            if isinstance(ref, dict):
+                sub_cleaned: dict[str, str] = {}
+                for sub_key, sub_ref in ref.items():
+                    if not isinstance(sub_key, str) or not SETTING_KEY_RE.match(sub_key):
+                        raise BadRequest(f'action_credentials[{name}][{sub_key!r}] is not a valid identifier', code='invalid_setting')
+                    if not isinstance(sub_ref, str) or not sub_ref.startswith(SECRET_REF_PREFIXES):
+                        raise BadRequest(f'action_credentials[{name}][{sub_key}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
+                                         'inline secrets are not stored', code='inline_secret')
+                    sub_cleaned[sub_key] = sub_ref
+                cleaned[name] = sub_cleaned
+                continue
             if not isinstance(ref, str) or not ref.startswith(SECRET_REF_PREFIXES):
                 raise BadRequest(f'action_credentials[{name}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
                                  'inline secrets are not stored', code='inline_secret')
             cleaned[name] = ref
         return cleaned
+    if key in ('autopentest', 'discovery', 'exploit'):
+        if isinstance(value, bool):
+            return {'enabled': value}
+        if not isinstance(value, dict):
+            raise BadRequest(f'{key} must be an object or boolean', code='invalid_setting')
+        enabled = value.get('enabled', False)
+        if not isinstance(enabled, bool):
+            raise BadRequest(f'{key}.enabled must be a boolean', code='invalid_setting')
+        out: dict[str, Any] = {'enabled': enabled}
+        if key == 'autopentest':
+            if 'max_tier' in value and value['max_tier'] is not None:
+                if value['max_tier'] not in ('passive', 'active', 'intrusive', 'exploit'):
+                    raise BadRequest('autopentest.max_tier is invalid', code='invalid_setting')
+                out['max_tier'] = value['max_tier']
+            for int_key, hi in (('max_rounds', 5), ('max_test_runs', 500)):
+                if int_key in value and value[int_key] is not None:
+                    v = value[int_key]
+                    if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= hi):
+                        raise BadRequest(f'autopentest.{int_key} must be an integer between 1 and {hi}', code='invalid_setting')
+                    out[int_key] = v
+        return out
     raise BadRequest(f'Unknown setting {key!r}', code='unknown_setting')
 
 

@@ -91,6 +91,7 @@ def seed_case(db, tenant_id: str, seed: dict, namespace: str) -> dict[str, str]:
         if auth and not db.execute(select(AssetAuthorization).where(AssetAuthorization.asset_id == asset.id, AssetAuthorization.revoked_at.is_(None))).first():
             db.add(AssetAuthorization(tenant_id=tenant_id, asset_id=asset.id, authorized_by='eval', attestation='eval seed authorization',
                                       allow_active=bool(auth.get('allow_active')), allow_intrusive=bool(auth.get('allow_intrusive')),
+                                      allow_exploit=bool(auth.get('allow_exploit')),
                                       expires_at=now + timedelta(days=30)))
             asset.approved = True
     for spec in seed.get('findings', []):

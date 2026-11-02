@@ -31,7 +31,7 @@ Procedure:
 5. Recommendations are specific and ordered; each should map to a headline risk or a gap."""
 
 TOOLS = ['list_findings', 'event_stats', 'list_assets', 'attack_paths', 'graph_query', 'list_detections', 'detection_rules', 'list_test_runs',
-         'available_test_adapters', 'kev_check', 'note', 'recall']
+         'available_test_adapters', 'kev_check', 'ai_inventory', 'note', 'recall']
 
 
 def _days(value, default: int = 30) -> int:

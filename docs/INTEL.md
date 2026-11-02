@@ -44,8 +44,8 @@ reads the cached catalog first.
 
 ## API
 
-See "Threat intel" in `docs/API.md`: `GET /intel/status`, `POST /intel/refresh`, `POST /intel/enrich`
-(backfill), `GET /intel/cve/{id}`.
+See "Threat intel" in `docs/API.md`: `GET /api/v1/intel/status`, `POST /api/v1/intel/refresh`, `POST /api/v1/intel/enrich`
+(backfill), `GET /api/v1/intel/cve/{id}`.
 
 ## Settings
 

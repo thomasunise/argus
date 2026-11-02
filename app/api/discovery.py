@@ -55,9 +55,11 @@ async def start_run(body: RunBody, request: Request, db: Session = Depends(get_d
     db.add(run)
     db.flush()
     record_audit(db, principal, 'discovery.run.queued', run.id, {'asset_id': asset.id, 'scope_id': scope.id})
+    db.commit()
     job = await request.app.state.queue.enqueue('discovery.run', {'run_id': run.id}, tenant_id=principal.tenant_id,
                                                 lease_seconds=max(600, request.app.state.settings.discovery_max_wall_seconds + 120))
     run.job_id = job.id
+    db.commit()
     return service.run_to_dict(run)
 
 

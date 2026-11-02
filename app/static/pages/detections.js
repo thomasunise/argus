@@ -1,10 +1,10 @@
 import { get, post, patch, del, download } from '../api.js';
 import { store } from '../store.js';
 import { section, readFilters, setQuery, settle, trackJob } from '../common.js';
-import { $, bind, closeDrawer, confirm, copy, drawer, esc, fields, formActions, heading, json, kv, metrics, modal, newPager, onSubmit, pageNext, pagePrev, pageReset, pager, readFields, selectHtml, sev, table, tabs, tag, time, toDate, toast, mono, nice, link, fmt, num, setDrawerTitle, SEVERITY_ORDER } from '../ui.js';
+import { $, bind, closeDrawer, confirm, copy, drawer, empty, esc, fields, formActions, heading, json, kv, metrics, modal, newPager, onSubmit, pageNext, pagePrev, pageReset, pager, panel, readFields, selectHtml, sev, table, tabs, tag, time, toDate, toast, mono, nice, link, fmt, num, setDrawerTitle, SEVERITY_ORDER } from '../ui.js';
 
 const STATUSES = ['open', 'investigating', 'resolved', 'false_positive'];
-const CANARY_KINDS = ['token', 'url', 'credential', 'file', 'dns', 'aws_key', 'api_key', 'document'];
+const CANARY_KINDS = ['token', 'url', 'credential', 'file', 'dns', 'aws_key', 'api_key', 'document', 'prompt_injection', 'mcp_server', 'llm_api_key', 'agent_rules'];
 
 export async function openDetection(id, onChange = () => {}) {
   const body = drawer('Detection', '<div class="loading">Loading…</div>');
@@ -91,12 +91,12 @@ async function openCanary(c, reload) {
 
 export default {
   async render({ root, params, query, navigate }) {
-    const tab = params[0] === 'rules' ? 'rules' : params[0] === 'canaries' ? 'canaries' : 'detections';
+    const tab = ['rules', 'canaries', 'simulations'].includes(params[0]) ? params[0] : 'detections';
     const state = newPager();
-    root.innerHTML = `${heading('Detection engine', 'Detections', 'Rule matches over normalized events, per-tenant rule tuning, and canary tokens.',
-      `${store.can('detections:run') && tab !== 'canaries' ? '<button class="btn" data-act="run">Run rules now</button>' : ''}${store.can('canaries:write') && tab === 'canaries' ? '<button class="btn primary" data-act="canary-create">Create canary</button>' : ''}`)}
+    root.innerHTML = `${heading('Detection engine', 'Detections', 'Rule matches over normalized events, per-tenant rule tuning, canary tokens, and adversary simulations.',
+      `${store.can('detections:run') && tab === 'detections' ? '<button class="btn" data-act="run">Run rules now</button>' : ''}${store.can('canaries:write') && tab === 'canaries' ? '<button class="btn primary" data-act="canary-create">Create canary</button>' : ''}${store.can('detections:run') && tab === 'simulations' ? '<button class="btn primary" data-act="sim-run-all">Run all scenarios</button>' : ''}`)}
       <div data-stats></div>
-      ${tabs([{ id: 'detections', label: 'Detections' }, { id: 'rules', label: 'Rules' }, { id: 'canaries', label: 'Canaries' }], tab)}
+      ${tabs([{ id: 'detections', label: 'Detections' }, { id: 'rules', label: 'Rules' }, { id: 'canaries', label: 'Canaries' }, { id: 'simulations', label: 'Simulations' }], tab)}
       <div data-tab-body></div>`;
     section($('[data-stats]', root), () => get('/detections/stats'), (s) => metrics([
       { label: 'Open detections', value: Object.values(s.open_by_severity || {}).reduce((a, b) => a + b, 0), caption: `${s.open_by_severity?.critical || 0} critical · ${s.open_by_severity?.high || 0} high` },
@@ -123,7 +123,7 @@ export default {
         { label: 'State', render: (r) => tag(r.enabled ? 'enabled' : 'disabled') }, { label: 'Overrides', render: (r) => (Object.keys(r.overrides || {}).length ? `<span class="pill">${Object.keys(r.overrides).length} params</span>` : '<span class="subtle">defaults</span>') },
         { label: '', render: (r) => `<div class="inline-actions"><button class="btn small" data-act="rule" data-id="${esc(r.id)}">${store.can('detections:write') ? 'Edit' : 'View'}</button>${store.can('detections:write') ? `<button class="btn small" data-act="rule-toggle" data-id="${esc(r.id)}" data-enabled="${r.enabled ? '1' : ''}">${r.enabled ? 'Disable' : 'Enable'}</button>` : ''}${store.can('detections:run') ? `<button class="btn small" data-act="rule-run" data-id="${esc(r.id)}">Run</button>` : ''}</div>` }],
       rows: data.items, empty: 'No rules registered' }));
-    } else {
+    } else if (tab === 'canaries') {
       bodyNode.innerHTML = `<div class="toolbar"><div class="tool-filters" data-filters>${selectHtml('kind', CANARY_KINDS, query.kind, { allLabel: 'All kinds', attrs: 'data-change="apply"' })}<label class="check"><input type="checkbox" name="include_revoked" ${query.include_revoked ? 'checked' : ''} data-change="apply"> <span>Include revoked</span></label></div></div><div class="panel" data-list></div>`;
       list = section($('[data-list]', bodyNode), () => get('/canaries', { ...readFilters($('[data-filters]', bodyNode)), limit: 50, cursor: state.cursor }), (data) => {
         state.next_cursor = data.next_cursor;
@@ -134,6 +134,24 @@ export default {
         rows: data.items, empty: 'No canaries', emptySub: 'Create a token, URL, credential or document lure and place it where only an intruder would touch it.' }) + pager(state, data.items.length);
       });
       bind(bodyNode, {}, { apply: () => { pageReset(state); setQuery(navigate, 'detections', ['canaries'], readFilters($('[data-filters]', bodyNode))); list.reload(); } });
+    } else {
+      bodyNode.innerHTML = `<div data-scenarios></div><div class="panel" data-list style="margin-top:16px"></div>`;
+      section($('[data-scenarios]', bodyNode), () => get('/simulations/scenarios'), (data) => `<div class="card-grid">${(data.items || []).map((s) => `<div class="card"><h3>${esc(s.title || s.id)}</h3><p>${esc(s.description || '')}</p><div class="chip-row">${(s.expected_rules || []).map((r) => `<span class="pill">${esc(r)}</span>`).join('')}${(s.mitre || []).map((m) => `<span class="pill">${esc(m)}</span>`).join('')}</div>${store.can('detections:run') ? `<div class="inline-actions"><button class="btn small primary" data-act="sim-run" data-id="${esc(s.id)}">Run scenario</button></div>` : ''}</div>`).join('') || empty('No simulation scenarios')}</div>`);
+      list = section($('[data-list]', bodyNode), () => get('/simulations', { limit: 50 }), (data) => panel({
+        title: 'Simulation runs',
+        flush: true,
+        body: table({
+          columns: [
+            { label: 'Run', render: (r) => `<span class="cell-main">${esc((r.scenario_ids || []).join(', ') || 'all scenarios')}</span>` },
+            { label: 'Status', render: (r) => tag(r.status) },
+            { label: 'Passed / Total', render: (r) => `${num(r.scenarios_passed)} / ${num(r.scenarios_total)}` },
+            { label: 'Events', render: (r) => esc(num(r.events_injected)) },
+            { label: 'Started', render: (r) => time(r.started_at || r.created_at) },
+          ],
+          rows: data.items || [],
+          empty: 'No simulation runs yet',
+        }),
+      }));
     }
     const canaryById = async (id) => { const c = await get(`/canaries`, { include_revoked: true, limit: 500 }); return c.items.find((x) => x.id === id); };
     bind(root, {
@@ -145,12 +163,14 @@ export default {
       'canary-create': () => canaryCreate(() => list.reload(true)),
       canary: async (el) => { const c = await canaryById(el.dataset.id); if (c) openCanary(c, () => list.reload(true)); },
       'canary-copy': async (el) => { const c = await canaryById(el.dataset.id); if (c) copy(c.metadata?.url || `${location.origin}/api/v1/canaries/${c.token}/hit`, 'Trigger URL copied'); },
+      'sim-run': async (el) => { const r = await post('/simulations', { scenario_ids: [el.dataset.id], cleanup: true }); trackJob(r.job_id, `Simulation ${el.dataset.id}`).then(() => list?.reload(true)); },
+      'sim-run-all': async () => { const r = await post('/simulations', { cleanup: true }); trackJob(r.job_id, 'Simulation suite').then(() => list?.reload(true)); },
       'page-next': () => { pageNext(state); list.reload(); },
       'page-prev': () => { pagePrev(state); list.reload(); },
     });
     root.querySelector('.tabs').addEventListener('click', (event) => { const t = event.target.closest('[data-tab]'); if (t) navigate(t.dataset.tab === 'detections' ? 'detections' : `detections/${t.dataset.tab}`); });
     if (params[0] && tab === 'detections') openDetection(params[0], () => list.reload(true));
-    const onClosed = () => { if (/^#\/detections\/[^/]+$/.test(location.hash) && !['rules', 'canaries'].includes(location.hash.split('/')[2])) history.replaceState(null, '', '#/detections'); };
+    const onClosed = () => { if (/^#\/detections\/[^/]+$/.test(location.hash) && !['rules', 'canaries', 'simulations'].includes(location.hash.split('/')[2])) history.replaceState(null, '', '#/detections'); };
     document.addEventListener('drawer:closed', onClosed);
     return () => document.removeEventListener('drawer:closed', onClosed);
   },

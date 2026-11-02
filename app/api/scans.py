@@ -16,7 +16,7 @@ from .deps import Page, get_db, require
 
 router = APIRouter(prefix='/api/v1/scans', tags=['scans'])
 
-TIERS = ('passive', 'active', 'intrusive')
+TIERS = ('passive', 'active', 'intrusive', 'exploit')
 
 
 class ScanBody(BaseModel):

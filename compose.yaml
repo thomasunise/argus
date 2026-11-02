@@ -10,6 +10,8 @@
 # worker; ./targets is the only host directory and it is read-only.
 
 x-argus-env: &argus-env
+  HOME: /tmp
+  XDG_CACHE_HOME: /tmp/.cache
   DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus
   REDIS_URL: redis://redis:6379/0
   SCAN_ROOT: /app/targets

@@ -39,7 +39,7 @@ List what you could not verify under limitations."""
 
 TOOLS = ['get_finding', 'get_detection', 'get_finding_history', 'find_similar_findings', 'asset_context', 'get_asset', 'recent_events',
          'actor_timeline', 'event_stats', 'attack_paths', 'graph_neighbors', 'graph_query', 'exposure', 'list_detections', 'cve_lookup',
-         'kev_check', 'action_catalog', 'propose_action', 'note', 'recall']
+         'kev_check', 'ai_inventory', 'action_catalog', 'propose_action', 'note', 'recall']
 
 HYPOTHESES = {
     'vulnerability': [('An unpatched or outdated component on the asset exposed a known vulnerability.', 0.6),

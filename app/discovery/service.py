@@ -173,11 +173,13 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
         pages = max(1, min(10, max_endpoints))
         phases.append(engine.EngineJob(
             run_id=run_id, suffix='b', tenant_id=tenant_id, image=browser_image,
+            entrypoint=engine.BROWSER_ENTRYPOINT,
             argv=['--target', target, '--max-pages', str(pages)],
             env={'ARGUS_TARGET': target, 'ARGUS_MAX_PAGES': str(pages), 'ARGUS_RUN_ID': run_id},
             target_host=host, egress=[(ip, port)], limits=limits))
     phases.append(engine.EngineJob(
         run_id=run_id, suffix='r' if browser_image else '', tenant_id=tenant_id, image=str(settings.discovery_image),
+        entrypoint=engine.RECON_ENTRYPOINT,
         argv=['--target', target, '--max-endpoints', str(max_endpoints)],
         env={'ARGUS_TARGET': target, 'ARGUS_MAX_ENDPOINTS': str(max_endpoints), 'ARGUS_RUN_ID': run_id},
         target_host=host, egress=[(ip, port)], limits=limits))
@@ -236,7 +238,8 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
     for discovery_id, endpoint in new_facts:
         try:
             launched = await launcher(app, system_principal(tenant_id), asset_id=asset_id, scope_id=scope_id,
-                                      adapter_name='nuclei', triggered_by='discovery')
+                                      adapter_name='nuclei', triggered_by='discovery',
+                                      params={'endpoint': endpoint})
         except Exception as exc:  # noqa: BLE001 - a follow-up failure must not fail the pass
             log.warning('discovery follow-up for %s failed: %s', endpoint, exc)
             continue

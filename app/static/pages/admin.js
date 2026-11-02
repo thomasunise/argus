@@ -1,9 +1,9 @@
-import { get, post, patch, del } from '../api.js';
+import { get, post, patch, del, put } from '../api.js';
 import { store, ROLES } from '../store.js';
-import { section } from '../common.js';
+import { section, trackJob } from '../common.js';
 import { $, bind, closeDrawer, closeModal, confirm, copy, drawer, empty, esc, fields, formActions, heading, kv, metrics, modal, onSubmit, panel, readFields, table, tabs, tag, time, toast, fmt, num, yesno } from '../ui.js';
 
-const PERMS = ['assets:read', 'assets:write', 'assets:authorize', 'findings:read', 'findings:write', 'events:read', 'graph:read', 'detections:read', 'detections:write', 'detections:run', 'canaries:read', 'canaries:write', 'collectors:read', 'collectors:write', 'collectors:run', 'agents:read', 'agents:run', 'evals:read', 'evals:run', 'tests:read', 'tests:write', 'tests:run', 'tests:scopes', 'scans:read', 'scans:run', 'actions:read', 'actions:request', 'actions:approve', 'actions:execute', 'actions:rollback', 'integrations:read', 'integrations:write', 'audit:read', 'reports:read', 'investigations:read', 'approvals:read', 'approvals:write', 'ingest'];
+const PERMS = ['assets:read', 'assets:write', 'assets:authorize', 'findings:read', 'findings:write', 'events:read', 'graph:read', 'detections:read', 'detections:write', 'detections:run', 'canaries:read', 'canaries:write', 'collectors:read', 'collectors:write', 'collectors:run', 'agents:read', 'agents:run', 'evals:read', 'evals:run', 'tests:read', 'tests:write', 'tests:run', 'tests:scopes', 'scans:read', 'scans:run', 'actions:read', 'actions:request', 'actions:approve', 'actions:execute', 'actions:rollback', 'actions:kill_switch', 'actions:approve_critical', 'integrations:read', 'integrations:write', 'audit:read', 'reports:read', 'investigations:read', 'investigations:write', 'approvals:read', 'approvals:write', 'autoresponse:read', 'autoresponse:write', 'ai:read', 'ai:write', 'ai_gateway:use', 'exploit:read', 'exploit:run', 'exploit:approve', 'ingest'];
 const grantable = () => ROLES.slice(0, ROLES.indexOf(store.role) + 1);
 
 function keyOnce(key) {
@@ -97,16 +97,26 @@ async function settingsTab(node) {
       { name: 'default_min_severity_for_notifications', label: 'Minimum severity for notifications', type: 'select', options: ['critical', 'high', 'medium', 'low', 'informational'], value: s.default_min_severity_for_notifications },
       { name: 'retention_days', label: 'Retention (days, 7–3650, empty = default)', type: 'number', min: 7, max: 3650, value: s.retention_days ?? '' },
       ...(store.role === 'owner' ? [{ name: 'actions_enabled', label: 'Actions enabled', type: 'checkbox', text: 'Allow the action broker to execute approved actions for this tenant', value: s.actions_enabled }] : []),
+      { name: 'autopentest_enabled', label: 'Autonomous pentesting opt-in', type: 'checkbox', text: 'Allow autonomous pentest / autopilot runs for this tenant', value: Boolean(s.autopentest?.enabled) },
+      { name: 'discovery_enabled', label: 'Discovery opt-in', type: 'checkbox', text: 'Allow active discovery & reconnaissance runs for this tenant', value: Boolean(s.discovery?.enabled) },
+      { name: 'exploit_enabled', label: 'Exploit PoC authoring opt-in', type: 'checkbox', text: 'Allow human-approved PoC execution in the sandbox for this tenant', value: Boolean(s.exploit?.enabled) },
       { name: 'action_credentials', label: 'Action credentials (JSON of name → secret reference)', type: 'json', value: s.action_credentials || {}, hint: 'Values must be env:, file: or secrets: references; inline secrets are rejected.' },
     ];
     return `<div class="two-col"><form class="panel"><div class="panel-head"><div><h2>Tenant settings</h2><small>Whitelisted keys; every change is audited</small></div></div><div class="panel-body form-stack">${fields(defs)}${formActions('Save settings', null)}</div></form>
-      ${panel({ title: 'Effective state', body: kv([['Effective AI provider', esc(s.effective_ai_provider)], ['Actions enabled', yesno(s.actions_enabled)], ['Global kill switch', s.kill_switch ? '<span class="bad-text">engaged</span>' : 'off'], ['Credential names', Object.keys(s.action_credentials || {}).map((k) => `<span class="pill">${esc(k)}</span>`).join(' ') || '—']]) })}</div>`;
+      ${panel({ title: 'Effective state', body: kv([['Effective AI provider', esc(s.effective_ai_provider)], ['Actions enabled', yesno(s.actions_enabled)], ['Autopentest opt-in', yesno(Boolean(s.autopentest?.enabled))], ['Discovery opt-in', yesno(Boolean(s.discovery?.enabled))], ['Exploit opt-in', yesno(Boolean(s.exploit?.enabled))], ['Global kill switch', s.kill_switch ? '<span class="bad-text">engaged</span>' : 'off'], ['Credential names', Object.keys(s.action_credentials || {}).map((k) => `<span class="pill">${esc(k)}</span>`).join(' ') || '—']]) })}</div>`;
   }, { onRender: (s, root) => {
     const form = $('form', root);
     onSubmit(form, async () => {
-      const defs = [{ name: 'ai_provider', type: 'select' }, { name: 'default_min_severity_for_notifications', type: 'select' }, { name: 'retention_days', type: 'number' }, ...(store.role === 'owner' ? [{ name: 'actions_enabled', type: 'checkbox' }] : []), { name: 'action_credentials', type: 'json', label: 'Action credentials' }];
+      const defs = [{ name: 'ai_provider', type: 'select' }, { name: 'default_min_severity_for_notifications', type: 'select' }, { name: 'retention_days', type: 'number' }, ...(store.role === 'owner' ? [{ name: 'actions_enabled', type: 'checkbox' }] : []), { name: 'autopentest_enabled', type: 'checkbox' }, { name: 'discovery_enabled', type: 'checkbox' }, { name: 'exploit_enabled', type: 'checkbox' }, { name: 'action_credentials', type: 'json', label: 'Action credentials' }];
       const values = readFields(form, defs);
-      const payload = { ...values, ai_provider: values.ai_provider || null };
+      const { autopentest_enabled, discovery_enabled, exploit_enabled, ...rest } = values;
+      const payload = {
+        ...rest,
+        ai_provider: values.ai_provider || null,
+        autopentest: { ...(s.autopentest || {}), enabled: Boolean(autopentest_enabled) },
+        discovery: { ...(s.discovery || {}), enabled: Boolean(discovery_enabled) },
+        exploit: { ...(s.exploit || {}), enabled: Boolean(exploit_enabled) },
+      };
       await patch('/admin/settings', payload, { silent: true });
       toast('Settings saved');
       view.reload(true);
@@ -114,15 +124,87 @@ async function settingsTab(node) {
   } });
 }
 
+async function retentionTab(node) {
+  const view = section(node, () => get('/retention'), (r) => {
+    return `${panel({
+      title: 'Retention policies',
+      sub: r.last_run_at ? `Last pruned ${fmt(r.last_run_at)}` : 'Never pruned yet',
+      actions: '<button class="btn primary" data-act="prune">Run retention now</button>',
+      flush: true,
+      body: table({
+        columns: [
+          { label: 'Policy', render: (p) => `<span class="cell-main">${esc(p.label)}</span><span class="cell-sub mono">${esc(p.key)}</span>` },
+          { label: 'Effective days', render: (p) => `${esc(num(p.days))}d ${p.overridden ? '<span class="pill">override</span>' : '<span class="subtle">(default)</span>'}` },
+          { label: 'Rows due', render: (p) => esc(num(p.due)) },
+        ],
+        rows: r.policies || [],
+        empty: 'No policies',
+      }),
+    })}`;
+  });
+  bind(node, {
+    prune: async () => {
+      const res = await post('/retention/run', {});
+      toast('Retention job queued');
+      if (res.job_id) trackJob(res.job_id, 'Retention prune').then(() => view.reload(true));
+    },
+  });
+}
+
+async function backupsTab(node) {
+  const view = section(node, () => get('/ops/backups'), (b) => {
+    return `${panel({
+      title: 'Backups & recovery',
+      sub: `Directory: ${b.backup_dir || '—'} · Encryption: ${b.encrypted ? 'enabled' : 'off'}`,
+      actions: '<button class="btn primary" data-act="backup">Create backup</button>',
+      flush: true,
+      body: table({
+        columns: [
+          { label: 'Archive', render: (x) => `<span class="cell-main mono">${esc(x.filename || x.name || '')}</span>` },
+          { label: 'Size', render: (x) => `${esc(num(x.size_bytes))} bytes` },
+          { label: 'Created', render: (x) => esc(fmt(x.created_at)) },
+          { label: '', render: (x) => `<button class="btn small" data-act="verify" data-file="${esc(x.filename || x.name || '')}">Verify</button>` },
+        ],
+        rows: b.items || [],
+        empty: 'No backup archives recorded yet',
+      }),
+    })}`;
+  });
+  bind(node, {
+    backup: async () => {
+      await post('/ops/backups', {});
+      toast('Backup created');
+      view.reload(true);
+    },
+    verify: async (el) => {
+      const res = await post('/ops/backups/verify', { filename: el.dataset.file });
+      toast(res.ok ? 'Backup verified OK' : 'Verification failed');
+    },
+  });
+}
+
 export default {
   async render({ root, params, navigate }) {
-    const available = [store.can('admin:users') && { id: 'users', label: 'Users' }, store.can('admin:api_keys') && { id: 'keys', label: 'API keys' }, store.can('admin:tenant') && { id: 'tenants', label: 'Tenants' }, store.can('admin:settings') && { id: 'settings', label: 'Settings' }].filter(Boolean);
+    const available = [
+      store.can('admin:users') && { id: 'users', label: 'Users' },
+      store.can('admin:api_keys') && { id: 'keys', label: 'API keys' },
+      store.can('admin:tenant') && { id: 'tenants', label: 'Tenants' },
+      store.can('admin:settings') && { id: 'settings', label: 'Settings' },
+      store.can('admin:settings') && { id: 'retention', label: 'Retention' },
+      store.role === 'owner' && { id: 'backups', label: 'Backups' },
+    ].filter(Boolean);
     const tab = available.some((t) => t.id === params[0]) ? params[0] : available[0]?.id;
     root.innerHTML = `${heading('Administration', 'Admin', 'Members, API keys, tenants and tenant-level settings.')}<div data-overview></div>${tabs(available, tab)}<div data-body></div>`;
     if (store.can('admin:users')) section($('[data-overview]', root), () => get('/admin/overview'), (o) => metrics([
       { label: 'Members', value: o.members?.total, caption: Object.entries(o.members?.by_role || {}).map(([r, n]) => `${r} ${n}`).join(' · ') }, { label: 'API keys', value: o.api_keys?.active, caption: `${o.api_keys?.revoked || 0} revoked` }, { label: 'Open findings', value: o.findings_open, caption: `${num(o.assets)} assets` }, { label: 'Audit entries', value: o.audit_entries, caption: `${num(o.events)} events retained` }]));
     const node = $('[data-body]', root);
-    if (tab === 'users') usersTab(node); else if (tab === 'keys') keysTab(node); else if (tab === 'tenants') tenantsTab(node); else if (tab === 'settings') settingsTab(node); else node.innerHTML = empty('Nothing to administer with your role');
+    if (tab === 'users') usersTab(node);
+    else if (tab === 'keys') keysTab(node);
+    else if (tab === 'tenants') tenantsTab(node);
+    else if (tab === 'settings') settingsTab(node);
+    else if (tab === 'retention') retentionTab(node);
+    else if (tab === 'backups') backupsTab(node);
+    else node.innerHTML = empty('Nothing to administer with your role');
     root.querySelector('.tabs')?.addEventListener('click', (event) => { const t = event.target.closest('[data-tab]'); if (t) navigate(`admin/${t.dataset.tab}`); });
   },
 };

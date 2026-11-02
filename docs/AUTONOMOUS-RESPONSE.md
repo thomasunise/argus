@@ -32,7 +32,7 @@ engaged; pending automatic rollbacks are retried after it is released.
 {
   "name": "Block sources that touch canaries",
   "mode": "shadow",
-  "rule_ids": ["canary_tripwire"],
+  "rule_ids": ["canary.tripwire"],
   "min_severity": "high",
   "min_confidence": 0.9,
   "entity_kind": "",

@@ -1,4 +1,4 @@
-import { get, post } from '../api.js';
+import { get, post, put } from '../api.js';
 import { store } from '../store.js';
 import { section, readFilters, setQuery, trackJob } from '../common.js';
 import { $, bind, closeDrawer, confirm, drawer, empty, esc, fields, formActions, heading, json, kv, metrics, newPager, onSubmit, pageNext, pagePrev, pageReset, pager, panel, readFields, risk, schemaFields, selectHtml, table, tabs, tag, time, toast, mono, nice, link, fmt, num, yesno } from '../ui.js';
@@ -104,13 +104,54 @@ export async function openRun(runId, reload = () => {}) {
   bind(body, { rollback: async () => { closeDrawer(); await rollback(r.id, reload); } });
 }
 
+async function renderAutoresponse(node) {
+  const view = section(node, async () => {
+    const [status, playbooks, executions] = await Promise.all([
+      get('/autoresponse/status'),
+      get('/autoresponse/playbooks'),
+      get('/autoresponse/executions', { limit: 50 }),
+    ]);
+    return { status, playbooks: playbooks.items || [], executions: executions.items || [] };
+  }, ({ status, playbooks, executions }) => {
+    return `${panel({
+      title: 'Autonomous response status',
+      sub: `Mode: ${status.mode || 'off'} · Global: ${status.global_enabled ? 'enabled' : 'disabled'} · Tenant: ${status.tenant_enabled ? 'enabled' : 'disabled'}`,
+      actions: store.can('autoresponse:write') ? `<button class="btn small" data-act="ar-toggle" data-enabled="${status.tenant_enabled ? '' : '1'}">${status.tenant_enabled ? 'Disable for tenant' : 'Enable for tenant'}</button>` : '',
+      body: `<div class="card-grid">${playbooks.map((p) => `<div class="card ${p.enabled ? '' : 'muted-card'}"><h3>${esc(p.title || p.id)}</h3><p>${esc(p.description || '')}</p><div class="chip-row">${tag(p.enabled ? 'enabled' : 'disabled')}<span class="pill">mode ${esc(p.mode || 'propose')}</span></div></div>`).join('')}</div>`,
+    })}
+    <div style="margin-top:16px">${panel({
+      title: 'Playbook executions',
+      flush: true,
+      body: table({
+        columns: [
+          { label: 'Playbook', render: (e) => `<span class="cell-main">${esc(e.playbook_id)}</span><span class="cell-sub">${esc(e.rule_id)}</span>` },
+          { label: 'Mode', render: (e) => esc(e.mode) },
+          { label: 'Outcome', render: (e) => tag(e.outcome) },
+          { label: 'Detail', cls: 'wrap', render: (e) => esc(e.reason || '') },
+          { label: 'Created', render: (e) => time(e.created_at) },
+        ],
+        rows: executions,
+        empty: 'No playbook executions recorded yet',
+      }),
+    })}</div>`;
+  });
+  bind(node, {
+    'ar-toggle': async (el) => {
+      const next = Boolean(el.dataset.enabled);
+      await put('/autoresponse/settings', { enabled: next, mode: next ? 'propose' : 'off' });
+      toast(next ? 'Autonomous response enabled (propose mode)' : 'Autonomous response disabled');
+      view.reload(true);
+    },
+  });
+}
+
 async function renderIndex({ root, params, query, navigate }) {
-  const tab = ['requests', 'runs'].includes(params[0]) ? params[0] : 'catalog';
+  const tab = ['requests', 'runs', 'autoresponse'].includes(params[0]) ? params[0] : 'catalog';
   const state = newPager();
-  root.innerHTML = `${heading('Action broker', 'Actions', 'Typed remediation actions with policy, dual approval, dry runs, rollback and a kill switch.',
+  root.innerHTML = `${heading('Action broker', 'Actions', 'Typed remediation actions with policy, dual approval, dry runs, rollback, autonomous playbooks, and a kill switch.',
     store.can('actions:request') ? '<a class="btn primary" href="#/actions/requests/new">New request</a>' : '')}
     <div data-kill></div>
-    ${tabs([{ id: 'catalog', label: 'Catalog' }, { id: 'requests', label: 'Requests' }, { id: 'runs', label: 'Runs' }], tab)}<div data-body></div>`;
+    ${tabs([{ id: 'catalog', label: 'Catalog' }, { id: 'requests', label: 'Requests' }, { id: 'runs', label: 'Runs' }, { id: 'autoresponse', label: 'Autonomous response' }], tab)}<div data-body></div>`;
   section($('[data-kill]', root), () => get('/actions/kill-switch'), killSwitchPanel);
   const node = $('[data-body]', root);
   let list;
@@ -136,7 +177,7 @@ async function renderIndex({ root, params, query, navigate }) {
       rows: data.items, rowAttr: (r) => `data-act="open" data-id="${esc(r.id)}"`, empty: 'No requests', emptySub: 'Requests come from analysts, operators or agent specialists.' }) + pager(state, data.items.length);
     });
     bind(node, {}, { apply: () => { pageReset(state); setQuery(navigate, 'actions', ['requests'], readFilters($('[data-filters]', node))); list.reload(); } });
-  } else {
+  } else if (tab === 'runs') {
     node.innerHTML = `<div class="toolbar"><div class="tool-filters" data-filters>${selectHtml('status', RUN_STATUSES, query.status, { allLabel: 'All statuses', attrs: 'data-change="apply"' })}</div></div><div class="panel" data-list></div>`;
     list = section($('[data-list]', node), () => get('/actions/runs', { ...readFilters($('[data-filters]', node)), limit: 50, cursor: state.cursor }), (data) => {
       state.next_cursor = data.next_cursor;
@@ -146,14 +187,16 @@ async function renderIndex({ root, params, query, navigate }) {
       rows: data.items, empty: 'No runs yet' }) + pager(state, data.items.length);
     });
     bind(node, {}, { apply: () => { pageReset(state); setQuery(navigate, 'actions', ['runs'], readFilters($('[data-filters]', node))); list.reload(); } });
+  } else {
+    renderAutoresponse(node);
   }
   bind(root, {
     kill: async (el) => { if (await toggleKill(Boolean(el.dataset.enabled))) $('[data-kill]', root).innerHTML = killSwitchPanel(store.killSwitch); },
     open: (el) => navigate(`actions/requests/${el.dataset.id}`),
-    run: (el) => openRun(el.dataset.id, () => list.reload(true)),
-    rollback: (el) => rollback(el.dataset.id, () => list.reload(true)),
-    'page-next': () => { pageNext(state); list.reload(); },
-    'page-prev': () => { pagePrev(state); list.reload(); },
+    run: (el) => openRun(el.dataset.id, () => list?.reload(true)),
+    rollback: (el) => rollback(el.dataset.id, () => list?.reload(true)),
+    'page-next': () => { pageNext(state); list?.reload(); },
+    'page-prev': () => { pagePrev(state); list?.reload(); },
   });
   root.querySelector('.tabs').addEventListener('click', (event) => { const t = event.target.closest('[data-tab]'); if (t) navigate(t.dataset.tab === 'catalog' ? 'actions' : `actions/${t.dataset.tab}`); });
 }

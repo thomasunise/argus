@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..tools.registry import ToolContext
 from ._base import arr, b, call, enum, injection_signals, obj, s, spec
 
-TIER = enum(['passive', 'active', 'intrusive'])
+TIER = enum(['passive', 'active', 'intrusive', 'exploit'])
 
 OUTPUT_SCHEMA = obj({
     'scope_check': obj({'authorized': b('a current, unrevoked authorization exists for the asset'), 'environment': s(), 'allowed_tiers': arr(TIER)}),
@@ -51,7 +51,7 @@ ADAPTERS_BY_KIND: dict[str, list[tuple[str, str, str]]] = {
             ('sqli_proof', 'intrusive', 'Proof-bounded SQLi verification (banner or boolean equivalence; never dumps data).'),
             ('jwt_attack', 'intrusive', 'Verifies JWT signing weaknesses (placeholder HMAC secrets, alg:none, kid/jwk confusion).'),
             ('browser_xss', 'intrusive', 'Confirms reflected XSS via HTML DOM sink parsing.'),
-            ('idor_probe', 'intrusive', 'Cross-role authorization check comparing owner vs attacker credentials.'),],
+            ('idor_probe', 'intrusive', 'Cross-role authorization check comparing owner vs attacker credentials.')],
     'repo': [('semgrep', 'passive', 'Static analysis for injection, auth and crypto bugs.'),
              ('gitleaks', 'passive', 'Secret detection across the full history.'),
              ('trivy', 'passive', 'Dependency, container and IaC vulnerabilities.')],
@@ -80,7 +80,7 @@ EXPECTED_SIGNALS = {'web_baseline': 'No detections expected; findings for missin
                     'sqli_proof': 'Bounded SQL predicate pairs or sqlmap level=1/risk=1 banner checks.',
                     'jwt_attack': 'Authentication failures (401/403) alongside forged-token verification requests.',
                     'browser_xss': 'Canary custom-element (<argus-xss>) query requests.',
-                    'idor_probe': 'Paired authenticated requests across distinct user roles.',}
+                    'idor_probe': 'Paired authenticated requests across distinct user roles.'}
 TIER_ORDER = {'passive': 0, 'active': 1, 'intrusive': 2, 'exploit': 3}
 
 

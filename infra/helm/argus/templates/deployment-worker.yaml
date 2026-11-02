@@ -52,6 +52,13 @@ spec:
               value: "false"
             - name: WORKER_CONCURRENCY
               value: {{ .Values.worker.concurrency | quote }}
+            {{- if .Values.sandbox.enabled }}
+            - name: EXPLOIT_EXECUTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-sandbox-executor" (include "argus.fullname" .)) .Values.sandbox.executor.existingTokenSecret }}
+                  key: {{ .Values.sandbox.executor.existingTokenSecretKey }}
+            {{- end }}
             {{- with .Values.worker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

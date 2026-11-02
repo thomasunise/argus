@@ -37,6 +37,7 @@ LABEL org.opencontainers.image.title="Argus" \
       org.opencontainers.image.source="https://github.com/thomasunise/argus" \
       org.opencontainers.image.licenses="MIT"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH=/opt/venv/bin:$PATH \
+    HOME=/tmp XDG_CACHE_HOME=/tmp/.cache \
     DATABASE_URL=sqlite:////app/data/argus.db SCAN_ROOT=/app/targets \
     RUN_MIGRATIONS=false UVICORN_WORKERS=1 FORWARDED_ALLOW_IPS=127.0.0.1
 RUN apt-get update \

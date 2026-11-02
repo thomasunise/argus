@@ -3,7 +3,7 @@ import { store } from '../store.js';
 import { assetMap, assetName, section, readFilters, setQuery, trackJob } from '../common.js';
 import { $, bind, closeDrawer, confirm, drawer, esc, fields, formActions, heading, json, kv, newPager, onSubmit, pageNext, pagePrev, pageReset, pager, panel, readFields, selectHtml, sev, table, tabs, tag, time, toast, mono, link, fmt, num } from '../ui.js';
 
-const TIERS = ['passive', 'active', 'intrusive'];
+const TIERS = ['passive', 'active', 'intrusive', 'exploit'];
 const ENVS = ['production', 'staging', 'lab', 'development'];
 const RUN_STATUSES = ['queued', 'running', 'completed', 'failed', 'denied', 'cancelled'];
 
@@ -14,6 +14,7 @@ async function scopeForm(reload) {
     { name: 'asset_ids', label: 'Assets (empty = any authorized asset)', type: 'multiselect', options: assets.map((a) => ({ value: a.id, label: `${a.name} (${a.kind})` })) },
     { name: 'allowed_tiers', label: 'Allowed tiers', type: 'multiselect', options: TIERS, value: ['passive'] },
     { name: 'environments', label: 'Environments (empty = any)', type: 'multiselect', options: ENVS },
+    { name: 'autonomous', label: 'Autonomous runs allowed', type: 'checkbox', text: 'Allow unattended autonomous pentest / autopilot runs on this scope' },
     { name: 'window_start', label: 'Window start (UTC HH:MM)', type: 'text', placeholder: '22:00', pattern: '([01][0-9]|2[0-3]):[0-5][0-9]' },
     { name: 'window_end', label: 'Window end (UTC HH:MM)', type: 'text', placeholder: '06:00', pattern: '([01][0-9]|2[0-3]):[0-5][0-9]' },
     { name: 'max_rps', label: 'Max requests per second', type: 'number', value: 5, min: 0.1, max: 100, step: 'any' },
@@ -95,9 +96,9 @@ async function renderIndex({ root, params, query, navigate }) {
       state.next_cursor = data.next_cursor;
       return table({ columns: [
         { label: 'Scope', render: (s) => `<span class="cell-main">${esc(s.name)}</span><span class="cell-sub">${s.asset_ids.length ? s.asset_ids.map((id) => esc(assetName(assets, id))).join(', ') : 'any authorized asset'}</span>` },
-        { label: 'State', render: (s) => tag(s.revoked_at ? 'revoked' : s.expires_at && new Date(s.expires_at) < new Date() ? 'expired' : 'active') }, { label: 'Tiers', render: (s) => s.allowed_tiers.map((t) => `<span class="pill">${esc(t)}</span>`).join(' ') },
+        { label: 'State', render: (s) => `${tag(s.revoked_at ? 'revoked' : s.expires_at && new Date(s.expires_at) < new Date() ? 'expired' : 'active')}${s.autonomous ? ' <span class="pill">autonomous</span>' : ''}` }, { label: 'Tiers', render: (s) => s.allowed_tiers.map((t) => `<span class="pill">${esc(t)}</span>`).join(' ') },
         { label: 'Environments', render: (s) => esc(s.environments.join(', ') || 'any') }, { label: 'Window (UTC)', render: (s) => esc(s.window_start ? `${s.window_start}–${s.window_end}` : 'any time') }, { label: 'Limits', render: (s) => `${esc(s.max_rps)} rps · ${esc(s.max_concurrency)} conc.` }, { label: 'Expires', render: (s) => esc(fmt(s.expires_at)) },
-        { label: '', render: (s) => `<div class="inline-actions"><button class="btn small" data-act="scope" data-id="${esc(s.id)}">Detail</button>${store.can('tests:scopes') && !s.revoked_at ? `<button class="btn small negative" data-act="scope-revoke" data-id="${esc(s.id)}">Revoke</button>` : ''}</div>` }],
+        { label: '', render: (s) => `<div class="inline-actions"><button class="btn small" data-act="scope" data-id="${esc(s.id)}">Detail</button>${store.can('tests:scopes') && !s.revoked_at ? `<button class="btn small" data-act="scope-auto" data-id="${esc(s.id)}" data-auto="${s.autonomous ? '1' : ''}">${s.autonomous ? 'Disable autonomous' : 'Enable autonomous'}</button><button class="btn small negative" data-act="scope-revoke" data-id="${esc(s.id)}">Revoke</button>` : ''}</div>` }],
       rows: data.items, empty: 'No scopes', emptySub: 'A scope records the signed rules of engagement before any active testing.' }) + pager(state, data.items.length);
     });
   } else if (tab === 'plans') {
@@ -125,7 +126,8 @@ async function renderIndex({ root, params, query, navigate }) {
   bind(root, {
     'scope-new': () => scopeForm(() => list.reload(true)),
     'plan-new': () => planForm(() => list.reload(true)),
-    scope: async (el) => { const s = await get(`/tests/scopes/${el.dataset.id}`); drawer(s.name, `<div class="chip-row">${tag(s.revoked_at ? 'revoked' : 'active')}${s.allowed_tiers.map((t) => `<span class="pill">${esc(t)}</span>`).join('')}</div>${kv([['Assets', s.asset_ids.length ? s.asset_ids.map((id) => mono(id)).join('<br>') : 'any authorized'], ['Environments', esc(s.environments.join(', ') || 'any')], ['Window', esc(s.window_start ? `${s.window_start}–${s.window_end} UTC` : 'any')], ['Max rps', esc(s.max_rps)], ['Max concurrency', esc(s.max_concurrency)], ['Signed document', esc(s.signed_document_ref || '—')], ['Created', `${esc(fmt(s.created_at))} by ${esc(s.created_by)}`], ['Expires', esc(fmt(s.expires_at))], ['Revoked', esc(fmt(s.revoked_at))]])}`); },
+    scope: async (el) => { const s = await get(`/tests/scopes/${el.dataset.id}`); drawer(s.name, `<div class="chip-row">${tag(s.revoked_at ? 'revoked' : 'active')}${s.autonomous ? '<span class="pill">autonomous</span>' : ''}${s.allowed_tiers.map((t) => `<span class="pill">${esc(t)}</span>`).join('')}</div>${kv([['Assets', s.asset_ids.length ? s.asset_ids.map((id) => mono(id)).join('<br>') : 'any authorized'], ['Environments', esc(s.environments.join(', ') || 'any')], ['Window', esc(s.window_start ? `${s.window_start}–${s.window_end} UTC` : 'any')], ['Max rps', esc(s.max_rps)], ['Max concurrency', esc(s.max_concurrency)], ['Signed document', esc(s.signed_document_ref || '—')], ['Created', `${esc(fmt(s.created_at))} by ${esc(s.created_by)}`], ['Expires', esc(fmt(s.expires_at))], ['Revoked', esc(fmt(s.revoked_at))]])}`); },
+    'scope-auto': async (el) => { const next = !el.dataset.auto; await post(`/tests/scopes/${el.dataset.id}/autonomous`, { autonomous: next }); toast(next ? 'Autonomous mode enabled' : 'Autonomous mode disabled'); list.reload(true); },
     'scope-revoke': async (el) => { if (!(await confirm('Revoke this scope? Running work is denied at its next scope check.', { label: 'Revoke', danger: true }))) return; await post(`/tests/scopes/${el.dataset.id}/revoke`, {}); toast('Scope revoked'); list.reload(true); },
     plan: async (el) => { const p = await get(`/tests/plans/${el.dataset.id}`); drawer(p.name, `<div class="chip-row">${tag(p.enabled ? 'enabled' : 'disabled')}${p.adapters.map((a) => `<span class="pill">${esc(a)}</span>`).join('')}</div>${kv([['Scope', mono(p.scope_id)], ['Schedule', p.schedule_minutes ? `${p.schedule_minutes} min` : 'manual'], ['Created', `${esc(fmt(p.created_at))} by ${esc(p.created_by)}`], ['Last run', esc(fmt(p.last_run_at))]])}<h3>Params</h3>${json(p.params)}`); },
     'plan-run': async (el) => { const result = await post(`/tests/plans/${el.dataset.id}/run`, {}); toast(`${result.items.length} run(s) queued`); for (const r of result.items.slice(0, 3)) trackJob(r.job_id, `${r.adapter} run`); setTimeout(() => list.reload(true), 1500); },

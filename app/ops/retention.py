@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Callable
 
-from sqlalchemy import Table, delete, func, select
+from sqlalchemy import Table, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings
@@ -38,14 +38,26 @@ def _status_in(*values: str):
     return lambda t: [t.c.status.in_(values)]
 
 
+_TABLE_CHILDREN: dict[str, tuple[tuple[str, str], ...]] = {
+    'agent_runs': (('agent_steps', 'run_id'),),
+    'test_runs': (('test_results', 'run_id'),),
+    'pentest_runs': (('pentest_hypotheses', 'pentest_run_id'),),
+    'discovery_runs': (('discoveries', 'run_id'), ('request_captures', 'run_id')),
+}
+_TABLE_DETACH: dict[str, tuple[tuple[str, str, str | None], ...]] = {
+    'agent_runs': (('pentest_runs', 'agent_run_id', ''), ('action_requests', 'agent_run_id', None)),
+}
+
+
 POLICIES: tuple[Policy, ...] = (
     Policy('events_days', 'Security events', ('events',), 'received_at'),
     Policy('detections_days', 'Resolved and false-positive detections', ('detections',), 'last_seen_at',
            keep_if=_status_in('resolved', 'false_positive')),
     Policy('agent_runs_days', 'Finished agent runs and their steps', ('agent_runs',), 'finished_at',
            children=(('agent_steps', 'run_id'),)),
-    Policy('runs_days', 'Finished detection, collector, simulation, autopilot and eval runs',
-           ('detection_runs', 'collector_runs', 'simulation_runs', 'autopilot_runs', 'eval_runs'), 'finished_at'),
+    Policy('runs_days', 'Finished detection, collector, simulation, autopilot, eval, test, pentest and discovery runs',
+           ('detection_runs', 'collector_runs', 'simulation_runs', 'autopilot_runs', 'eval_runs',
+            'test_runs', 'pentest_runs', 'discovery_runs'), 'finished_at'),
     Policy('deliveries_days', 'Finished outbound deliveries', ('webhook_deliveries',), 'created_at',
            keep_if=_status_in('sent', 'failed', 'skipped')),
     Policy('ingest_batches_days', 'Ingest batch records', ('ingest_batches',), 'created_at'),
@@ -135,9 +147,15 @@ def prune(db_factory, settings: Settings, tenant_id: str, *, batch: int = BATCH)
                 with session_scope(db_factory) as db:
                     ids = list(db.execute(select(table.c.id).where(*_filters(table, policy, tenant_id, cutoff)).limit(batch)).scalars())
                     if ids:
-                        for child_name, column in policy.children:
-                            child = _table(child_name)
-                            db.execute(delete(child).where(child.c[column].in_(ids)))
+                        children = policy.children or _TABLE_CHILDREN.get(name, ())
+                        for child_name, column in children:
+                            if child_name in Base.metadata.tables:
+                                child = _table(child_name)
+                                db.execute(delete(child).where(child.c[column].in_(ids)))
+                        for ref_name, column, empty_val in _TABLE_DETACH.get(name, ()):
+                            if ref_name in Base.metadata.tables:
+                                ref_tbl = _table(ref_name)
+                                db.execute(update(ref_tbl).where(ref_tbl.c[column].in_(ids)).values({column: empty_val}))
                         db.execute(delete(table).where(table.c.id.in_(ids), table.c.tenant_id == tenant_id))
                 total += len(ids)
                 if len(ids) < batch:

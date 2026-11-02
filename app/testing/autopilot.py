@@ -97,10 +97,20 @@ def preflight(db, settings, principal: Principal, scope_id: str, asset_ids: list
         scope = None
     _gate(settings, tenant, scope)
     in_scope = loads(scope.asset_ids_json, [])
-    chosen = [a for a in dict.fromkeys(asset_ids)] if asset_ids else list(in_scope)
-    outside = [a for a in chosen if a not in set(in_scope)]
-    if outside:
-        raise AutopilotDenied(f'assets are not in the scope: {", ".join(outside[:5])}')
+    if in_scope:
+        chosen = [a for a in dict.fromkeys(asset_ids)] if asset_ids else list(in_scope)
+        outside = [a for a in chosen if a not in set(in_scope)]
+        if outside:
+            raise AutopilotDenied(f'assets are not in the scope: {", ".join(outside[:5])}')
+    else:
+        if asset_ids:
+            chosen = [a for a in dict.fromkeys(asset_ids)]
+            valid = set(db.execute(select(Asset.id).where(Asset.tenant_id == principal.tenant_id, Asset.id.in_(chosen))).scalars().all())
+            outside = [a for a in chosen if a not in valid]
+            if outside:
+                raise AutopilotDenied(f'assets are not in the scope: {", ".join(outside[:5])}')
+        else:
+            chosen = list(db.execute(select(Asset.id).where(Asset.tenant_id == principal.tenant_id, Asset.approved.is_(True))).scalars().all())
     if not chosen:
         raise AutopilotDenied('the scope lists no assets to test')
     return scope, chosen

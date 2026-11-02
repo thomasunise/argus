@@ -21,7 +21,7 @@ export async function openFinding(id, { onChange = () => {} } = {}) {
     const userOptions = [{ value: '', label: 'Unassigned' }, ...[...users.values()].map((u) => ({ value: u.id, label: u.email }))];
     body.innerHTML = `<div class="chip-row">${sev(f.severity)}${tag(f.status)}<span class="pill">${esc(f.source)}</span>${f.kev ? '<span class="risk-chip risk-critical">KEV</span>' : ''}${f.cvss !== null && f.cvss !== undefined ? `<span class="pill" title="CVSS">CVSS ${esc(f.cvss)}</span>` : ''}${f.epss !== null && f.epss !== undefined ? `<span class="pill" title="EPSS">EPSS ${esc(f.epss)}</span>` : ''}</div>
       <h3 class="detail-title">${esc(f.title)}</h3>
-      ${kv([['Asset', f.asset ? link(`#/assets/${f.asset.id}`, f.asset.name) : (f.asset_id ? mono(f.asset_id) : '')], ['Rule', mono(f.rule)], ['Occurrences', esc(num(f.occurrences))], ['First seen', esc(fmt(f.created_at))], ['Updated', time(f.updated_at)], ['Assignee', esc(userLabel(users, f.assignee) || '')], ['CVEs', (f.cve_ids || []).map((c) => `<span class="pill">${esc(c)}</span>`).join(' ')], ['Tags', (f.tags || []).map((t) => `<span class="pill">${esc(t)}</span>`).join(' ')]])}
+      ${kv([['Asset', f.asset ? link(`#/assets/${f.asset.id}`, f.asset.name) : (f.asset_id ? mono(f.asset_id) : '')], ['Rule', mono(f.rule)], ['Occurrences', esc(num(f.occurrences))], ['First seen', esc(fmt(f.created_at))], ['Updated', time(f.updated_at)], ['Assignee', esc(userLabel(users, f.assignee) || '')], ['CVEs', (f.cve_ids || []).map((c) => `<button class="pill" data-act="cve" data-cve="${esc(c)}" title="Inspect CVE intel">${esc(c)}</button>`).join(' ')], ['Tags', (f.tags || []).map((t) => `<span class="pill">${esc(t)}</span>`).join(' ')]])}
       ${f.description ? `<h3>Description</h3><p class="info-line">${esc(f.description)}</p>` : ''}
       ${f.remediation ? `<h3>Remediation</h3><p class="info-line">${esc(f.remediation)}</p>` : ''}
       ${canWrite ? `<h3>Workflow</h3><div class="inline-actions" style="flex-wrap:wrap">${transitions.map((s) => `<button class="btn small" data-act="status" data-status="${s}">${esc(nice(s))}</button>`).join('')}${store.can('agents:run') ? '<button class="btn small primary" data-act="investigate">Investigate with agent</button>' : ''}</div>
@@ -56,6 +56,11 @@ export async function openFinding(id, { onChange = () => {} } = {}) {
       const result = await post(`/findings/${id}/investigate`, {});
       toast('Investigation queued');
       trackJob(result.job_id, 'Investigation').then(() => { onChange(); if (drawerOpen()) render(); });
+    },
+    cve: async (el) => {
+      const cveId = el.dataset.cve;
+      const data = await get(`/intel/cve/${encodeURIComponent(cveId)}`);
+      drawer(`Threat intel · ${esc(cveId)}`, json(data));
     },
   });
   await render();

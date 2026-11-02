@@ -69,12 +69,62 @@ async function renderEval({ root, params }) {
   return () => clearTimeout(timer);
 }
 
+async function renderGateway(node) {
+  node.innerHTML = `<div data-gw-stats></div><div class="panel" data-gw-list style="margin-top:16px"></div>`;
+  section($('[data-gw-stats]', node), () => get('/ai-gateway/stats'), (s) => metrics([
+    { label: 'Total requests', value: s.total_requests, caption: `${num(s.blocked_requests)} blocked` },
+    { label: 'Prompt injections', value: s.prompt_injections, caption: 'blocked or flagged' },
+    { label: 'Sensitive data', value: s.sensitive_leaks, caption: 'redacted or blocked' },
+    { label: 'Tool firewall', value: s.blocked_tools, caption: 'dangerous tool calls stopped' },
+  ]));
+  section($('[data-gw-list]', node), () => get('/ai-gateway/requests', { limit: 50 }), (data) => panel({
+    title: 'AI Gateway request log',
+    flush: true,
+    body: table({
+      columns: [
+        { label: 'Model / App', render: (r) => `<span class="cell-main">${esc(r.model || 'default')}</span><span class="cell-sub">${esc(r.app_id || '')}</span>` },
+        { label: 'Action', render: (r) => tag(r.action) },
+        { label: 'Risk score', render: (r) => esc(num(r.risk_score)) },
+        { label: 'Reasons', cls: 'wrap', render: (r) => esc((r.reasons || []).join(', ')) },
+        { label: 'Created', render: (r) => time(r.created_at) },
+      ],
+      rows: data.items || [],
+      empty: 'No AI gateway requests recorded yet',
+    }),
+  }));
+}
+
+async function renderAiInventory(node) {
+  node.innerHTML = `<div data-ai-stats></div><div class="panel" data-ai-list style="margin-top:16px"></div>`;
+  section($('[data-ai-stats]', node), () => get('/ai/stats'), (s) => metrics([
+    { label: 'AI services', value: s.total, caption: `${num(s.unapproved)} unapproved (shadow AI)` },
+    { label: 'High risk', value: s.by_risk?.high || 0, caption: `${s.by_risk?.critical || 0} critical` },
+    { label: 'MCP servers', value: s.by_kind?.mcp_server || 0, caption: `${s.by_kind?.agent || 0} agents` },
+    { label: 'Internet exposed', value: s.exposed || 0, caption: 'reachable externally' },
+  ]));
+  section($('[data-ai-list]', node), () => get('/ai/services', { limit: 50 }), (data) => panel({
+    title: 'AI & MCP service inventory',
+    flush: true,
+    body: table({
+      columns: [
+        { label: 'Service', render: (s) => `<span class="cell-main">${esc(s.name)}</span><span class="cell-sub">${esc(s.kind)} · ${esc(s.provider || '')}</span>` },
+        { label: 'Endpoint', render: (s) => mono(s.endpoint || '') },
+        { label: 'Risk', render: (s) => tag(s.risk) },
+        { label: 'Approved', render: (s) => tag(s.approved ? 'approved' : 'shadow') },
+        { label: 'Last seen', render: (s) => time(s.last_seen_at) },
+      ],
+      rows: data.items || [],
+      empty: 'No AI or MCP services registered yet',
+    }),
+  }));
+}
+
 async function renderIndex({ root, params, query, navigate }) {
-  const tab = ['runs', 'evals', 'tools'].includes(params[0]) ? params[0] : 'specs';
+  const tab = ['runs', 'evals', 'tools', 'gateway', 'inventory'].includes(params[0]) ? params[0] : 'specs';
   const state = newPager();
-  root.innerHTML = `${heading('Agentic operations', 'Agents', 'Sandboxed specialists with typed tools, step budgets and traces. Agents propose; policy and people approve.',
+  root.innerHTML = `${heading('Agentic operations', 'Agents', 'Sandboxed specialists with typed tools, step budgets, AI gateway firewall, and AI/MCP service inventory.',
     `${store.can('agents:run') ? '<button class="btn primary" data-act="run">Run specialist</button>' : ''}${store.can('evals:run') && tab === 'evals' ? '<button class="btn" data-act="eval-run">Run eval suite</button>' : ''}`)}
-    ${tabs([{ id: 'specs', label: 'Specialists' }, { id: 'runs', label: 'Runs' }, { id: 'evals', label: 'Evals' }, { id: 'tools', label: 'Tools' }], tab)}<div data-body></div>`;
+    ${tabs([{ id: 'specs', label: 'Specialists' }, { id: 'runs', label: 'Runs' }, { id: 'evals', label: 'Evals' }, { id: 'tools', label: 'Tools' }, { id: 'gateway', label: 'AI Gateway' }, { id: 'inventory', label: 'AI Inventory' }], tab)}<div data-body></div>`;
   const node = $('[data-body]', root);
   let list;
   if (tab === 'specs') {
@@ -98,10 +148,14 @@ async function renderIndex({ root, params, query, navigate }) {
         { label: 'Suite', render: (e) => `<span class="cell-main">${esc(e.suite)}</span><span class="cell-sub">${esc(e.spec || '')}</span>` }, { label: 'Status', render: (e) => tag(e.status) }, { label: 'Passed / total', render: (e) => `${num(e.passed)} / ${num(e.total)}` }, { label: 'Failed', render: (e) => (e.failed ? `<span class="bad-text">${esc(e.failed)}</span>` : '0') }, { label: 'Created', render: (e) => time(e.created_at) }],
       rows: data.items, rowAttr: (e) => `data-act="open-eval" data-id="${esc(e.id)}"`, empty: 'No eval runs yet' })}${pager(state, data.items.length)}`;
     });
-  } else {
+  } else if (tab === 'tools') {
     list = section(node, () => get('/agents/tools'), (data) => `<div class="panel">${table({ columns: [
       { label: 'Tool', render: (t) => `<span class="cell-main">${esc(t.name)}</span><span class="cell-sub limit-lines" style="max-width:520px">${esc(t.description)}</span>` }, { label: 'Risk', render: (t) => tag(t.risk) }, { label: 'Tags', render: (t) => (t.tags || []).map((x) => `<span class="pill">${esc(x)}</span>`).join(' ') },
       { label: '', render: (t) => `<button class="btn small" data-act="tool" data-name="${esc(t.name)}">Schema</button>` }], rows: data.items, empty: 'No tools registered' })}</div>`);
+  } else if (tab === 'gateway') {
+    renderGateway(node);
+  } else {
+    renderAiInventory(node);
   }
   bind(root, {
     run: async (el) => { const specs = await get('/agents/specs'); runForm(specs.items, { spec: el.dataset.spec }, (run) => navigate(`agents/runs/${run.id}`)); },
@@ -122,8 +176,8 @@ async function renderIndex({ root, params, query, navigate }) {
         navigate(`agents/evals/${run.id}`);
       });
     },
-    'page-next': () => { pageNext(state); list.reload(); },
-    'page-prev': () => { pagePrev(state); list.reload(); },
+    'page-next': () => { pageNext(state); list?.reload(); },
+    'page-prev': () => { pagePrev(state); list?.reload(); },
   });
   root.querySelector('.tabs').addEventListener('click', (event) => { const t = event.target.closest('[data-tab]'); if (t) navigate(t.dataset.tab === 'specs' ? 'agents' : `agents/${t.dataset.tab}`); });
 }

@@ -31,8 +31,14 @@ async def main() -> None:
         except NotImplementedError:  # Windows
             signal.signal(sig, lambda *_: stop.set())
     log.info('worker started with %s handlers: %s', len(queue.kinds), ', '.join(queue.kinds))
-    await stop.wait()
-    await queue.stop()
+    from .collectors.runner import scheduler_loop as collector_scheduler_loop
+    scheduler_task = asyncio.create_task(collector_scheduler_loop(app), name='argus-collector-scheduler')
+    try:
+        await stop.wait()
+    finally:
+        scheduler_task.cancel()
+        await asyncio.gather(scheduler_task, return_exceptions=True)
+        await queue.stop()
 
 
 if __name__ == '__main__':

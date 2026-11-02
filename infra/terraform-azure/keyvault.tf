@@ -8,6 +8,10 @@ resource "random_password" "admin_password" {
   special = false
 }
 
+resource "random_id" "ingest_prefix" {
+  byte_length = 4
+}
+
 resource "random_password" "ingest_api_key" {
   length  = 48
   special = false
@@ -61,7 +65,7 @@ locals {
   secret_values = {
     session-secret                = random_password.session_secret.result
     admin-password                = random_password.admin_password.result
-    ingest-api-key                = random_password.ingest_api_key.result
+    ingest-api-key                = "argus_${random_id.ingest_prefix.hex}_${random_password.ingest_api_key.result}"
     audit-signing-key             = random_password.audit_signing_key.result
     data-encryption-key           = random_password.data_encryption_key.result
     database-url                  = "postgresql+psycopg://argus:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/argus?sslmode=require"

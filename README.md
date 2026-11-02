@@ -23,7 +23,7 @@ stay within hourly and blast-radius caps, and roll themselves back unless you ke
 **Approve from Slack in one click.** Approve, deny or roll back actions straight from the
 alert. No console, no context switch.
 
-**AI that investigates without taking the wheel.** Seven specialist agents triage, investigate
+**AI that investigates without taking the wheel.** Eight specialist agents triage, investigate
 and hunt using read-only tools. They can propose a fix but never execute one. Everything they
 read is treated as untrusted data, so a prompt injection hidden in a log becomes a signal
 instead of a hijack.
@@ -41,8 +41,8 @@ the bait trips a detection, with its IP, model and prompt recorded.
 replays 8 AI-driven attack scenarios in an isolated sandbox tenant, with optional evasion
 variants, and reports exactly which ones you caught, which you missed and which rules were off.
 
-**Pentest continuously, not once a year.** Autopilot has the red-team agent plan tests, runs
-them through the scope-checked harness, and re-plans from what it finds. It only runs inside
+**Pentest continuously, not once a year.** Autopilot and native autonomous pentesting plan tests,
+run them through the scope-checked harness, and re-plan from what they find. They only run inside
 scopes a human has marked for unattended testing.
 
 **Fix what attackers are exploiting right now.** Every finding with a CVE is enriched with
@@ -63,7 +63,7 @@ autonomy as you trust.
 
 ## Tested on every push
 
-More than 460 automated tests run on every commit against both SQLite and PostgreSQL,
+More than 600 automated tests run on every commit against both SQLite and PostgreSQL,
 alongside Bandit and pip-audit security scans, a container build and smoke test, a full
 Compose stack smoke test, and Terraform and Helm validation. `docs/GO-LIVE.md` walks you
 through a production rollout: start in monitoring mode, tune detections to your estate, then
@@ -90,8 +90,9 @@ switch on actions and autonomy when you are ready.
   |  Worker processes run the same handlers as the API:        |
   |   collectors.run   detections.run / baselines              |
   |   graph.recompute  testing.run   agents.run                |
-  |   autoresponse.evaluate   testing.autopilot                |
-  |   simulation.run   intel.enrich / refresh   ai.discover    |
+  |   autoresponse.evaluate   testing.autopilot   pentest.run  |
+  |   discovery.run   exploit.execute   simulation.run         |
+  |   intel.enrich / refresh   ai.discover                     |
   +------------------------------------------------------------+
          |
          v  agents call propose_action only -> ActionRequest(pending)
@@ -119,18 +120,18 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
 | Detections: 13 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic, unsanctioned AI service), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
 | Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
-| Test harness: scope policy, rate limits, adapters for web baseline, trivy, nuclei, zap, prowler, caldera, semgrep, gitleaks | implemented; runs the tools installed on your workers | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
-| Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 7 specialists, eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
+| Test harness: scope policy (passive, active, intrusive, exploit), rate limits, 22 adapters (web baseline, tls, js_analyze, retirejs, trivy, semgrep, gitleaks, trufflehog, prowler, nmap, ffuf, arjun, cors, graphql, jwt_audit, open_redirect, nuclei, zap, auth_diff, ssrf_probe, oob_probe, caldera, strix) | implemented; runs the tools installed on your workers or sandbox | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
+| Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 8 specialists (including offensive pentest), eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
 | Action broker: catalog of 27 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, CrowdStrike, SentinelOne, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
 | Autonomous response: playbooks that act on detections without a human (shadow mode first, reversible actions only, caps, automatic rollback); Slack approve / deny / roll back buttons | implemented; off by default | `app/actions/autoresponse.py`, `app/api/autoresponse.py`, `app/api/slack.py`, `docs/AUTONOMOUS-RESPONSE.md` |
 | AI gateway (governed OpenAI / Anthropic proxy: org-held keys, model allowlists, DLP, prompt-injection flags, budgets, usage log) and shadow-AI discovery from network, cloud and SSO telemetry | implemented; gateway off by default | `app/ai/`, `app/api/ai_gateway.py`, `app/api/ai_inventory.py`, `docs/AI-GATEWAY.md` |
-| Autonomous pentesting: the red-team planner's plans are run through the scope-checked harness and re-planned from results | implemented; off by default, opt-in per tenant and per scope | `app/testing/autopilot.py`, `app/api/autopilot.py`, `docs/AUTOPENTEST.md` |
+| Autonomous pentesting, native pentest orchestrator, recon/browser discovery, and gVisor PoC exploit sandbox | implemented; gated by scope, asset authorization and kill switches | `app/testing/autopilot.py`, `app/pentest/`, `app/discovery/`, `app/exploit/`, `docs/AUTOPENTEST.md`, `docs/NATIVE-PENTEST.md`, `docs/DISCOVERY.md`, `docs/EXPLOIT-SANDBOX.md` |
 | Threat intel: automatic CISA KEV and EPSS enrichment of findings, offline cache | implemented | `app/intel/`, `app/api/intel.py`, `docs/INTEL.md` |
 | Agentic attack simulator: 8 agent-driven attack scenarios replayed in an isolated sandbox tenant, coverage report, evasion variants | implemented | `app/simulator/`, `app/api/simulations.py`, `docs/SIMULATOR.md` |
 | Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Backups and retention: scheduled encrypted backups to disk, S3 and Azure, verified one-command restore, per-tenant retention policies | implemented | `app/ops/`, `app/api/backups.py`, `app/api/retention.py`, `docs/BACKUP.md` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
-| Alembic migrations (5 revisions, through backup history) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Alembic migrations (12 revisions, through native pentest) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
 | Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
@@ -237,12 +238,12 @@ model and tool step is persisted (`agent_steps`) with input hash, tokens and lat
 eval suites live in `app/agents/evals/suites/`.
 
 **Testing** (`app/testing/`). A `TestScope` lists assets, allowed tiers (passive, active,
-intrusive), environments, a UTC window, a rate limit and a concurrency limit (runs beyond
+intrusive, exploit), environments, a UTC window, a rate limit and a concurrency limit (runs beyond
 `max_concurrency` wait in the queue). A run is allowed only if
 the asset has a current `AssetAuthorization` whose flags permit the tier, the scope permits
 it, the window is open and the target passes policy validation. `scope.check()` runs at
-request time and again inside the worker; intrusive tiers are limited to staging and lab
-environments. External tools run through `run_tool()` with a fixed argv, a timeout, bounded
+request time and again inside the worker; intrusive and exploit tiers are limited to staging and lab
+environments by default. External tools run through `run_tool()` with a fixed argv, a timeout, bounded
 output and a minimal environment.
 
 **Actions** (`app/actions/`). Typed actions declare risk, reversibility and a parameter

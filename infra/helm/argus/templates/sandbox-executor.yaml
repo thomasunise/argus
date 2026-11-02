@@ -125,6 +125,13 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.sandbox.executor.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.tmpVolumeSizeLimit }}
 ---
 apiVersion: v1
 kind: Service
