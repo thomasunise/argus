@@ -350,7 +350,8 @@ async def execute(app, principal: Principal, request_id: str, *, db: Session | N
     if claimed.rowcount != 1:
         raise Conflict('action request was already claimed for execution')
     db.refresh(req)
-    run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal))
+    run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal),
+                    dispatch_payload_json=dumps({'previous_status': previous_status, 'principal': _principal_payload(principal)}))
     db.add(run)
     db.flush()
     record_audit(db, principal, 'actions.execute_requested', req.id, {'action_type': req.action_type, 'run_id': run.id})
@@ -408,6 +409,7 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     if claimed.rowcount != 1:
         raise Conflict('run is already being rolled back')
     db.refresh(run)
+    run.rollback_dispatch_json = dumps({'principal': _principal_payload(principal)})
     record_audit(db, principal, 'actions.rollback_requested', run.id, {'action_type': req.action_type, 'request_id': req.id})
     db.commit()
     try:
@@ -434,18 +436,27 @@ async def recover_pending_dispatches(app, limit: int = 100) -> dict:
             ).order_by(ActionRun.created_at).limit(limit)
         ).all()
         pending = [
-            (run.id, run.tenant_id, req.id, run.status, loads(req.policy_json, {}))
+            (run.id, run.tenant_id, req.id, run.status,
+             run.rollback_dispatch_json if run.status == 'executed' else run.dispatch_payload_json)
             for run, req in rows if run.tenant_id == req.tenant_id
         ]
     result = {'recovered': 0, 'deferred': 0}
-    for run_id, tenant_id, request_id, run_status, policy_snapshot in pending:
+    for run_id, tenant_id, request_id, run_status, stored_payload in pending:
         rolling_back = run_status == 'executed'
         kind = 'actions.rollback' if rolling_back else 'actions.execute'
-        previous = 'auto_approved' if policy_snapshot.get('auto_approve') else 'approved'
-        payload = {'request_id': request_id, 'run_id': run_id,
-                   'principal': {'auth': 'system', 'role': 'owner', 'email': 'system:dispatch-recovery'}}
+        saved = loads(stored_payload, {})
+        actor = saved.get('principal') if isinstance(saved, dict) else None
+        if not isinstance(actor, dict) or not actor.get('actor') or not actor.get('role'):
+            log.error('queued action %s has no recoverable original actor; manual reconciliation required', run_id)
+            result['deferred'] += 1
+            continue
+        payload = {'request_id': request_id, 'run_id': run_id, 'principal': actor}
         if not rolling_back:
-            payload['previous_status'] = previous
+            if saved.get('previous_status') not in EXECUTABLE_STATUSES:
+                log.error('queued action %s has an invalid original approval status', run_id)
+                result['deferred'] += 1
+                continue
+            payload['previous_status'] = saved['previous_status']
         try:
             job = await app.state.queue.enqueue(
                 kind, payload, tenant_id=tenant_id, lease_seconds=JOB_LEASE,

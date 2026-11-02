@@ -51,7 +51,10 @@ async def test_action_dispatch_can_be_recovered_from_committed_run(db, app, defa
     db.add(request)
     db.flush()
     run = ActionRun(tenant_id=default_tenant_id, request_id=request.id,
-                    status='queued', job_id='', executed_by='operator')
+                    status='queued', job_id='', executed_by='operator',
+                    dispatch_payload_json=dumps({'previous_status': 'approved',
+                                                 'principal': {'actor': 'operator', 'role': 'operator',
+                                                               'auth': 'session', 'email': 'test@example.org'}}))
     db.add(run)
     db.commit()
     calls = []
@@ -67,3 +70,5 @@ async def test_action_dispatch_can_be_recovered_from_committed_run(db, app, defa
     assert db.get(ActionRun, run.id).job_id == 'recovered-job-id'
     assert calls[0][0] == 'actions.execute'
     assert calls[0][1]['run_id'] == run.id
+    assert calls[0][1]['principal']['role'] == 'operator'
+    assert calls[0][1]['principal']['actor'] == 'operator'

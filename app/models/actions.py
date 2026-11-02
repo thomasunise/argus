@@ -71,6 +71,10 @@ class ActionRun(TenantMixin, Base):
     executed_by: Mapped[str] = mapped_column(String(64), default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')
     rollback_job_id: Mapped[str] = mapped_column(String(36), default='')
+    # Record the original authorization and status in the same transaction as
+    # the pending dispatch. Queue recovery must not elevate the original actor.
+    dispatch_payload_json: Mapped[str] = mapped_column(Text, default='{}')
+    rollback_dispatch_json: Mapped[str] = mapped_column(Text, default='{}')
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     rolled_back_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
