@@ -138,6 +138,8 @@ async def schedule_tick(app, now: float | None = None) -> list[str]:
     enqueued: list[str] = []
 
     moment = datetime.fromtimestamp(now, timezone.utc)
+    from ..actions.broker import recover_pending_dispatches
+    await recover_pending_dispatches(app)
     # Audit delivery retries are independent of backup/retention schedules.
     # A failed external sink must never become a permanent audit gap.
     if settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container:
@@ -198,7 +200,7 @@ def setup(app) -> None:
         return result
 
     async def _start(app) -> None:
-        if settings.app_env == 'test' or not (settings.backup_enabled or settings.retention_enabled or settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
+        if settings.app_env == 'test':
             return
         from ..main import spawn
 

@@ -65,7 +65,7 @@ def _runs(db: Session, req: ActionRequest) -> list[ActionRun]:
 
 
 def approvals_satisfied(req: ActionRequest, approvals: list[ActionApproval], db: Session | None = None) -> bool:
-    if req.status == 'auto_approved':
+    if req.status == 'auto_approved' or (req.status == 'executing' and loads(req.policy_json, {}).get('auto_approve')):
         return True
     requester = identity_of(db, req.requested_by)
     approving = [a for a in approvals if a.decision == 'approve' and a.approver_id != req.requested_by

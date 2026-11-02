@@ -14,8 +14,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
-REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved')
-RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed')
+REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved', 'uncertain')
+RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed', 'uncertain')
 RISKS = ('low', 'medium', 'high', 'critical')
 EXECUTABLE_STATUSES = ('approved', 'auto_approved')
 OPEN_STATUSES = ('pending', 'approved', 'auto_approved')
