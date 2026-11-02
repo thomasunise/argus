@@ -383,10 +383,8 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
         raise Conflict(f'{action.name} is not reversible')
     if run.rollback_payload_json in ('', '{}', 'null'):
         raise Conflict('run has no rollback payload')
-    tenant = _tenant(db, principal.tenant_id)
-    blocked = _kill_switch_reason(tenant, settings)
-    if blocked:
-        raise PolicyDenied(blocked)
+    # Emergency rollback is allowed while new actions are disabled.
+    # The operator must still possess actions:rollback and the run must be reversible.
     claimed = db.execute(
         update(ActionRun)
         .where(
@@ -557,9 +555,8 @@ async def handle_rollback(job, ctx) -> dict:
             return {'ok': True, 'skipped': True, 'status': run.status}
         action = catalog.get(req.action_type)
         tenant = _tenant(db, job.tenant_id)
-        blocked = _kill_switch_reason(tenant, settings)
-        if action is None or not action.reversible or blocked:
-            error = blocked or f'{req.action_type} is not reversible'
+        if action is None or not action.reversible:
+            error = f'{req.action_type} is not reversible'
             record_audit(db, principal, 'actions.rollback_failed', run.id, {'action_type': req.action_type, 'error': error})
             return {'ok': False, 'error': error}
         rollback_payload = loads(run.rollback_payload_json, {})
