@@ -12,7 +12,7 @@
 x-argus-env: &argus-env
   HOME: /tmp
   XDG_CACHE_HOME: /tmp/.cache
-  DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus
+  DATABASE_URL: ${ARGUS_DATABASE_URL:-postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus}
   REDIS_URL: redis://redis:6379/0
   SCAN_ROOT: /app/targets
   AUDIT_JSONL_PATH: /app/data/audit.jsonl
@@ -41,17 +41,36 @@ x-argus-common: &argus-common
     - argus
 
 services:
+  # Migrations alone use the table-owning database account. The HTTP API and
+  # workers use ARGUS_DATABASE_URL, which MUST be a separate non-owner role
+  # in production. No migration credentials are passed to runtime services.
+  migrate:
+    <<: *argus-common
+    command: ["migrate"]
+    env_file: []
+    environment:
+      DATABASE_URL: ${ARGUS_DATABASE_URL:-postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus}
+      ALEMBIC_DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     <<: *argus-common
     command: ["api"]
     environment:
       <<: *argus-env
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       WORKERS_INPROCESS: "false"   # the worker service owns job execution
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
