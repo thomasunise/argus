@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     redis_url: str = ''
     workers_inprocess: bool = True
     worker_concurrency: int = 4
+    worker_role: str = 'general'  # general or scanner; production scans use a separate Redis queue
     queue_max_attempts: int = 3
 
     # --- auth ---
