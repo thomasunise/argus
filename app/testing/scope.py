@@ -115,7 +115,9 @@ def assert_exploit_authorized(asset, authorization, settings: Settings, *, scope
     if not getattr(authorization, 'allow_exploit', False):
         raise ScopeDenied('authorization does not permit exploit execution')
     permitted = exploit_environments(settings)
-    if asset.environment in permitted:
+    # Production never bypasses signed ROE verification, even when someone
+    # adds "production" to EXPLOIT_ENVIRONMENTS by configuration.
+    if asset.environment in permitted and asset.environment != 'production':
         return
     document = str(getattr(authorization, 'scope_document_ref', '') or '').strip()
     if asset.environment == 'production':
