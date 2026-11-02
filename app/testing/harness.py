@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import signal
 import hashlib
 import logging
 import os
@@ -105,6 +106,7 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
             *argv, cwd=cwd, env=run_env,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=(os.name == 'posix'),
         )
     except (FileNotFoundError, NotADirectoryError) as exc:
         raise Unavailable(f'tool not available: {argv[0]}') from exc
@@ -124,13 +126,19 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
 
     try:
         async def communicate_bounded():
-            if stdin is not None and process.stdin:
-                process.stdin.write(stdin)
-                await process.stdin.drain()
-                process.stdin.close()
+            # Drain both pipes while feeding stdin, otherwise a tool that writes
+            # before reading its input could deadlock on full pipe buffers.
             out_task = asyncio.create_task(bounded_read(process.stdout))
             err_task = asyncio.create_task(bounded_read(process.stderr))
             try:
+                if stdin is not None and process.stdin:
+                    try:
+                        process.stdin.write(stdin)
+                        await process.stdin.drain()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    finally:
+                        process.stdin.close()
                 await process.wait()
                 return await asyncio.gather(out_task, err_task)
             finally:
@@ -142,13 +150,21 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
         out, err = await asyncio.wait_for(communicate_bounded(), timeout=timeout)
     except asyncio.TimeoutError as exc:
         if process.returncode is None:
-            process.kill()
+            if os.name == 'posix':
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
         with contextlib.suppress(Exception):
             await process.wait()
         raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from exc
     except asyncio.CancelledError:
         if process.returncode is None:
-            process.kill()
+            if os.name == 'posix':
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
         with contextlib.suppress(Exception):
             await process.wait()
         raise
