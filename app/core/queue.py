@@ -251,6 +251,11 @@ class JobQueue:
             await self._run_job(job)
 
     async def _run_job(self, job: Job) -> None:
+        if (self.settings.is_production
+                and (job.kind == 'testing.run') != (self.settings.worker_role == 'scanner')):
+            job.status, job.error, job.finished_at = 'failed', 'job routed to wrong security worker role', time.time()
+            await self._backend.update(job)
+            return
         handler = self._handlers.get(job.kind)
         job.status, job.attempts, job.started_at = 'running', job.attempts + 1, time.time()
         await self._backend.update(job)
