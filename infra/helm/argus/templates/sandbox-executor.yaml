@@ -113,6 +113,8 @@ spec:
                 secretKeyRef:
                   name: {{ default (printf "%s-sandbox-executor" (include "argus.fullname" .)) .Values.sandbox.executor.existingTokenSecret }}
                   key: {{ .Values.sandbox.executor.existingTokenSecretKey }}
+            - name: SANDBOX_POC_IMAGES
+              value: {{ .Values.sandbox.pocImages | quote }}
             - name: SANDBOX_ENGINE_IMAGES
               value: {{ .Values.sandbox.engineImages | quote }}
             - name: SANDBOX_ENGINE_MAX_WALL_SECONDS

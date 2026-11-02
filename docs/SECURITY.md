@@ -23,8 +23,9 @@ permissions.
   this still does not pin the actual socket to the validated address. Use explicit network
   egress restrictions and permitlists for collectors, outbound integrations and tools.
 - **Tested sandbox rules are not a substitute for runtime isolation.** Confirm image
-  allowlists, policy enforcement by your CNI, RuntimeClass isolation and Kubernetes
-  resource quotas using a real cluster before enabling exploit execution.
+  allowlists (including SANDBOX_POC_IMAGES, which defaults to deny-all), policy
+  enforcement by your CNI, RuntimeClass isolation and Kubernetes resource quotas
+  using a real cluster before enabling exploit execution.
 - **AI DLP is text-only.** In enforcing modes, unsupported media and encoded payloads
   are rejected instead of being described as inspected.
 - **Independent field validation is missing.** Detection confidence heuristics are not
