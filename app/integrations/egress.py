@@ -4,8 +4,9 @@ hooks, SIEM indexers, fleet servers).
 Operators configure these destinations through the API, so a compromised or careless admin
 account must not be able to point Argus at the cloud metadata service, loopback, link-local
 or RFC 1918 space. The check is applied when a configuration is saved (with DNS resolution)
-and again, syntactically, right before every send. DNS rebinding between the two is a known
-residual that network egress policy must cover (see docs/THREAT-MODEL.md).
+and again at send time, including DNS in production. This cannot guarantee the
+resolved address remains unchanged during connect: enforce network-level egress
+restrictions as well (see docs/THREAT-MODEL.md).
 """
 from __future__ import annotations
 
@@ -73,12 +74,20 @@ def validate_outbound_url(url: Any, settings: Settings, *, resolve: bool = True,
         if not allowed_ip(str(literal), settings):
             raise EgressDenied(f'{label} points at a private, loopback or link-local address')
         return text
-    if resolve and not _unresolvable_by_design(hostname):
+    if resolve:
+        if _unresolvable_by_design(hostname):
+            if settings.is_production:
+                raise EgressDenied(f'{label} uses a reserved or non-resolvable domain')
+            return text  # development uses RFC 2606 fixtures
         try:
             results = socket.getaddrinfo(hostname, parts.port or (443 if scheme == 'https' else 80), type=socket.SOCK_STREAM)
         except (socket.gaierror, OSError, UnicodeError):
+            if settings.is_production:
+                raise EgressDenied(f'{label} hostname could not be resolved')
             results = []
         addresses = {entry[4][0] for entry in results}
+        if settings.is_production and not addresses:
+            raise EgressDenied(f'{label} has no resolved destination')
         if addresses and any(not allowed_ip(ip, settings) for ip in addresses):
             raise EgressDenied(f'{label} resolves to a private, loopback or link-local address')
     return text
@@ -102,7 +111,8 @@ def check_url_config(config: dict[str, Any], settings: Settings, *, keys: Iterab
 def egress_ok(url: Any, settings: Settings, *, allow_http: bool = False) -> str:
     """Send-time guard: '' when the URL may be contacted, otherwise the reason it may not."""
     try:
-        validate_outbound_url(url, settings, resolve=False, allow_http=allow_http)
+        # Re-resolve at send time; network policy remains required to prevent TOCTOU.
+        validate_outbound_url(url, settings, resolve=settings.is_production, allow_http=allow_http)
     except EgressDenied as exc:
         return exc.message
     return ''

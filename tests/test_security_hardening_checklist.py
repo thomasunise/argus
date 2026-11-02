@@ -127,12 +127,10 @@ async def test_concurrent_rollback_claims_only_once(app, db, default_tenant_id):
         db.commit()
         run = await broker.execute(app, approver, req.id, db=db)
 
-        for _ in range(40):
-            db.expire_all()
-            refreshed = broker.get_run(db, approver, run.id)
-            if refreshed.status == 'executed':
-                break
-            await asyncio.sleep(0.05)
+        # Wait on the worker's terminal state rather than an arbitrary 2s window.
+        job = await app.state.queue.wait(run.job_id, timeout=30)
+        assert job is not None and job.status == 'completed', getattr(job, 'error', 'job missing')
+        db.expire_all()
         assert broker.get_run(db, approver, run.id).status == 'executed'
 
         results = await asyncio.gather(

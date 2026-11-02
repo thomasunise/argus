@@ -18,7 +18,9 @@ permissions.
   Keep autonomous changes disabled until each enabled provider action has a tested
   recovery and verification contract.
 - **Network egress controls need deployment enforcement.** Application DNS checks alone
-  cannot prevent rebinding between validation and connection. Use explicit network
+  cannot prevent rebinding between validation and connection. In production,
+  integration URLs are re-resolved at send time and unresolved names are rejected;
+  this still does not pin the actual socket to the validated address. Use explicit network
   egress restrictions and permitlists for collectors, outbound integrations and tools.
 - **Tested sandbox rules are not a substitute for runtime isolation.** Confirm image
   allowlists, policy enforcement by your CNI, RuntimeClass isolation and Kubernetes

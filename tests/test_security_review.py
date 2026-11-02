@@ -297,3 +297,34 @@ async def test_sec_literal_secret_refs_rejected_for_test_adapters(settings, monk
     asset = types.SimpleNamespace(id='a', name='web', kind='web', target='https://app.example.test', environment='staging', criticality='medium')
     with pytest.raises(Unavailable):
         await zap.ZapAdapter().run({}, asset, types.SimpleNamespace(max_rps=10), _ctx(settings, 'active', 'https://app.example.test'))
+
+
+
+def test_sec_production_egress_rechecks_dns_at_send_time(settings, monkeypatch):
+    import socket
+    from app.integrations.egress import egress_ok
+
+    prod = settings.model_copy(update={'app_env': 'production'})
+    hostname = 'webhook.customer-valid.net'
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('169.254.169.254', 443))
+    ])
+    assert 'private' in egress_ok(f'https://{hostname}/notify', prod)
+
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('8.8.8.8', 443))
+    ])
+    assert egress_ok(f'https://{hostname}/notify', prod) == ''
+
+
+def test_sec_production_egress_dns_failure_denies(settings, monkeypatch):
+    import socket
+    from app.integrations.egress import egress_ok
+
+    def offline(*args, **kwargs):
+        raise socket.gaierror('name not found')
+
+    monkeypatch.setattr(socket, 'getaddrinfo', offline)
+    prod = settings.model_copy(update={'app_env': 'production'})
+    assert 'could not be resolved' in egress_ok('https://no-such-valid-domain.customer.net', prod)
+    assert 'reserved' in egress_ok('https://hooks.example.test/callback', prod)
