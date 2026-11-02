@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from uuid import uuid4
-from importlib import import_module
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
 
 import pytest
 from alembic.migration import MigrationContext
@@ -36,7 +37,11 @@ def test_unprivileged_role_cannot_read_unset_or_foreign_tenant(db, app, default_
         # The shared-Postgres fixture deliberately uses drop_all/create_all
         # per test (dropping every Alembic policy). Apply the actual migration
         # against the fresh fixture before checking the non-owner role.
-        rls = import_module('alembic.versions.20261102_d4e5f6a7b8c9_strict_tenant_policies')
+        migration = Path(__file__).resolve().parents[1] / 'alembic/versions/20261102_d4e5f6a7b8c9_strict_tenant_policies.py'
+        spec = spec_from_file_location('argus_rls_migration_test', migration)
+        assert spec is not None and spec.loader is not None
+        rls = module_from_spec(spec)
+        spec.loader.exec_module(rls)
         operations = Operations(MigrationContext.configure(admin))
         original_op = rls.op
         try:
