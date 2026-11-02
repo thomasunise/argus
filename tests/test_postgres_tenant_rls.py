@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from importlib import import_module
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import text
 
 from app.core.db import set_tenant_context
@@ -30,6 +33,17 @@ def test_unprivileged_role_cannot_read_unset_or_foreign_tenant(db, app, default_
     role = 'argus_rls_test_' + uuid4().hex[:10]
     engine = app.state.engine
     with engine.begin() as admin:
+        # The shared-Postgres fixture deliberately uses drop_all/create_all
+        # per test (dropping every Alembic policy). Apply the actual migration
+        # against the fresh fixture before checking the non-owner role.
+        rls = import_module('alembic.versions.20261102_d4e5f6a7b8c9_strict_tenant_policies')
+        operations = Operations(MigrationContext.configure(admin))
+        original_op = rls.op
+        try:
+            rls.op = operations
+            rls.upgrade()
+        finally:
+            rls.op = original_op
         admin.execute(text(f'CREATE ROLE "{role}" NOLOGIN NOBYPASSRLS'))
         admin.execute(text(f'GRANT USAGE ON SCHEMA public TO "{role}"'))
         admin.execute(text(f'GRANT SELECT ON TABLE assets TO "{role}"'))
