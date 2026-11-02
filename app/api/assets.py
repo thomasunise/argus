@@ -21,6 +21,7 @@ from ..core.db import get_scoped, scoped
 from ..core.errors import Conflict, NotFound, PolicyDenied
 from ..core.policy import validate_target
 from ..core.rbac import Principal
+from ..testing.authorization import verify_roe
 from ..models import (
     Asset,
     AssetAuthorization,
@@ -308,7 +309,8 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), principal: Princi
 
 
 @router.post('/{asset_id}/authorize', status_code=201)
-def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(get_db), principal: Principal = Depends(require('assets:authorize'))):
+def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(get_db), principal: Principal = Depends(require('assets:authorize')),
+                    settings: Settings = Depends(get_settings)):
     asset = _get_asset(db, principal, asset_id)
     attestation = body.attestation.strip()
     if len(attestation) < MIN_ATTESTATION_CHARS:
@@ -323,9 +325,12 @@ def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(ge
             raise BadRequest('Exploit authoring is only available for web assets', code='invalid_kind')
         if not body.allow_active:
             raise BadRequest('allow_exploit requires allow_active', code='invalid_tiers')
-        if asset.environment not in EXPLOIT_ENVIRONMENTS and not body.scope_document_ref.strip():
-            raise BadRequest('Exploit authorization outside staging/lab requires a signed scope_document_ref',
-                             code='scope_document_required')
+        if asset.environment == 'production':
+            if not verify_roe(body.scope_document_ref.strip(), asset, settings):
+                raise BadRequest('Production exploit authorization requires a valid signed and unexpired ROE token',
+                                 code='invalid_signed_roe')
+        elif asset.environment not in EXPLOIT_ENVIRONMENTS:
+            raise PolicyDenied('Exploit authorization is only permitted in staging, lab or signed production scope')
     now = utcnow()
     superseded = []
     for previous in active_authorizations(db, principal.tenant_id, asset.id, now):
