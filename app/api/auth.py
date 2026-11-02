@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.db import enter_tenant, set_tenant_context
+from ..core.db import set_tenant_context
 from ..core.config import Settings
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
@@ -85,8 +85,6 @@ def _establish_session(request: Request, user: User, tenant_id: str, mfa: bool) 
     request.session.clear()
     if getattr(request.state, 'db', None) is not None:
         set_tenant_context(request.state.db, tenant_id)
-        if getattr(request.state, 'tenant_token', None) is None:
-            request.state.tenant_token = enter_tenant(tenant_id)
     request.session.update({'authed': True, 'user_id': user.id, 'tenant_id': tenant_id, 'csrf': secrets.token_urlsafe(32), 'mfa': mfa,
                             'issued_at': time.time()})
     return {'authenticated': True, 'csrf': request.session['csrf'], 'tenant_id': tenant_id, 'mfa': mfa}
