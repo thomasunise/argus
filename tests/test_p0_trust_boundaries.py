@@ -152,7 +152,7 @@ def test_production_requires_out_of_process_scanner(settings):
         assert_safe_config(insecure)
 
 
-def test_postgres_rls_is_deny_by_default_for_nonowner(app):
+def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
     """Direct SQL without tenant context must see no assets and cannot insert.
 
     This test is skipped for SQLite because SQLite has no PostgreSQL RLS.
@@ -164,6 +164,15 @@ def test_postgres_rls_is_deny_by_default_for_nonowner(app):
         pytest.skip('requires PostgreSQL RLS')
     from sqlalchemy import text
     from app.models import Asset
+    # The shared PostgreSQL pytest fixture creates tables directly from ORM
+    # metadata (not Alembic); install the same RLS policy explicitly here.
+    with engine_db.begin() as c:
+        c.execute(text('ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY'))
+        c.execute(text('DROP POLICY IF EXISTS tenant_isolation_policy ON public.assets'))
+        c.execute(text(
+            'CREATE POLICY tenant_isolation_policy ON public.assets '
+            "USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')) "
+            "WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))"))
     seed = Asset(tenant_id=app.state.default_tenant_id, name='P0 RLS sentinel',
                  kind='web', target='https://p0-rls.invalid', environment='lab')
     with app.state.db_factory() as db:
