@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     redis_url: str = ''
     workers_inprocess: bool = True
     worker_concurrency: int = 4
+    worker_role: str = 'general'  # general or scanner; production scans use a separate Redis queue
     queue_max_attempts: int = 3
 
     # --- auth ---
@@ -127,7 +128,8 @@ class Settings(BaseSettings):
     exploit_executor_token: str = ''
     exploit_sandbox_image: str = 'ghcr.io/thomasunise/argus-sandbox:latest'
     exploit_require_image_digest: bool = True  # the image must be pinned as image@sha256:...
-    exploit_environments: str = 'staging,lab'  # production additionally needs a scope_document_ref
+    exploit_environments: str = 'staging,lab'  # production additionally needs independently signed ROE
+    exploit_roe_signing_key: str = ''  # independent issuer HMAC key; never exposed via API
     exploit_max_code_bytes: int = 65_536
     exploit_max_artifact_bytes: int = 5 * 1024 * 1024
     exploit_max_wall_seconds: int = 300
@@ -314,6 +316,8 @@ def assert_safe_config(settings: Settings) -> None:
     if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
         raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
     if settings.is_production:
+        if settings.workers_inprocess:
+            raise RuntimeError('Production requires WORKERS_INPROCESS=false; scanner jobs must run in the isolated scanner worker')
         if settings.sqlite:
             raise RuntimeError('Production requires PostgreSQL (DATABASE_URL=postgresql+psycopg://...)')
         if not settings.cookie_secure:
@@ -337,6 +341,8 @@ def assert_safe_config(settings: Settings) -> None:
         settings_dict = settings.__dict__
         settings_dict['allow_literal_secret_refs'] = False
     if settings.exploit_enabled:
+        if settings.is_production and (len(settings.exploit_roe_signing_key) < 32 or settings.exploit_roe_signing_key.startswith('REPLACE_')):
+            raise RuntimeError('Production exploit testing requires EXPLOIT_ROE_SIGNING_KEY (32+ characters)')
         if not settings.exploit_sandbox_image.strip():
             raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_SANDBOX_IMAGE')
         if settings.exploit_require_image_digest and '@sha256:' not in settings.exploit_sandbox_image:

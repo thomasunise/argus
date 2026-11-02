@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
+from ..core.db import set_tenant_context
 from ..core.config import Settings
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
@@ -82,6 +83,8 @@ def _memberships(db: Session, user_id: str) -> list[tuple[Membership, Tenant]]:
 
 def _establish_session(request: Request, user: User, tenant_id: str, mfa: bool) -> dict:
     request.session.clear()
+    if getattr(request.state, 'db', None) is not None:
+        set_tenant_context(request.state.db, tenant_id)
     request.session.update({'authed': True, 'user_id': user.id, 'tenant_id': tenant_id, 'csrf': secrets.token_urlsafe(32), 'mfa': mfa,
                             'issued_at': time.time()})
     return {'authenticated': True, 'csrf': request.session['csrf'], 'tenant_id': tenant_id, 'mfa': mfa}
@@ -164,6 +167,7 @@ def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depend
     target = next((t for _, t in _memberships(db, principal.user_id) if t.slug == body.tenant or t.id == body.tenant), None)
     if not target:
         raise NotFound('Tenant not found')
+    set_tenant_context(db, target.id)
     request.session['tenant_id'] = target.id
     request.session['csrf'] = secrets.token_urlsafe(32)
     record_audit(db, principal, 'auth.switch_tenant', target.id, tenant_id=target.id)

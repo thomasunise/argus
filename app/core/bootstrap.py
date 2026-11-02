@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..models import ApiKey, Membership, Tenant, User
 from .audit import record_audit
 from .config import Settings
+from .db import set_tenant_context
 from .security import hash_api_key, hash_password, parse_api_key, verify_password
 
 log = logging.getLogger('argus.bootstrap')
@@ -20,7 +21,9 @@ def bootstrap(db: Session, settings: Settings) -> Tenant:
         tenant = Tenant(slug=settings.default_tenant_slug, name=settings.default_tenant_name)
         db.add(tenant)
         db.flush()
+        set_tenant_context(db, tenant.id)
         record_audit(db, 'system', 'tenant.created', tenant.id, {'slug': tenant.slug}, tenant_id=tenant.id)
+    set_tenant_context(db, tenant.id)
     email = settings.admin_email.lower()
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if not user:

@@ -17,6 +17,8 @@ log = logging.getLogger('argus.worker')
 
 async def main() -> None:
     settings = get_settings()
+    if settings.worker_role not in {'general', 'scanner'}:
+        raise SystemExit('WORKER_ROLE must be general or scanner')
     if not settings.redis_url:
         raise SystemExit('REDIS_URL is required for a standalone worker')
     settings = settings.model_copy(update={'workers_inprocess': False})
@@ -32,12 +34,14 @@ async def main() -> None:
             signal.signal(sig, lambda *_: stop.set())
     log.info('worker started with %s handlers: %s', len(queue.kinds), ', '.join(queue.kinds))
     from .collectors.runner import scheduler_loop as collector_scheduler_loop
-    scheduler_task = asyncio.create_task(collector_scheduler_loop(app), name='argus-collector-scheduler')
+    scheduler_task = (asyncio.create_task(collector_scheduler_loop(app), name='argus-collector-scheduler')
+                      if settings.worker_role == 'general' else None)
     try:
         await stop.wait()
     finally:
-        scheduler_task.cancel()
-        await asyncio.gather(scheduler_task, return_exceptions=True)
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            await asyncio.gather(scheduler_task, return_exceptions=True)
         await queue.stop()
 
 

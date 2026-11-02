@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from .config import Settings
+from .db import enter_tenant, leave_tenant
 
 log = logging.getLogger('argus.queue')
 
@@ -83,7 +84,7 @@ class JobQueue:
         self.db_factory = db_factory
         self.app = app
         self._handlers: dict[str, Handler] = {}
-        self._backend: _MemoryBackend | _RedisBackend = _RedisBackend(settings.redis_url) if settings.redis_url else _MemoryBackend()
+        self._backend: _MemoryBackend | _RedisBackend = _RedisBackend(settings.redis_url, worker_role=settings.worker_role) if settings.redis_url else _MemoryBackend()
         self._workers: list[asyncio.Task] = []
         self._running = False
         # Workers run on a dedicated thread with their own event loop so a handler's blocking
@@ -250,6 +251,11 @@ class JobQueue:
             await self._run_job(job)
 
     async def _run_job(self, job: Job) -> None:
+        if (self.settings.is_production
+                and (job.kind == 'testing.run') != (self.settings.worker_role == 'scanner')):
+            job.status, job.error, job.finished_at = 'failed', 'job routed to wrong security worker role', time.time()
+            await self._backend.update(job)
+            return
         handler = self._handlers.get(job.kind)
         job.status, job.attempts, job.started_at = 'running', job.attempts + 1, time.time()
         await self._backend.update(job)
@@ -285,6 +291,7 @@ class JobQueue:
     async def _run_with_lease(self, handler, job: Job, ctx: JobContext):
         """wait_for(lease) with a moving deadline: ctx.heartbeat() pushes ctx.deadline out, so a collector or test run
         that keeps heartbeating is not killed at the nominal lease while a silent one still is."""
+        token = enter_tenant(job.tenant_id)
         task = asyncio.ensure_future(handler(job, ctx))
         try:
             while True:
@@ -302,6 +309,8 @@ class JobQueue:
             with contextlib.suppress(BaseException):
                 await task
             raise
+        finally:
+            leave_tenant(token)
 
     async def _fail_or_retry(self, job: Job) -> None:
         _count(job, 'retried' if job.attempts < job.max_attempts else 'failed')
@@ -416,8 +425,11 @@ class _RedisBackend:
     """Redis layout: hash argus:job:{id}; lists argus:q:{priority}; set argus:running;
     key argus:lease:{id} (EX); hash argus:idem."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, worker_role: str = 'general'):
+        if worker_role not in {'general', 'scanner'}:
+            raise ValueError('worker_role must be general or scanner')
         self.url = url
+        self.worker_role = worker_role
         self.redis = None
 
     async def connect(self):
@@ -436,6 +448,12 @@ class _RedisBackend:
     def _key(self, job_id: str) -> str:
         return f'argus:job:{job_id}'
 
+    @staticmethod
+    def _list(job: Job) -> str:
+        # A general-purpose worker must never consume a scanner job.
+        prefix = 'argus:scan:q' if job.kind == 'testing.run' else 'argus:q'
+        return f'{prefix}:{job.priority}'
+
     async def _save(self, job: Job):
         await self.redis.set(self._key(job.id), json.dumps(job.to_dict(), default=str), ex=7 * 86400)
 
@@ -448,7 +466,7 @@ class _RedisBackend:
         if job.not_before:
             await self.redis.zadd('argus:delayed', {job.id: job.not_before})
         else:
-            await self.redis.rpush(f'argus:q:{job.priority}', job.id)
+            await self.redis.rpush(self._list(job), job.id)
 
     async def update(self, job: Job):
         await self._save(job)
@@ -463,7 +481,7 @@ class _RedisBackend:
         if job.not_before and job.not_before > time.time():
             await self.redis.zadd('argus:delayed', {job.id: job.not_before})
         else:
-            await self.redis.rpush(f'argus:q:{job.priority}', job.id)
+            await self.redis.rpush(self._list(job), job.id)
 
     async def get(self, job_id: str) -> Job | None:
         if self.redis is None:
@@ -486,7 +504,8 @@ class _RedisBackend:
         return True
 
     async def claim(self, timeout: float) -> Job | None:
-        keys = [f'argus:q:{p}' for p in range(10)]
+        prefix = 'argus:scan:q' if self.worker_role == 'scanner' else 'argus:q'
+        keys = [f'{prefix}:{p}' for p in range(10)]
         item = await self.redis.blpop(keys, timeout=max(1, int(timeout)))
         if not item:
             return None
@@ -508,7 +527,7 @@ class _RedisBackend:
             await self.redis.zrem('argus:delayed', job_id)
             job = await self.get(job_id)
             if job and job.status == 'queued':
-                await self.redis.rpush(f'argus:q:{job.priority}', job_id)
+                await self.redis.rpush(self._list(job), job_id)
         # Jobs a worker popped but never marked running (it died between BLPOP and SADD): status queued, due, in no
         # list. Scanned every 20th pass; a duplicate push is harmless because claim() ignores non-queued jobs.
         self._reaps = getattr(self, '_reaps', 0) + 1
@@ -520,10 +539,10 @@ class _RedisBackend:
                 orphan = Job(**json.loads(raw))
                 if orphan.status != 'queued' or orphan.not_before > now:
                     continue
-                in_list = await self.redis.lpos(f'argus:q:{orphan.priority}', orphan.id)
+                in_list = await self.redis.lpos(self._list(orphan), orphan.id)
                 delayed = await self.redis.zscore('argus:delayed', orphan.id)
                 if in_list is None and delayed is None:
-                    await self.redis.rpush(f'argus:q:{orphan.priority}', orphan.id)
+                    await self.redis.rpush(self._list(orphan), orphan.id)
         # Requeue running jobs whose lease expired (worker died).
         for job_id in await self.redis.smembers('argus:running'):
             if await self.redis.exists(f'argus:lease:{job_id}'):
@@ -557,7 +576,7 @@ class _RedisBackend:
         if await self.redis.scard('argus:running'):
             return True
         for p in range(10):
-            if await self.redis.llen(f'argus:q:{p}'):
+            if await self.redis.llen(f'argus:q:{p}') or await self.redis.llen(f'argus:scan:q:{p}'):
                 return True
         return bool(await self.redis.zcard('argus:delayed'))
 

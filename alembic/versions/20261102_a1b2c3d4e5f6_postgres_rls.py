@@ -1,4 +1,4 @@
-"""PostgreSQL Row-Level Security (RLS) defense-in-depth for tenant-scoped tables
+"""PostgreSQL Row-Level Security (RLS) defense-in-depth for tenant-scoped tables\n\nNo tenant context means no tenant rows. Production MUST connect through a dedicated\nnon-owner, non-BYPASSRLS runtime role; migration ownership must stay separate.
 
 Revision ID: a1b2c3d4e5f6
 Revises: a4c8e2f1b356
@@ -73,9 +73,8 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f'CREATE POLICY tenant_isolation_policy ON "{table}" '
-                "USING (current_setting('app.tenant_id', true) IS NULL "
-                "OR current_setting('app.tenant_id', true) = '' "
-                "OR tenant_id = current_setting('app.tenant_id', true))"
+                "USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')) "
+                "WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))"
             )
         )
 

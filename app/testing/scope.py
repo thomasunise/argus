@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from ..core.config import Settings
 from ..core.errors import ScopeDenied
 from ..core import policy
+from .authorization import verify_roe
 from ..models import loads
 
 TIER_RANK = {'passive': 0, 'active': 1, 'intrusive': 2, 'exploit': 3}
@@ -98,7 +99,7 @@ def check(adapter, asset, scope, authorization, now: datetime, settings: Setting
         if asset.environment not in INTRUSIVE_ENVIRONMENTS:
             raise ScopeDenied('intrusive testing is only permitted in staging or lab environments')
     if effective_tier == 'exploit':
-        assert_exploit_authorized(asset, authorization, settings)
+        assert_exploit_authorized(asset, authorization, settings, scope=scope)
 
     if not _within_window(scope.window_start, scope.window_end, now):
         raise ScopeDenied('outside the permitted testing time window')
@@ -109,16 +110,22 @@ def check(adapter, asset, scope, authorization, now: datetime, settings: Setting
 
 EXPLOIT_ENVIRONMENTS = {'staging', 'lab'}
 
-def assert_exploit_authorized(asset, authorization, settings: Settings) -> None:
+def assert_exploit_authorized(asset, authorization, settings: Settings, *, scope=None) -> None:
     """The exploit tier's own rules, shared by adapter runs and PoC runs."""
     if not getattr(authorization, 'allow_exploit', False):
         raise ScopeDenied('authorization does not permit exploit execution')
     permitted = exploit_environments(settings)
-    if asset.environment in permitted:
+    # Production never bypasses signed ROE verification, even when someone
+    # adds "production" to EXPLOIT_ENVIRONMENTS by configuration.
+    if asset.environment in permitted and asset.environment != 'production':
         return
     document = str(getattr(authorization, 'scope_document_ref', '') or '').strip()
-    if asset.environment == 'production' and document:
-        return  # production is permitted with a signed rules-of-engagement reference
+    if asset.environment == 'production':
+        if not document or not verify_roe(document, asset, settings):
+            raise ScopeDenied('production requires a valid, signed and unexpired rules-of-engagement token')
+        if scope is None or getattr(scope, 'signed_document_ref', '') != document:
+            raise ScopeDenied('production scope must explicitly bind the same signed rules-of-engagement token')
+        return
     raise ScopeDenied(
         f'exploit execution is not permitted in {asset.environment}; allowed environments: {sorted(permitted)}'
         + (' (production requires a scope document reference)' if asset.environment == 'production' else ''))
@@ -160,7 +167,7 @@ def check_exploit(asset, scope, authorization, now: datetime, settings: Settings
         raise ScopeDenied('asset authorization has been revoked')
     if authorization.expires_at is not None and _aware(authorization.expires_at) <= now:
         raise ScopeDenied('asset authorization has expired')
-    assert_exploit_authorized(asset, authorization, settings)
+    assert_exploit_authorized(asset, authorization, settings, scope=scope)
 
     if not _within_window(scope.window_start, scope.window_end, now):
         raise ScopeDenied('outside the permitted testing time window')

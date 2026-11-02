@@ -92,10 +92,29 @@ def get_adapter(name: str) -> TestAdapter | None:
 # -- bounded, shell-free subprocess runner ----------------------------------
 
 
+async def _read_bounded(reader: asyncio.StreamReader, *, limit: int = MAX_OUTPUT_BYTES) -> bytes:
+    """Never read more than limit bytes from a potentially hostile tool process."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        part = await reader.read(min(65536, limit + 1 - total))
+        if not part:
+            break
+        total += len(part)
+        if total > limit:
+            raise Unavailable(f'tool output exceeded {limit} bytes; process terminated')
+        chunks.append(part)
+    return b''.join(chunks)
+
+
 async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: dict | None = None,
                    stdin: bytes | None = None) -> tuple[int, str, str]:
-    """Run an external tool with a fixed argv (never a shell). Output is bounded to 2 MB per
-    stream, the process is killed on timeout, and stdout/stderr are redacted before return."""
+    """Run an external tool without a shell, with bounded streaming output and timeout.
+
+    Full stdout/stderr must never be buffered in RAM before applying the limit.
+    Exceeding either stream limit terminates the subprocess rather than truncating
+    evidence and continuing a potentially abusive operation.
+    """
     if not argv or not isinstance(argv, list):
         raise ValueError('run_tool requires a non-empty argv list')
     run_env = env if env is not None else _base_env()
@@ -107,19 +126,34 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
         )
     except (FileNotFoundError, NotADirectoryError) as exc:
         raise Unavailable(f'tool not available: {argv[0]}') from exc
-    try:
-        out, err = await asyncio.wait_for(process.communicate(input=stdin), timeout=timeout)
-    except asyncio.TimeoutError:
-        process.kill()
-        try:
-            await process.communicate()
-        except Exception:  # noqa: BLE001 - process already gone
-            pass
-        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout')
-    stdout = redact(_decode(out))
-    stderr = redact(_decode(err))
-    return process.returncode or 0, stdout, stderr
 
+    async def send_input() -> None:
+        if process.stdin is None:
+            return
+        try:
+            process.stdin.write(stdin or b'')
+            await process.stdin.drain()
+        finally:
+            process.stdin.close()
+
+    tasks = [asyncio.create_task(_read_bounded(process.stdout)),
+             asyncio.create_task(_read_bounded(process.stderr)),
+             asyncio.create_task(send_input()),
+             asyncio.create_task(process.wait())]
+    try:
+        out, err, _, _ = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+    except BaseException as exc:
+        if process.returncode is None:
+            process.kill()
+        await process.wait()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if isinstance(exc, asyncio.TimeoutError):
+            raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from exc
+        raise
+    return process.returncode or 0, redact(_decode(out)), redact(_decode(err))
 
 def _base_env() -> dict:
     """A minimal environment that keeps PATH (and, on Windows, SystemRoot) but drops the rest,
@@ -406,6 +440,7 @@ def _json_dumps(value: dict) -> str:
 @dataclass
 class _AssetSnapshot:
     id: str
+    tenant_id: str
     name: str
     kind: str
     target: str
@@ -414,7 +449,7 @@ class _AssetSnapshot:
 
     @classmethod
     def of(cls, asset) -> '_AssetSnapshot':
-        return cls(id=asset.id, name=asset.name, kind=asset.kind, target=asset.target,
+        return cls(id=asset.id, tenant_id=asset.tenant_id, name=asset.name, kind=asset.kind, target=asset.target,
                    environment=asset.environment, criticality=asset.criticality)
 
 
@@ -431,6 +466,7 @@ class _ScopeSnapshot:
     max_concurrency: int
     expires_at: datetime | None
     revoked_at: datetime | None
+    signed_document_ref: str = ''
 
     @classmethod
     def of(cls, scope) -> '_ScopeSnapshot':
@@ -440,7 +476,8 @@ class _ScopeSnapshot:
                    allowed_tiers=loads(scope.allowed_tiers_json, []), environments=loads(scope.environments_json, []),
                    window_start=scope.window_start, window_end=scope.window_end, max_rps=scope.max_rps,
                    max_concurrency=scope.max_concurrency, expires_at=_aware(scope.expires_at),
-                   revoked_at=_aware(scope.revoked_at))
+                   revoked_at=_aware(scope.revoked_at),
+                   signed_document_ref=getattr(scope, 'signed_document_ref', '') or '')
 
 
 @dataclass

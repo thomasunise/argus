@@ -245,7 +245,7 @@ def test_policy_maintenance_window(settings, fakes):
     assert policy.evaluate(None, _tenant(), wrap, high, {}, _principal(), now=now, phase='execute').denied
     assert policy.in_window('garbage') is None
     malformed = policy.evaluate(None, _tenant(maintenance_window='25:99-xx'), settings, high, {}, _principal(), now=now, phase='execute')
-    assert not malformed.denied and any('malformed' in r for r in malformed.reasons)
+    assert malformed.denied and 'invalid maintenance window' in malformed.deny_reason
 
 
 # ---------------------------------------------------------------- API: catalog and kill switch

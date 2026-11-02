@@ -148,7 +148,7 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
     window = str(overrides.get('maintenance_window', settings.actions_maintenance_window) or '')
     if window and RISK_RANK[risk] >= RISK_RANK['high']:
         if parse_window(window) is None:
-            decision.reasons.append(f'maintenance window {window!r} is malformed and was ignored')
+            return _deny(decision, f'invalid maintenance window {window!r}; rejecting action rather than ignoring the policy')
         else:
             decision.maintenance_window = window
             decision.within_window = in_window(window, now)
