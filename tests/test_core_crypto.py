@@ -57,6 +57,7 @@ def test_audit_signature_carries_key_id_and_survives_rotation(db, settings, defa
 def test_production_config_requires_hardening():
     base = dict(session_secret='s' * 40, admin_password='p' * 20, app_env='production', database_url='postgresql+psycopg://x/y',
                 cookie_secure=True, redis_url='redis://r', base_url='https://argus.example', data_encryption_key='k',
+                workers_inprocess=False,
                 audit_signing_key='a', audit_jsonl_path='/var/log/a.jsonl', totp_required=True)
     from app.core.config import assert_safe_config
 
