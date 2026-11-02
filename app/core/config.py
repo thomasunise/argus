@@ -316,6 +316,8 @@ def assert_safe_config(settings: Settings) -> None:
     if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
         raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
     if settings.is_production:
+        if settings.workers_inprocess:
+            raise RuntimeError('Production requires WORKERS_INPROCESS=false; scanner jobs must run in the isolated scanner worker')
         if settings.sqlite:
             raise RuntimeError('Production requires PostgreSQL (DATABASE_URL=postgresql+psycopg://...)')
         if not settings.cookie_secure:
