@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings
+from ..core.db import enter_tenant, leave_tenant, set_tenant_context
 from ..core.errors import Forbidden, RateLimited, Unauthorized
 from ..core.rbac import Principal, Role, has
 from ..core.security import hash_api_key, parse_api_key
@@ -51,6 +52,10 @@ def get_db(request: Request) -> Iterator[Session]:
         raise
     finally:
         db.close()
+        token = getattr(request.state, 'tenant_token', None)
+        if token is not None:
+            leave_tenant(token)
+            request.state.tenant_token = None
 
 
 class RateLimiter:
@@ -151,9 +156,16 @@ def current_principal(request: Request, db: Session = Depends(get_db), settings:
         if principal is None:
             raise Unauthorized('Invalid API key')
         request.state.principal = principal
+        set_tenant_context(db, principal.tenant_id)
+        if getattr(request.state, 'tenant_token', None) is None:
+            request.state.tenant_token = enter_tenant(principal.tenant_id)
         return principal
     principal = _principal_from_session(db, request, settings)
     request.state.principal = principal
+    if principal is not None:
+        set_tenant_context(db, principal.tenant_id)
+        if getattr(request.state, 'tenant_token', None) is None:
+            request.state.tenant_token = enter_tenant(principal.tenant_id)
     return principal
 
 
