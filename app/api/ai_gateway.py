@@ -20,7 +20,7 @@ from datetime import timedelta
 import httpx
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ..ai import gateway as gw
@@ -158,13 +158,6 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
         return call.reject(400, 'model is required', kind='invalid_request_error', state='error')
     if not gw.model_allowed(policy, model):
         return call.reject(403, f'model {model} is not allowed by tenant policy')
-    if policy.monthly_budget_usd is not None:
-        if gw.price_for(gw.prices(settings), model) is None:
-            return call.reject(403, f'model {model} has no configured price; cannot enforce the monthly budget')
-        async with _BUDGET_LOCK:
-            spent = gw.month_spend(db, principal.tenant_id)
-            if spent >= policy.monthly_budget_usd:
-                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
     inspection = gw.inspect(provider, endpoint, body, policy)
     call.row.stream = inspection.stream
     call.row.dlp_hits_json = dumps(inspection.dlp_hits)
@@ -172,6 +165,29 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     call.row.prompt_injection = inspection.prompt_injection
     if inspection.block_reason:
         return call.reject(403, inspection.block_reason)
+    if policy.monthly_budget_usd is not None:
+        if gw.price_for(gw.prices(settings), model) is None:
+            return call.reject(403, f'model {model} has no configured price; cannot enforce the monthly budget')
+        # PostgreSQL serializes the budget reservation across API replicas.
+        # In-flight requests count toward the following request's allowance.
+        async with _BUDGET_LOCK:
+            if db.get_bind().dialect.name == 'postgresql':
+                db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:k))'),
+                           {'k': 'argus:gateway:budget:' + principal.tenant_id})
+            spent = gw.month_spend(db, principal.tenant_id)
+            if spent >= policy.monthly_budget_usd:
+                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
+            output_cap = body.get('max_completion_tokens') or body.get('max_tokens')
+            if endpoint != 'embeddings' and (type(output_cap) is not int or output_cap < 1 or output_cap > 32768):
+                return call.reject(400, 'budgeted requests require max_tokens or max_completion_tokens (1..32768)', kind='invalid_request_error')
+            reserve = max(0.000001, gw.cost(settings, model, len(raw), int(output_cap or 0)))
+            if spent + reserve > policy.monthly_budget_usd:
+                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} cannot cover this request', kind='insufficient_quota')
+            call.row.stream = inspection.stream
+            call.row.status = 'reserved'
+            call.row.cost_usd = reserve
+            db.add(call.row)
+            db.commit()
 
     url = gw.provider_base(settings, provider) + gw.ENDPOINTS[(provider, endpoint)]
     headers = _upstream_headers(request, provider, key)
