@@ -47,7 +47,7 @@ class ActionRequest(TenantMixin, Base):
 
 class ActionApproval(TenantMixin, Base):
     __tablename__ = 'action_approvals'
-    __table_args__ = (Index('ix_action_approvals_request', 'request_id', 'approver_id'),)
+    __table_args__ = (Index('ux_action_approvals_request_actor', 'request_id', 'approver_id', unique=True),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     request_id: Mapped[str] = mapped_column(String(36), ForeignKey('action_requests.id'), index=True)
     approver_id: Mapped[str] = mapped_column(String(64))

@@ -367,3 +367,14 @@ def test_budget_rejects_unpriced_models(client, gw_key, owner):
                                json=chat('hello', model='unpriced-model-for-tests'), headers=bearer(gw_key))
         assert response.status_code == 403 and 'no configured price' in response.text
         assert not route.called
+
+
+
+def test_dlp_fails_closed_on_uninspectable_media(client, gw_key):
+    body = chat('hello')
+    body['messages'][1]['content'] = [
+        {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,AAAA'}}
+    ]
+    response = client.post(f'{BASE}/openai/v1/chat/completions', json=body, headers=bearer(gw_key))
+    assert response.status_code == 403
+    assert 'cannot inspect' in response.json()['error']['message']

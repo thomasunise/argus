@@ -210,7 +210,10 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
     if not has(principal, 'actions:approve'):
         raise Forbidden('Missing permission actions:approve')
     with _APPROVE_LOCK:
-        req = get_scoped(db, ActionRequest, principal, request_id)
+        stmt = scoped(ActionRequest, principal).where(ActionRequest.id == request_id)
+        if db.get_bind().dialect.name == 'postgresql':
+            stmt = stmt.with_for_update()
+        req = db.execute(stmt).scalar_one_or_none()
         if req is None:
             raise NotFound('action request not found')
         db.refresh(req)

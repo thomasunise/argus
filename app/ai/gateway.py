@@ -274,6 +274,10 @@ class Inspection:
 def inspect(provider: str, endpoint: str, body: dict, policy: GatewayPolicy) -> Inspection:
     model = str(body.get('model') or '')[:120]
     stream = bool(body.get('stream')) and endpoint != 'embeddings'
+    if policy.dlp_mode in ('block', 'redact') and dlp.uninspectable_media(body):
+        return Inspection(body=body, model=model, stream=stream, dlp_hits={}, dlp_action='blocked',
+                          prompt_injection=False, injection_signals=[],
+                          block_reason='request contains media or encoded data that text DLP cannot inspect')
     try:
         hits = dlp.scan(dlp.texts(body))
     except dlp.DLPScanLimitExceeded:
