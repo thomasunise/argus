@@ -85,6 +85,48 @@ services:
     healthcheck:
       disable: true
 
+  # Tool execution is routed to this worker via a dedicated Redis queue.
+  # It does not inherit the API/response/cloud credentials from env_file.
+  # Run behind firewall egress rules for authorized target CIDRs.
+  scanner:
+    <<: *argus-common
+    command: ["worker"]
+    env_file: []
+    environment:
+      DATABASE_URL: postgresql+psycopg://argus:${POSTGRES_PASSWORD:-argus-dev-password}@postgres:5432/argus
+      REDIS_URL: redis://redis:6379/0
+      SCAN_ROOT: /app/targets
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
+      WORKER_ROLE: scanner
+      WORKERS_INPROCESS: "false"
+      APP_ENV: ${APP_ENV:-development}
+      BASE_URL: ${BASE_URL:-http://127.0.0.1:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_SECRET: ${SESSION_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:-}
+      DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:-}
+      AUDIT_SIGNING_KEY: ${AUDIT_SIGNING_KEY:-}
+      AUDIT_SIGNING_KEYS: ${AUDIT_SIGNING_KEYS:-}
+      AUDIT_JSONL_PATH: /app/data/audit.jsonl
+      TOTP_REQUIRED: ${TOTP_REQUIRED:-false}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+    volumes:
+      - scanner-data:/app/data
+      - ./targets:/app/targets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 2g
+    cpus: 2
+    networks:
+      - scanner-net
+    healthcheck:
+      disable: true
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -105,6 +147,7 @@ services:
       - no-new-privileges:true
     networks:
       - argus
+      - scanner-net
 
   redis:
     image: redis:7-alpine
@@ -121,6 +164,7 @@ services:
       - no-new-privileges:true
     networks:
       - argus
+      - scanner-net
 
   # ---------------------------------------------------------------- observability (optional)
   otel-collector:
@@ -171,6 +215,7 @@ services:
       - argus
 
 volumes:
+  scanner-data:
   argus-data:
   postgres-data:
   redis-data:
@@ -179,4 +224,6 @@ volumes:
 
 networks:
   argus:
+    driver: bridge
+  scanner-net:
     driver: bridge
