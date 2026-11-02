@@ -6,13 +6,14 @@ This project is undergoing security hardening. The presence of an implemented fe
 a passing fixture test does not establish that it is safe to deploy with broad production
 permissions.
 
-- **PostgreSQL RLS is not an adequate tenant boundary yet.** The existing migration
-  allows reads when tenant context is absent, does not cover every tenant-scoped table,
-  and does not force RLS for the table owner. While authenticated API sessions bind
-  tenant context, workers, pre-authenticated webhooks and backups still need role
-  separation and fail-closed coverage. Do not put mutually untrusted organizations
-  into a shared ARGUS deployment until this is addressed. Deploy one isolated ARGUS
-  instance per organization in the meantime.
+- **PostgreSQL RLS is not a complete tenant boundary yet.** The new strict tenant
+  policy migration rejects missing/foreign tenant context for non-owner DB roles,
+  and authenticated API sessions restore that context after transaction commits.
+  The default deployment still connects with the migration owner (which bypasses
+  RLS), and API, worker, webhook, identity and backup DB roles are not fully
+  separated. Do not put mutually untrusted organizations into a shared ARGUS
+  deployment until that split is complete and tested. Deploy a separate instance
+  per organization in the meantime.
 - **Action side-effect reconciliation is incomplete.** Actions with uncertain external
   outcomes require manual investigation. A timeout is not evidence the change failed.
   Keep autonomous changes disabled until each enabled provider action has a tested
