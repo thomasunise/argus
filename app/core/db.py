@@ -36,6 +36,10 @@ def make_engine(settings: Settings) -> Engine:
             cursor.close()
 
         return engine
+    if not settings.is_production:
+        from sqlalchemy.pool import NullPool
+
+        return create_engine(url, poolclass=NullPool, future=True)
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, future=True)
 
 

@@ -278,7 +278,7 @@ function openOverlay(id, title, html, cls = '') {
   backdrop.classList.remove('hidden');
   body.scrollTop = 0;
   const first = $('input:not([type=hidden]), select, textarea, button:not(.close-btn)', body);
-  if (first) setTimeout(() => first.focus(), 30);
+  if (first) first.focus();
   return body;
 }
 export const drawer = (title, html, { wide = false } = {}) => openOverlay('drawer', title, html, wide ? 'wide' : '');

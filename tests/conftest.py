@@ -82,9 +82,11 @@ def settings(tmp_path) -> Settings:
 def app(settings):
     application = create_app(settings)
     if TEST_DATABASE_URL:
-        # Shared external database: start every test from empty tables.
+        # Shared external database: start every test from empty tables (including any prior alembic_version).
         from app.models import Base
 
+        with application.state.engine.begin() as conn:
+            conn.exec_driver_sql('DROP TABLE IF EXISTS alembic_version')
         Base.metadata.drop_all(application.state.engine)
         Base.metadata.create_all(application.state.engine)
     if TEST_REDIS_URL:
