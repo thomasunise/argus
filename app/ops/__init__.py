@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from ..core.audit import record_audit
+from ..core.audit import record_audit, replay_audit_deliveries
 from ..core.db import session_scope
 from ..core.rbac import system_principal
 from ..models import Tenant, dumps, loads, utcnow
@@ -138,6 +138,13 @@ async def schedule_tick(app, now: float | None = None) -> list[str]:
     enqueued: list[str] = []
 
     moment = datetime.fromtimestamp(now, timezone.utc)
+    # Audit delivery retries are independent of backup/retention schedules.
+    # A failed external sink must never become a permanent audit gap.
+    if settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container:
+        def _retry_audit() -> None:
+            with session_scope(app.state.db_factory) as mirror_db:
+                replay_audit_deliveries(mirror_db, limit=500)
+        await asyncio.to_thread(_retry_audit)
 
     def _state() -> tuple[str | None, bool, list[str]]:
         with session_scope(app.state.db_factory) as db:
@@ -191,7 +198,7 @@ def setup(app) -> None:
         return result
 
     async def _start(app) -> None:
-        if settings.app_env == 'test' or not (settings.backup_enabled or settings.retention_enabled):
+        if settings.app_env == 'test' or not (settings.backup_enabled or settings.retention_enabled or settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
             return
         from ..main import spawn
 

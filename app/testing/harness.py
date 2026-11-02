@@ -140,7 +140,13 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
                         with contextlib.suppress(asyncio.CancelledError):
                             await task
         out, err = await asyncio.wait_for(communicate_bounded(), timeout=timeout)
-    except (asyncio.TimeoutError, asyncio.CancelledError):
+    except asyncio.TimeoutError as exc:
+        if process.returncode is None:
+            process.kill()
+        with contextlib.suppress(Exception):
+            await process.wait()
+        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from exc
+    except asyncio.CancelledError:
         if process.returncode is None:
             process.kill()
         with contextlib.suppress(Exception):

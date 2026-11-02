@@ -23,3 +23,21 @@ class AuditEntry(Base):
     entry_hash: Mapped[str] = mapped_column(String(64))
     signature: Mapped[str] = mapped_column(String(128), default='')
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+
+class AuditSinkDelivery(Base):
+    """Durable evidence of each external audit mirror obligation."""
+    __tablename__ = 'audit_sink_deliveries'
+    __table_args__ = (
+        Index('ix_audit_sink_deliveries_pending', 'status', 'id'),
+        Index('ux_audit_sink_deliveries_entry_sink', 'entry_id', 'sink', unique=True),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entry_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    sink: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default='pending')
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
