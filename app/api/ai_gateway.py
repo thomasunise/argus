@@ -41,6 +41,7 @@ log = logging.getLogger('argus.ai.gateway')
 router = APIRouter(prefix='/api/v1/ai-gateway', tags=['ai-gateway'])
 
 SERVICE_FOR = {'openai': 'openai.api', 'anthropic': 'anthropic.api'}
+_BUDGET_LOCK = asyncio.Lock()
 
 
 def gateway_principal(request: Request, principal: Principal | None = Depends(current_principal),
@@ -160,9 +161,10 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     if policy.monthly_budget_usd is not None:
         if gw.price_for(gw.prices(settings), model) is None:
             return call.reject(403, f'model {model} has no configured price; cannot enforce the monthly budget')
-        spent = gw.month_spend(db, principal.tenant_id)
-        if spent >= policy.monthly_budget_usd:
-            return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
+        async with _BUDGET_LOCK:
+            spent = gw.month_spend(db, principal.tenant_id)
+            if spent >= policy.monthly_budget_usd:
+                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
     inspection = gw.inspect(provider, endpoint, body, policy)
     call.row.stream = inspection.stream
     call.row.dlp_hits_json = dumps(inspection.dlp_hits)

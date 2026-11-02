@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     agent_cost_ceiling_usd: float = 5.0
     # USD per million tokens for models missing from the built-in table: 'model=input:output,...'.
     agent_model_prices: str = ''
+    agent_require_known_price: bool = False  # refuse agent runs when model price is unknown and cost ceiling > 0
 
     # --- testing harness ---
     scan_root: Path = Path('./targets')
@@ -168,6 +169,7 @@ class Settings(BaseSettings):
     actions_auto_approve_low: bool = False
     actions_require_two_for_high: bool = True
     actions_maintenance_window: str = ''  # e.g. "02:00-04:00" UTC
+    allow_env_action_credentials: bool = True  # allow fallback to global ACTIONS_* env vars when tenant override is absent
 
     # --- threat intel enrichment (CISA KEV / FIRST EPSS) ---
     intel_enrichment_enabled: bool = True

@@ -61,7 +61,9 @@ ADMIN_EMAIL = 'admin@test.local'
 ADMIN_PASSWORD = 'test-password-very-long-123456'
 
 
-TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', '')
+TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL') or (
+    os.getenv('DATABASE_URL', '') if os.getenv('DATABASE_URL', '').startswith('postgresql') else ''
+)
 TEST_REDIS_URL = os.getenv('TEST_REDIS_URL', '')
 
 

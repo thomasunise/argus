@@ -317,6 +317,22 @@ async def _decide(app, db: Session, settings: Settings, tenant: Tenant, playbook
     if _count_since(db, tenant.id, hour_ago, outcomes=('enforced',)) >= tenant_hourly_cap(tenant, settings):
         _record(db, execution, 'skipped', f'tenant hourly autonomous-action cap reached ({tenant_hourly_cap(tenant, settings)})')
         return
+    dup = db.scalar(
+        select(func.count())
+        .select_from(AutoresponseExecution)
+        .where(
+            AutoresponseExecution.tenant_id == tenant.id,
+            AutoresponseExecution.id != execution.id,
+            AutoresponseExecution.action_type == playbook.action_type,
+            AutoresponseExecution.params_json == execution.params_json,
+            AutoresponseExecution.created_at >= hour_ago,
+            AutoresponseExecution.outcome == 'enforced',
+            AutoresponseExecution.rollback_state == 'pending',
+        )
+    )
+    if dup and int(dup) > 0:
+        _record(db, execution, 'skipped', 'duplicate autonomous action with identical parameters is already active')
+        return
     reason = f'Autonomous response: playbook "{playbook.name}" on detection {context["id"]} ({context["rule_id"]}: {context["title"]})'
     try:
         req = await broker.request(db, principal, action.name, params, reason, finding_id=context.get('finding_id'), detection_id=context['id'],

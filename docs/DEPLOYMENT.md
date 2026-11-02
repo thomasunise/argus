@@ -276,3 +276,23 @@ Operations
 - [ ] Alerts from `infra/prometheus/rules/argus.yml` (or the CloudWatch / Azure Monitor equivalents) routed to a pager.
 - [ ] Runbooks read by the on-call team; a dry run of "lost worker" and "revoke API key" performed.
 - [ ] Log retention and PII handling agreed; logs contain no secrets by construction, but event payloads may contain personal data from your sensors.
+
+## 10. Supported Configurations, Limitations & Release Compatibility Policy
+
+### Supported Configurations
+- **Runtime**: Python 3.12 (`>=3.12,<3.14`), Linux x86_64/arm64 containers (`python:3.12.8-slim` digest-pinned base).
+- **Database**: PostgreSQL 16+ in production (`postgresql+psycopg://...`) with Row-Level Security (`a1b2c3d4e5f6` migration) and TLS; SQLite 3.39+ is supported for local development and single-process evaluations only.
+- **Queue & Rate Limiting**: Redis 7+ (`redis://` or `rediss://`) with `noeviction` in production; in-memory queue and rate limiter are supported for single-process development/testing only.
+- **Sandbox Execution**: Docker Engine 24+ (or rootless containerd) behind `sandbox/executor.py` on an isolated host/VM with `--network none` or per-run iptables target pinning.
+
+### Known Production Limitations
+- **In-Process Workers**: `WORKERS_INPROCESS=true` shares the API event loop and memory space; production deployments with concurrent active scans or autonomous playbooks must run dedicated worker replicas (`WORKERS_INPROCESS=false`).
+- **Model Cost Ceilings**: `AGENT_COST_CEILING_USD` requires a known token price in `PRICES` or `AGENT_MODEL_PRICES`. Set `AGENT_REQUIRE_KNOWN_PRICE=true` to fail closed if an unpriced model is configured.
+- **Action Credential Isolation**: By default, action executors fall back to process-level `ACTIONS_*` environment variables when a tenant has not configured `action_credentials`. Multi-tenant deployments should set `ALLOW_ENV_ACTION_CREDENTIALS=false` or per-tenant `isolate_action_credentials: true`.
+
+### Versioning & Compatibility Policy
+- Argus follows **Semantic Versioning (`MAJOR.MINOR.PATCH`)**:
+  - **PATCH (`1.0.x`)**: Backwards-compatible bug fixes, security patches, and detection/rule updates; zero-downtime rolling upgrades with no breaking schema or API changes.
+  - **MINOR (`1.x.0`)**: Additive API endpoints, new adapters/collectors, and forward-compatible Alembic migrations (`alembic upgrade head` must run before or during rolling deployment).
+  - **MAJOR (`x.0.0`)**: Breaking API or schema changes; deprecated fields and endpoints remain supported for at least one minor release with migration notes in `CHANGELOG.md`.
+

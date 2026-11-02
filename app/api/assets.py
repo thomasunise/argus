@@ -21,7 +21,23 @@ from ..core.db import get_scoped, scoped
 from ..core.errors import Conflict, NotFound, PolicyDenied
 from ..core.policy import validate_target
 from ..core.rbac import Principal
-from ..models import Asset, AssetAuthorization, Finding, ScanRun, SecurityEvent, dumps, utcnow
+from ..models import (
+    Asset,
+    AssetAuthorization,
+    AssetCredential,
+    Discovery,
+    DiscoveryRun,
+    Finding,
+    OobToken,
+    PentestHypothesis,
+    PocRequest,
+    RequestCapture,
+    ScanRun,
+    SecurityEvent,
+    TestRun,
+    dumps,
+    utcnow,
+)
 from ..models.inventory import ASSET_KINDS, ENVIRONMENTS
 from ._common import BadRequest, active_authorizations, asset_to_dict, authorization_to_dict, like
 from .deps import Page, get_db, get_settings, require
@@ -129,16 +145,12 @@ def _open_finding_counts(db: Session, tenant_id: str, asset_id: str) -> dict[str
 
 
 def _last_runs(db: Session, tenant_id: str, asset_id: str, limit: int = 5) -> dict[str, list[dict]]:
-    out: dict[str, list[dict]] = {'test_runs': [], 'scan_runs': []}
-    try:
-        from ..models.testing import TestRun
-        from ..testing.service import run_to_dict
+    from ..testing.service import run_to_dict
 
-        rows = db.execute(select(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)
-                          .order_by(TestRun.created_at.desc()).limit(limit)).scalars().all()
-        out['test_runs'] = [run_to_dict(r) for r in rows]
-    except ImportError:
-        pass
+    out: dict[str, list[dict]] = {'test_runs': [], 'scan_runs': []}
+    rows = db.execute(select(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)
+                      .order_by(TestRun.created_at.desc()).limit(limit)).scalars().all()
+    out['test_runs'] = [run_to_dict(r) for r in rows]
     rows = db.execute(select(ScanRun).where(ScanRun.tenant_id == tenant_id, ScanRun.asset_id == asset_id)
                       .order_by(ScanRun.created_at.desc()).limit(limit)).scalars().all()
     out['scan_runs'] = [{'id': r.id, 'scanner': r.scanner, 'status': r.status, 'result_count': r.result_count, 'error': r.error,
@@ -147,31 +159,9 @@ def _last_runs(db: Session, tenant_id: str, asset_id: str, limit: int = 5) -> di
 
 
 def _has_run_history(db: Session, tenant_id: str, asset_id: str) -> bool:
-    if db.scalar(select(func.count()).select_from(ScanRun).where(ScanRun.tenant_id == tenant_id, ScanRun.asset_id == asset_id)):
-        return True
-    try:
-        from ..models.testing import PentestHypothesis, TestRun
-
-        if db.scalar(select(func.count()).select_from(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)):
+    for model in (ScanRun, TestRun, PentestHypothesis, DiscoveryRun, PocRequest):
+        if db.scalar(select(func.count()).select_from(model).where(model.tenant_id == tenant_id, model.asset_id == asset_id)):
             return True
-        if db.scalar(select(func.count()).select_from(PentestHypothesis).where(PentestHypothesis.tenant_id == tenant_id, PentestHypothesis.asset_id == asset_id)):
-            return True
-    except ImportError:
-        pass
-    try:
-        from ..models.discovery import DiscoveryRun
-
-        if db.scalar(select(func.count()).select_from(DiscoveryRun).where(DiscoveryRun.tenant_id == tenant_id, DiscoveryRun.asset_id == asset_id)):
-            return True
-    except ImportError:
-        pass
-    try:
-        from ..models.exploit import PocRequest
-
-        if db.scalar(select(func.count()).select_from(PocRequest).where(PocRequest.tenant_id == tenant_id, PocRequest.asset_id == asset_id)):
-            return True
-    except ImportError:
-        pass
     return False
 
 
@@ -300,36 +290,13 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), principal: Princi
     asset = _get_asset(db, principal, asset_id)
     if _has_run_history(db, principal.tenant_id, asset.id):
         raise Conflict('This asset has test or scan history; it is preserved for audit integrity')
-    # Keep evidence; detach findings, events, and optional foreign references before removing the inventory row.
+    # Keep evidence; detach findings and events before removing dependent rows and the inventory row.
     detached = 0
-    detach_models: list[Any] = [Finding, SecurityEvent]
-    for mod_path, cls_name in (
-        ('..models.simulation', 'Canary'),
-        ('..models.actions', 'ActionRequest'),
-        ('..models.ai', 'AiService'),
-    ):
-        try:
-            mod = __import__(mod_path, fromlist=[cls_name], globals=globals(), level=1)
-            detach_models.append(getattr(mod, cls_name))
-        except (ImportError, AttributeError):
-            pass
-    for model in detach_models:
+    for model in (Finding, SecurityEvent):
         for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
             row.asset_id = None
             detached += 1
-    delete_models: list[Any] = [AssetAuthorization]
-    for mod_path, cls_name in (
-        ('..models.testing', 'AssetCredential'),
-        ('..models.testing', 'OobToken'),
-        ('..models.discovery', 'Discovery'),
-        ('..models.discovery', 'RequestCapture'),
-    ):
-        try:
-            mod = __import__(mod_path, fromlist=[cls_name], globals=globals(), level=1)
-            delete_models.append(getattr(mod, cls_name))
-        except (ImportError, AttributeError):
-            pass
-    for model in delete_models:
+    for model in (AssetAuthorization, AssetCredential, OobToken, Discovery, RequestCapture):
         for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
             db.delete(row)
     record_audit(db, principal, 'assets.deleted', asset.id, {'name': asset.name, 'kind': asset.kind, 'target': asset.target, 'detached': detached})

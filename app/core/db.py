@@ -73,6 +73,33 @@ def get_scoped(db: Session, model: type[M], principal: 'Principal | str', object
     return db.execute(select(model).where(model.id == object_id, model.tenant_id == tenant_id)).scalar_one_or_none()  # type: ignore[attr-defined]
 
 
+def set_tenant_context(db: Session, tenant_id: str | None) -> None:
+    """Bind the active tenant ID to the session and, on PostgreSQL, set `app.tenant_id` for RLS."""
+    tid = str(tenant_id or '')
+    db.info['tenant_id'] = tid
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == 'postgresql':
+        from sqlalchemy import text
+
+        db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': tid})
+
+
+def pool_stats(engine: Engine) -> dict[str, int | str]:
+    """Return connection pool telemetry for health and monitoring endpoints."""
+    pool = getattr(engine, 'pool', None)
+    if pool is None:
+        return {'dialect': engine.dialect.name}
+    stats: dict[str, int | str] = {'dialect': engine.dialect.name, 'pool_class': type(pool).__name__}
+    for attr, key in (('size', 'size'), ('checkedin', 'checked_in'), ('checkedout', 'checked_out'), ('overflow', 'overflow')):
+        fn = getattr(pool, attr, None)
+        if callable(fn):
+            try:
+                stats[key] = int(fn())
+            except Exception:
+                pass
+    return stats
+
+
 class CommitBeforeResponseMiddleware:
     """Pure ASGI middleware: commits the request's database session (request.state.db) before the
     first response byte leaves, so a client that reads immediately after a write sees it. The

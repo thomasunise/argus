@@ -189,3 +189,26 @@ def test_delete_asset_with_revoked_credentials(owner):
     assert revoked.status_code == 200, revoked.text
     deleted = client.delete(f"/api/v1/assets/{asset['id']}", headers=headers)
     assert deleted.status_code == 200, deleted.text
+
+
+def test_delete_asset_cleans_oob_and_detaches_events(owner, db, default_tenant_id):
+    from app.models import OobToken, SecurityEvent
+
+    client, headers = owner
+    asset = make_asset(client, headers)
+    db.add(OobToken(tenant_id=default_tenant_id, asset_id=asset['id'], token='oob_test_token_123'))
+    ev = SecurityEvent(
+        tenant_id=default_tenant_id,
+        asset_id=asset['id'],
+        source='generic',
+        external_id='ev-asset-del-1',
+        title='Asset event',
+    )
+    db.add(ev)
+    db.commit()
+    deleted = client.delete(f"/api/v1/assets/{asset['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    db.expire_all()
+    assert db.get(SecurityEvent, ev.id).asset_id is None
+    assert db.query(OobToken).filter_by(token='oob_test_token_123').first() is None
+

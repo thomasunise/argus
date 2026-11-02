@@ -180,13 +180,15 @@ def require(*perms: str):
 
 
 def require_scope(scope: str):
-    """For API-key-only endpoints such as ingest: the key must carry the scope or be an operator+ key."""
+    """For API-key-only endpoints such as ingest: the key must carry the scope or be an unscoped operator+ key."""
 
     def dependency(request: Request, principal: Principal | None = Depends(current_principal),
                    settings: Settings = Depends(get_settings)) -> Principal:
         if principal is None or principal.auth != 'api_key':
             raise Unauthorized('API key required')
-        if scope not in principal.scopes and not has(principal, f'{scope}:write') and principal.role not in {Role.operator, Role.admin, Role.owner}:
+        has_scope = scope in principal.scopes or has(principal, scope) or has(principal, f'{scope}:write')
+        unscoped_operator = not principal.scopes and principal.role in {Role.operator, Role.admin, Role.owner}
+        if not (has_scope or unscoped_operator):
             raise Forbidden(f'API key lacks scope {scope}')
         limiter: RateLimiter = request.app.state.rate_limiter
         limiter.check(f'ingest:{principal.api_key_id}', settings.ingest_rate_limit_per_minute)

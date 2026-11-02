@@ -16,7 +16,7 @@ class Finding(TenantMixin, Base):
     __table_args__ = (UniqueConstraint('tenant_id', 'fingerprint', name='uq_finding_fingerprint'),
                       Index('ix_findings_tenant_status', 'tenant_id', 'status'))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('assets.id'))
+    asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('assets.id', ondelete='SET NULL'))
     detection_id: Mapped[str | None] = mapped_column(String(36))
     fingerprint: Mapped[str] = mapped_column(String(64))
     rule: Mapped[str] = mapped_column(String(160), default='')
@@ -49,7 +49,7 @@ class SecurityEvent(TenantMixin, Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     source: Mapped[str] = mapped_column(String(30))
     external_id: Mapped[str] = mapped_column(String(128))
-    asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('assets.id'))
+    asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('assets.id', ondelete='SET NULL'))
     severity: Mapped[str] = mapped_column(String(16), default='low')
     category: Mapped[str] = mapped_column(String(40), default='')  # auth, process, network, cloud_api, k8s, code, canary
     actor: Mapped[str] = mapped_column(String(200), default='')     # identity that acted, if known

@@ -127,3 +127,14 @@ def test_scoped_key_cannot_mint_unrestricted_or_escalated_keys(owner):
     allowed = client.post('/api/v1/auth/api-keys', json={
         'name': 'delegated', 'role': 'owner', 'scopes': ['admin:api_keys']}, headers=scoped)
     assert allowed.status_code == 201, allowed.text
+
+
+def test_scoped_operator_key_cannot_bypass_ingest_scope(owner):
+    client, headers = owner
+    res = client.post('/api/v1/auth/api-keys', json={
+        'name': 'readonly-ops', 'role': 'operator', 'scopes': ['assets:read']}, headers=headers)
+    assert res.status_code == 201, res.text
+    scoped_headers = {'X-API-Key': res.json()['key']}
+    denied = client.post('/api/v1/ingest/generic', json=[{'id': 'ev-1', 'title': 'test'}], headers=scoped_headers)
+    assert denied.status_code == 403, denied.text
+

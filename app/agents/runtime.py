@@ -129,6 +129,15 @@ class AgentRuntime:
         if provider.name == 'none':
             return await self._fallback(spec, task, inputs, principal, db_factory, run_id, scratch=scratch)
         if provider.price() is None:
+            if getattr(self.settings, 'agent_require_known_price', False) and self.settings.agent_cost_ceiling_usd > 0:
+                status = 'budget_exhausted'
+                error = f'no price configured for {provider.name} model {provider.model!r}; set AGENT_MODEL_PRICES'
+                with session_scope(db_factory) as db:
+                    run = db.get(AgentRun, run_id)
+                    run.status, run.error, run.finished_at = status, error, utcnow()
+                    run.provider, run.model = provider.name, provider.model
+                AGENT_RUNS.labels(spec.name, status).inc()
+                return RunResult(run_id=run_id, status=status, output={}, error=error)
             log.warning('agent run %s: no price for %s model %r, so AGENT_COST_CEILING_USD is not enforced; '
                         'set AGENT_MODEL_PRICES', run_id, provider.name, provider.model)
         tools = self.registry.resolve(spec.tools)

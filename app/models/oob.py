@@ -21,7 +21,7 @@ class OobToken(TenantMixin, Base):
                       Index('ix_oob_tokens_tenant_created', 'tenant_id', 'created_at'))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     token: Mapped[str] = mapped_column(String(64))
-    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id', ondelete='CASCADE'), index=True)
     run_id: Mapped[str] = mapped_column(String(36), default='')
     kind: Mapped[str] = mapped_column(String(16), default='ssrf')  # ssrf | xxe | xss | other
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

@@ -51,8 +51,8 @@ def tenant_policy(tenant: Tenant | None) -> dict:
 
 
 def tenant_kill_switch(tenant: Tenant | None) -> bool:
-    """A tenant whose actions are disabled is treated as having its kill switch engaged."""
-    return tenant is None or not bool(tenant.actions_enabled)
+    """A tenant that is inactive or whose actions are disabled is treated as having its kill switch engaged."""
+    return tenant is None or not bool(getattr(tenant, 'is_active', True)) or not bool(tenant.actions_enabled)
 
 
 def parse_window(spec: str) -> tuple[time, time] | None:

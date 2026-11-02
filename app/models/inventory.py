@@ -36,7 +36,7 @@ class AssetAuthorization(TenantMixin, Base):
 
     __tablename__ = 'asset_authorizations'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id', ondelete='CASCADE'), index=True)
     authorized_by: Mapped[str] = mapped_column(String(64))  # user id or api_key:<id>
     attestation: Mapped[str] = mapped_column(Text)
     allow_active: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -55,7 +55,7 @@ class AssetCredential(TenantMixin, Base):
     __tablename__ = 'asset_credentials'
     __table_args__ = (Index('ix_asset_credentials_tenant_asset', 'tenant_id', 'asset_id'),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id'), index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey('assets.id', ondelete='CASCADE'), index=True)
     kind: Mapped[str] = mapped_column(String(8), default='header')  # header | bearer | basic | cookie
     name: Mapped[str] = mapped_column(String(120), default='')       # header name, or the basic username
     role: Mapped[str] = mapped_column(String(40), default='default')  # e.g. default, user_a, user_b, admin

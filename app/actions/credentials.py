@@ -91,9 +91,23 @@ def _from_tenant(platform: str, key: str, settings: Settings, tenant_settings: d
     return resolve_secret(ref, settings)
 
 
+def _env_fallback_allowed(settings: Settings, tenant_settings: dict | None) -> bool:
+    if not bool(getattr(settings, 'allow_env_action_credentials', True)):
+        return False
+    if isinstance(tenant_settings, dict):
+        if tenant_settings.get('isolate_action_credentials') is True:
+            return False
+        policy = tenant_settings.get('action_policy')
+        if isinstance(policy, dict) and policy.get('isolate_credentials') is True:
+            return False
+    return True
+
+
 def resolve(platform: str, key: str, settings: Settings, tenant_settings: dict | None = None) -> str:
-    """Tenant override (secret ref) first, then ACTIONS_* environment, then the fallback platform."""
-    value = _from_tenant(platform, key, settings, tenant_settings) or _from_env(platform, key, settings)
+    """Tenant override (secret ref) first, then ACTIONS_* environment (unless isolated), then the fallback platform."""
+    value = _from_tenant(platform, key, settings, tenant_settings)
+    if not value and _env_fallback_allowed(settings, tenant_settings):
+        value = _from_env(platform, key, settings)
     if not value and platform in FALLBACK:
         value = resolve(FALLBACK[platform], key, settings, tenant_settings)
     return value

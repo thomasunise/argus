@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """One PoC, inside the sandbox container.
 
 The runner does three things: read the script the executor mounted, execute it with a wall-clock
@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 CODE_PATH = os.environ.get('ARGUS_CODE_PATH', '/poc/script.py')
 MARKER = 'ARGUS_EXEC '
@@ -41,7 +42,7 @@ def main(argv: list[str]) -> int:
     command = [sys.executable, CODE_PATH] if language == 'python' else ['/bin/bash', CODE_PATH]
     timed_out = False
     try:
-        completed = subprocess.run(command, capture_output=True, timeout=wall, cwd='/tmp', check=False)
+        completed = subprocess.run(command, capture_output=True, timeout=wall, cwd=tempfile.gettempdir(), check=False)
         stdout, stderr, exit_code = completed.stdout, completed.stderr, completed.returncode
     except subprocess.TimeoutExpired as exc:
         timed_out = True
