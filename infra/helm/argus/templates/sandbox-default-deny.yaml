@@ -1,0 +1,33 @@
+{{- if .Values.sandbox.enabled }}
+# Namespace baseline: these selectors apply from Pod creation, before the
+# per-run egress allow NetworkPolicy is admitted/programmed by the CNI.
+# Policies are additive: the per-run policy opens only its approved IP:port.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argus-sandbox-poc-deny-all
+  namespace: {{ .Values.sandbox.namespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: argus.io/poc
+        operator: Exists
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argus-sandbox-engine-deny-all
+  namespace: {{ .Values.sandbox.namespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: argus.io/engine
+        operator: Exists
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+{{- end }}

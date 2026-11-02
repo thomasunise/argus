@@ -26,7 +26,9 @@ permissions.
 - **Tested sandbox rules are not a substitute for runtime isolation.** Confirm image
   allowlists (including SANDBOX_POC_IMAGES, which defaults to deny-all), policy
   enforcement by your CNI, RuntimeClass isolation and Kubernetes resource quotas
-  using a real cluster before enabling exploit execution.
+  using a real cluster before enabling exploit execution. The Helm chart now
+  includes baseline network policies denying ingress and egress for all
+  PoC/engine-labeled pods before per-job allow rules are established.
 - **AI DLP is text-only.** In enforcing modes, unsupported media and encoded payloads
   are rejected instead of being described as inspected.
 - **Independent field validation is missing.** Detection confidence heuristics are not
@@ -159,3 +161,12 @@ Supply chain (`.github/`)
 - Key-id-aware verification of the audit HMAC across signing-key rotations (see runbook).
 - Distributed rate limiting (the limiter is per process).
 - Per-tenant encryption keys for stored evidence (encryption at rest is a platform setting).
+
+
+## Reverse proxy headers
+
+The production Compose overlay no longer trusts `X-Forwarded-*` headers
+from arbitrary containers by default. If original client addresses are
+required, explicitly set `FORWARDED_ALLOW_IPS` to the exact trusted reverse
+proxy address or a narrowly managed subnet. Do not use `*`; an attacker on
+the internal Docker network may otherwise forge forwarded client identity.
