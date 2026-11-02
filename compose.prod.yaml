@@ -18,6 +18,18 @@
 # Production settings shared by every Argus process; both api and worker call
 # assert_safe_config at startup, so the worker needs the full set too.
 x-production-env: &production-env
+  # The production overlay clears the base env_file. Only the keys listed
+  # below enter the API and workers; POSTGRES_PASSWORD belongs to the
+  # one-shot migration job, never to these runtime containers.
+  SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+  INGEST_API_KEY: ${INGEST_API_KEY:-}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set DATA_ENCRYPTION_KEY}
+  AUDIT_SIGNING_KEY: ${AUDIT_SIGNING_KEY:?set AUDIT_SIGNING_KEY}
+  EXPLOIT_ROE_SIGNING_KEY: ${EXPLOIT_ROE_SIGNING_KEY:-}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
   APP_ENV: production
   COOKIE_SECURE: "true"
   LOG_JSON: "true"
@@ -28,6 +40,7 @@ x-production-env: &production-env
 
 services:
   api:
+    env_file: []  # exclude owner POSTGRES_PASSWORD and unrelated API keys
     # The loopback bind 127.0.0.1:8080 from compose.yaml stays for host-local operations
     # (SSH tunnel, scripts). Caddy is the only network-reachable ingress.
     environment:
@@ -41,8 +54,19 @@ services:
         max-file: "5"
 
   worker:
+    env_file: []
     environment:
       <<: *production-env
+    restart: always
+    logging: *json-logging
+
+  scanner:
+    env_file: []
+    environment:
+      <<: *production-env
+      WORKER_ROLE: scanner
+      WORKERS_INPROCESS: "false"
+      AUDIT_JSONL_PATH: /app/data/audit.jsonl
     restart: always
     logging: *json-logging
 
