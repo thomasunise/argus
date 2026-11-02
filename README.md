@@ -273,6 +273,7 @@ it proposes is re-checked by the normal scope machinery before and during execut
 | `docs/ARCHITECTURE.md` | design: packages, interfaces, data model, API table |
 | `docs/API.md` | v1 route summary with status |
 | `docs/DEPLOYMENT.md` | dev, compose, Kubernetes, AWS, Azure; production checklist |
+| `docs/P0-TRUST-BOUNDARIES.md` | mandatory restricted DB roles, signed production ROE, sandbox allowlists and scanner isolation |
 | `docs/AUTONOMOUS-RESPONSE.md` | autonomous response playbooks, safety limits, Slack buttons |
 | `docs/AUTOPENTEST.md` | autonomous pentesting gates and how runs proceed |
 | `docs/AI-GATEWAY.md` | AI gateway policy, DLP, budgets and shadow-AI discovery |
