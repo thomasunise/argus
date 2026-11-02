@@ -70,6 +70,11 @@ def test_production_exploit_requires_matching_scope_document(settings):
     auth.scope_document_ref = 'ROE-2026-01'
     with pytest.raises(ScopeDenied, match='valid, signed'):
         test_scope.assert_exploit_authorized(asset, auth, settings, scope=scope)
+    # Even a permissive environment override must not grant production
+    # exploit capability without a signed token.
+    settings.exploit_environments = 'staging,lab,production'
+    with pytest.raises(ScopeDenied, match='valid, signed'):
+        test_scope.assert_exploit_authorized(asset, auth, settings, scope=scope)
 
 
 def _poc():
