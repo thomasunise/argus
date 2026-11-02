@@ -406,6 +406,7 @@ def _json_dumps(value: dict) -> str:
 @dataclass
 class _AssetSnapshot:
     id: str
+    tenant_id: str
     name: str
     kind: str
     target: str
@@ -414,7 +415,7 @@ class _AssetSnapshot:
 
     @classmethod
     def of(cls, asset) -> '_AssetSnapshot':
-        return cls(id=asset.id, name=asset.name, kind=asset.kind, target=asset.target,
+        return cls(id=asset.id, tenant_id=asset.tenant_id, name=asset.name, kind=asset.kind, target=asset.target,
                    environment=asset.environment, criticality=asset.criticality)
 
 
@@ -431,6 +432,7 @@ class _ScopeSnapshot:
     max_concurrency: int
     expires_at: datetime | None
     revoked_at: datetime | None
+    signed_document_ref: str = ''
 
     @classmethod
     def of(cls, scope) -> '_ScopeSnapshot':
@@ -440,7 +442,8 @@ class _ScopeSnapshot:
                    allowed_tiers=loads(scope.allowed_tiers_json, []), environments=loads(scope.environments_json, []),
                    window_start=scope.window_start, window_end=scope.window_end, max_rps=scope.max_rps,
                    max_concurrency=scope.max_concurrency, expires_at=_aware(scope.expires_at),
-                   revoked_at=_aware(scope.revoked_at))
+                   revoked_at=_aware(scope.revoked_at),
+                   signed_document_ref=getattr(scope, 'signed_document_ref', '') or '')
 
 
 @dataclass
