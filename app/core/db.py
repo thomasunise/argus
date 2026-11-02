@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, TypeVar
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import Select
@@ -17,6 +18,42 @@ if TYPE_CHECKING:
     from .rbac import Principal
 
 M = TypeVar('M')
+
+# Request and queue-job boundaries supply this value; ordinary unscoped sessions do not.
+_active_tenant: ContextVar[str | None] = ContextVar('argus_active_tenant', default=None)
+
+
+def enter_tenant(tenant_id: str):
+    if not tenant_id:
+        raise ValueError('tenant_id is required')
+    return _active_tenant.set(tenant_id)
+
+
+def leave_tenant(token) -> None:
+    _active_tenant.reset(token)
+
+
+@event.listens_for(Session, 'after_begin')
+def _rls_transaction_context(db: Session, transaction, connection) -> None:
+    # SET LOCAL is transaction-scoped. Repeat it after each commit, not just at login.
+    if transaction.nested or connection.dialect.name != 'postgresql':
+        return
+    tenant_id = db.info.get('tenant_id') or _active_tenant.get()
+    if tenant_id:
+        connection.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': tenant_id})
+
+
+def assert_restricted_runtime_role(engine: Engine) -> None:
+    """Production runtime DB role must not be superuser, BYPASSRLS or table owner."""
+    if engine.dialect.name != 'postgresql':
+        raise RuntimeError('production database must be PostgreSQL')
+    with engine.connect() as conn:
+        flags = conn.execute(text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user")).one()
+        owner = conn.execute(text("SELECT pg_get_userbyid(relowner) = current_user "
+                                  "FROM pg_class WHERE oid = 'public.assets'::regclass")).scalar_one()
+        if any(flags) or owner:
+            raise RuntimeError('ARGUS production DATABASE_URL must use a non-owner, non-BYPASSRLS runtime role')
+
 
 
 def make_engine(settings: Settings) -> Engine:
@@ -56,6 +93,9 @@ def init_db(engine: Engine, settings: Settings) -> None:
 @contextmanager
 def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
     db = factory()
+    tenant_id = _active_tenant.get()
+    if tenant_id:
+        db.info['tenant_id'] = tenant_id
     try:
         yield db
         db.commit()
@@ -80,11 +120,11 @@ def get_scoped(db: Session, model: type[M], principal: 'Principal | str', object
 def set_tenant_context(db: Session, tenant_id: str | None) -> None:
     """Bind the active tenant ID to the session and, on PostgreSQL, set `app.tenant_id` for RLS."""
     tid = str(tenant_id or '')
+    if not tid:
+        raise ValueError('tenant ID cannot be empty for an RLS session')
     db.info['tenant_id'] = tid
     bind = db.get_bind()
     if bind is not None and bind.dialect.name == 'postgresql':
-        from sqlalchemy import text
-
         db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': tid})
 
 
