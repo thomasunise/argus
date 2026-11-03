@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.config import Settings
+from ..core.db import set_tenant_context
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
 from ..core.security import (generate_api_key, oidc_authorize_url, oidc_discover, oidc_exchange_code, pkce_pair,
@@ -141,6 +142,7 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
     user.last_login_at = utcnow()
     payload = _establish_session(request, user, chosen.id, mfa_ok)
     chosen_role = next(m.role for m, t in memberships if t.id == chosen.id)
+    set_tenant_context(db, chosen.id)
     record_audit(db, Principal(tenant_id=chosen.id, role=Role(chosen_role), user_id=user.id, email=user.email),
                  'auth.login', user.id, {'method': 'password', 'mfa': mfa_ok})
     if not mfa_ok:
@@ -166,7 +168,8 @@ def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depend
         raise NotFound('Tenant not found')
     request.session['tenant_id'] = target.id
     request.session['csrf'] = secrets.token_urlsafe(32)
-    record_audit(db, principal, 'auth.switch_tenant', target.id, tenant_id=target.id)
+    # Audit the switch under the initiating tenant; do not change RLS identity mid-transaction.
+    record_audit(db, principal, 'auth.switch_tenant', target.id)
     return {'ok': True, 'tenant_id': target.id, 'csrf': request.session['csrf']}
 
 
@@ -212,6 +215,7 @@ def totp_confirm(body: TotpVerifyBody, request: Request, db: Session = Depends(g
     request.session['mfa'] = True
     request.session['csrf'] = request.session.get('csrf') or secrets.token_urlsafe(32)
     tenant_id = request.session.get('tenant_id', '')
+    set_tenant_context(db, tenant_id)
     record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email), 'auth.totp_verified', user.id)
     return {'ok': True, 'csrf': request.session['csrf']}
 
@@ -266,6 +270,7 @@ async def oidc_callback(request: Request, code: str = '', state: str = '', db: S
         raise Forbidden('User has no tenant membership')
     user.last_login_at = utcnow()
     _establish_session(request, user, memberships[0][1].id, True)
+    set_tenant_context(db, memberships[0][1].id)
     record_audit(db, Principal(tenant_id=memberships[0][1].id, role=Role(memberships[0][0].role), user_id=user.id, email=user.email),
                  'auth.login', user.id, {'method': 'oidc', 'issuer': doc.issuer})
     return RedirectResponse('/', status_code=302)
