@@ -25,6 +25,8 @@ FUNCTIONS = {
         LIMIT 1""",
     'argus_route_oob': """SELECT tenant_id FROM public.oob_tokens
         WHERE token = p_token LIMIT 1""",
+    'argus_route_integration': """SELECT tenant_id FROM public.integration_configs
+        WHERE id = p_token AND enabled IS TRUE LIMIT 1""",
     'argus_route_slack': """SELECT tenant_id FROM public.integration_configs
         WHERE id = p_token AND kind = 'slack' AND enabled IS TRUE LIMIT 1""",
 }

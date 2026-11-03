@@ -177,6 +177,7 @@ _TOKEN_ROUTES = {
     'canary': text('SELECT public.argus_route_canary(:token)'),
     'oob': text('SELECT public.argus_route_oob(:token)'),
     'slack': text('SELECT public.argus_route_slack(:token)'),
+    'integration': text('SELECT public.argus_route_integration(:token)'),
 }
 
 
