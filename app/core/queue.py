@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from .config import Settings
+from .db import enter_tenant, leave_tenant
 
 log = logging.getLogger('argus.queue')
 
@@ -285,6 +286,7 @@ class JobQueue:
     async def _run_with_lease(self, handler, job: Job, ctx: JobContext):
         """wait_for(lease) with a moving deadline: ctx.heartbeat() pushes ctx.deadline out, so a collector or test run
         that keeps heartbeating is not killed at the nominal lease while a silent one still is."""
+        tenant_token = enter_tenant(job.tenant_id)
         task = asyncio.ensure_future(handler(job, ctx))
         try:
             while True:
@@ -302,6 +304,8 @@ class JobQueue:
             with contextlib.suppress(BaseException):
                 await task
             raise
+        finally:
+            leave_tenant(tenant_token)
 
     async def _fail_or_retry(self, job: Job) -> None:
         _count(job, 'retried' if job.attempts < job.max_attempts else 'failed')

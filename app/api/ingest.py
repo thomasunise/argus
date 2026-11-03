@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings
+from ..core.db import bind_public_token_tenant
 from ..core.errors import NotFound, ArgusError, Unauthorized
 from ..core.rbac import Principal
 from ..integrations.delivery import resolve_secrets
@@ -67,12 +68,14 @@ async def ingest_source(source: str, request: Request, db: Session = Depends(get
     return result.as_dict()
 
 
-def _webhook_integration(db: Session, source: str, integration_id: str) -> tuple[IntegrationConfig, object]:
+def _webhook_integration(db: Session, source: str, integration_id: str, *, production: bool = False) -> tuple[IntegrationConfig, object]:
     if not registry.has(source):
         raise NotFound(f'Unknown ingest source {source!r}')
     parser = registry.get(source)
     if not parser.supports_verify:
         raise VerificationNotSupported(f'{parser.name} has no webhook signature scheme; use POST /api/v1/ingest/{parser.name} with an API key')
+    if integration_id and not bind_public_token_tenant(db, 'integration', integration_id, production=production):
+        raise NotFound('Integration not found')
     row = db.get(IntegrationConfig, integration_id) if integration_id else None
     if row is None or not row.enabled or registry.resolve(row.kind) != parser.name:
         raise NotFound('Integration not found')
@@ -82,7 +85,7 @@ def _webhook_integration(db: Session, source: str, integration_id: str) -> tuple
 @router.get('/{source}/verify')
 def verify_challenge(source: str, request: Request, integration: str = '', db: Session = Depends(get_db)):
     """Okta sends a one-time GET with X-Okta-Verification-Challenge and expects it echoed back."""
-    row, parser = _webhook_integration(db, source, integration)
+    row, parser = _webhook_integration(db, source, integration, production=request.app.state.settings.is_production)
     ctx = ParseContext(tenant_id=row.tenant_id, source=parser.name, headers=dict(request.headers))
     challenge = getattr(parser, 'challenge', None)
     answer = challenge(ctx) if challenge else None
@@ -93,7 +96,7 @@ def verify_challenge(source: str, request: Request, integration: str = '', db: S
 
 @router.post('/{source}/verify')
 async def ingest_verified(source: str, request: Request, integration: str = '', db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
-    row, parser = _webhook_integration(db, source, integration)
+    row, parser = _webhook_integration(db, source, integration, production=settings.is_production)
     request.app.state.rate_limiter.check(f'ingest:webhook:{row.id}', settings.ingest_rate_limit_per_minute)
     body = await _read_body(request)
     config = loads(row.config_json, {})

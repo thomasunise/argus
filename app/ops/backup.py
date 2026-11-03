@@ -286,6 +286,9 @@ def _sqlite_snapshot(engine: Engine, workdir: Path) -> tuple[Engine, Path]:
 
 
 def dump(engine: Engine, settings: Settings, out_dir: Path, *, app_version: str = '') -> DumpResult:
+    if settings.is_production and engine.dialect.name == 'postgresql':
+        raise BackupError('Full PostgreSQL backups must run using separate privileged maintenance credentials; '
+                          'the restricted production API/worker role cannot see every tenant under RLS')
     out_dir.mkdir(parents=True, exist_ok=True)
     free_mb = shutil.disk_usage(out_dir).free // (1024 * 1024)
     if free_mb < settings.backup_min_free_mb:

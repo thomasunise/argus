@@ -12,13 +12,14 @@ import re
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.config import AI_PROVIDERS, Settings
+from ..core.db import session_scope, set_tenant_context
 from ..core.errors import Conflict, Forbidden, NotFound
 from ..core.findings import SEVERITIES
 from ..core.rbac import ROLE_ORDER, Principal, Role, role_at_least
@@ -147,7 +148,7 @@ def list_tenants(db: Session = Depends(get_db), principal: Principal = Depends(r
 
 
 @router.post('/tenants', status_code=201)
-def create_tenant(body: TenantBody, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:tenant'))):
+def create_tenant(body: TenantBody, request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:tenant'))):
     if not principal.user_id:
         raise Forbidden('Tenant creation requires an interactive user session (the creator becomes the owner)')
     slug = body.slug.strip().lower()
@@ -159,8 +160,15 @@ def create_tenant(body: TenantBody, db: Session = Depends(get_db), principal: Pr
     db.add(tenant)
     db.flush()
     db.add(Membership(user_id=principal.user_id, tenant_id=tenant.id, role=Role.owner.value))
-    record_audit(db, principal, 'admin.tenant_created', tenant.id, {'slug': slug, 'name': tenant.name, 'owner': principal.user_id}, tenant_id=tenant.id)
-    record_audit(db, principal, 'admin.tenant_created', tenant.id, {'slug': slug, 'name': tenant.name})
+    detail = {'slug': slug, 'name': tenant.name, 'owner': principal.user_id}
+    # Audit the creator in their existing tenant and commit the new tenant/membership.
+    record_audit(db, principal, 'admin.tenant_created', tenant.id, detail)
+    db.commit()
+    # The new tenant also needs its own creation audit. RLS forbids inserting
+    # into a second tenant's audit table from the creator's active transaction.
+    with session_scope(request.app.state.db_factory) as tenant_db:
+        set_tenant_context(tenant_db, tenant.id)
+        record_audit(tenant_db, principal, 'admin.tenant_created', tenant.id, detail, tenant_id=tenant.id)
     return _tenant_dict(tenant, Role.owner.value)
 
 
@@ -186,7 +194,7 @@ def patch_tenant(tenant_id: str, body: TenantPatch, db: Session = Depends(get_db
         changes['actions_enabled'] = {'from': tenant.actions_enabled, 'to': body.actions_enabled}
         tenant.actions_enabled = body.actions_enabled
     if changes:
-        record_audit(db, principal, 'admin.tenant_updated', tenant.id, {'changes': changes}, tenant_id=tenant.id)
+        record_audit(db, principal, 'admin.tenant_updated', tenant.id, {'changes': changes})
     return _tenant_dict(tenant)
 
 

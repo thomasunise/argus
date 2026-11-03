@@ -205,6 +205,7 @@ The production checklist is in `docs/DEPLOYMENT.md`. The short version, enforced
   an `https://` `BASE_URL`, `DATA_ENCRYPTION_KEY(S)`, `AUDIT_SIGNING_KEY(S)`, an external audit
   sink, and either OIDC or `TOTP_REQUIRED=true`.
 - Dedicated workers (`WORKERS_INPROCESS=false`, `python -m app.worker`).
+- **Separate PostgreSQL credentials:** migrate as the schema owner; run API and workers as a restricted non-owner, non-BYPASSRLS role with tenant RLS enabled and verified. See [tenant-isolation deployment guide](docs/TENANT-ISOLATION.md).
 - Use an object-lock audit sink (S3 Object Lock or Azure immutable blob), not only JSONL.
 - `/metrics` blocked at the edge; egress filtering for workers; secrets in a secret manager.
 - Images pinned by digest and verified with cosign (`.github/workflows/release.yml`).

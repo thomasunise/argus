@@ -27,6 +27,8 @@ when `AUTOSCAN_ENABLED=true`. They run in whichever process has them enabled; in
 multi-process deployment the engines tolerate duplicate runs (fingerprint dedupe, idempotency
 keys), but prefer a single API replica running schedulers or a dedicated scheduler replica.
 
+Production PostgreSQL now requires a restricted non-owner runtime DATABASE_URL, with Alembic run separately under migration-owner credentials. See [tenant isolation](TENANT-ISOLATION.md).
+
 Schema: `scripts/migrate.py` runs `alembic upgrade head` (the initial revision creates every
 table). Set `DB_AUTO_CREATE=false` wherever migrations own the schema so the application never
 touches it; for an existing `create_all` database run `python scripts/migrate.py --stamp head`
@@ -92,8 +94,9 @@ or `ARGUS_EXTRAS=1` when building locally).
 docker compose -f compose.yaml -f compose.prod.yaml up -d
 ```
 
-Upgrades: pull or build the new image, `docker compose up -d`; the API applies migrations at
-start. Back up the Postgres volume first (`pg_dump` from the `postgres` container).
+Upgrades: back up the database with a separate privileged backup connection, apply migrations with the
+migration-owner role, then deploy the API/worker with the restricted runtime account.
+The production API no longer runs schema migrations automatically. See `docs/TENANT-ISOLATION.md`.
 
 ### Coolify
 

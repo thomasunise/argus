@@ -18,11 +18,11 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.config import Settings
-from ..core.db import session_scope
+from ..core.db import session_scope, set_tenant_context
 from ..core.findings import upsert_event
 from ..core.rbac import system_principal
 from ..core.security import resolve_secret
-from ..models import dumps, loads, utcnow
+from ..models import Tenant, dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
 from .base import Collector, CollectorContext, CollectorResult, registry
 
@@ -223,20 +223,27 @@ async def scheduler_tick(app, now: datetime | None = None) -> int:
     """Enqueue every due collector config across tenants. Returns how many were enqueued."""
     now = now or utcnow()
     enqueued = 0
+    # Tenant enumeration is global; all collector reads and writes are isolated.
     with session_scope(app.state.db_factory) as db:
-        rows = db.execute(select(CollectorConfig).where(CollectorConfig.enabled.is_(True), CollectorConfig.schedule_minutes > 0)).scalars().all()
-        for config in rows:
-            if not is_due(config, now):
-                continue
-            try:
-                run, created = await enqueue_run(app, db, config, 'scheduler')
-            except Exception:
-                log.exception('scheduler failed to enqueue collector %s', config.id)
-                continue
-            if created:
-                enqueued += 1
-                record_audit(db, system_principal(config.tenant_id), 'collectors.scheduled', config.id, {'run_id': run.id, 'collector': config.collector})
-                db.commit()
+        tenant_ids = list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
+    for tenant_id in tenant_ids:
+        with session_scope(app.state.db_factory) as db:
+            set_tenant_context(db, tenant_id)
+            rows = db.execute(select(CollectorConfig).where(
+                CollectorConfig.enabled.is_(True), CollectorConfig.schedule_minutes > 0)).scalars().all()
+            for config in rows:
+                if not is_due(config, now):
+                    continue
+                try:
+                    run, created = await enqueue_run(app, db, config, 'scheduler')
+                except Exception:
+                    log.exception('scheduler failed to enqueue collector %s', config.id)
+                    continue
+                if created:
+                    enqueued += 1
+                    record_audit(db, system_principal(config.tenant_id), 'collectors.scheduled',
+                                 config.id, {'run_id': run.id, 'collector': config.collector})
+                    db.commit()
     return enqueued
 
 

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from ..core.db import session_scope
+from ..core.db import session_scope, set_tenant_context
 from ..models import Tenant
 from . import engine
 from .engine import DetectionDraft, DetectionRule, RuleContext, registry, run, update_baselines  # noqa: F401
@@ -90,6 +90,7 @@ async def _scheduler_loop(app) -> None:
                 tenant_ids = [t for t in db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars().all()]
             for tenant_id in tenant_ids:
                 with session_scope(app.state.db_factory) as db:
+                    set_tenant_context(db, tenant_id)
                     engine.run(db, tenant_id, settings=settings, trigger='scheduler')
                     bucket = engine.bucket_start(engine.utcnow(), engine.BASELINE_WINDOW_MINUTES).isoformat()
                     if last_baseline_bucket.get(tenant_id) != bucket:

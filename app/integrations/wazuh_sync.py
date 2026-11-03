@@ -14,7 +14,7 @@ import httpx
 from sqlalchemy import select
 
 from ..core.config import Settings
-from ..core.db import session_scope
+from ..core.db import session_scope, set_tenant_context
 from ..core.errors import ArgusError
 from ..core.rbac import system_principal
 from ..models import Tenant, dumps, loads, utcnow
@@ -201,7 +201,12 @@ async def _scheduler_loop(app) -> None:
         await asyncio.sleep(SCHEDULER_INTERVAL_SECONDS)
         try:
             with session_scope(app.state.db_factory) as db:
-                due = due_integrations(db, utcnow())
+                tenant_ids = list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
+            due = []
+            for tenant_id in tenant_ids:
+                with session_scope(app.state.db_factory) as db:
+                    set_tenant_context(db, tenant_id)
+                    due.extend(due_integrations(db, utcnow()))
             for tenant_id, integration_id in due:
                 await queue.enqueue('integrations.wazuh_sync', {'integration_id': integration_id}, tenant_id=tenant_id,
                                     idempotency_key=f'wazuh_sync:{integration_id}', priority=7)

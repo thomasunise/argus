@@ -19,11 +19,14 @@
 # assert_safe_config at startup, so the worker needs the full set too.
 x-production-env: &production-env
   APP_ENV: production
+  DATABASE_URL: ${ARGUS_DATABASE_URL:-}
+  RUN_MIGRATIONS: "false"
+  DB_AUTO_CREATE: "false"
   COOKIE_SECURE: "true"
   LOG_JSON: "true"
   BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN}
   TOTP_REQUIRED: ${TOTP_REQUIRED:-true}   # OIDC deployments set TOTP_REQUIRED=false in .env together with OIDC_ISSUER
-  BACKUP_ENABLED: ${BACKUP_ENABLED:-true}     # daily encrypted backups into the argus-data volume (docs/BACKUP.md); add BACKUP_S3_BUCKET for off-host copies
+  BACKUP_ENABLED: ${BACKUP_ENABLED:-false}     # daily encrypted backups into the argus-data volume (docs/BACKUP.md); add BACKUP_S3_BUCKET for off-host copies
   RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
 
 services:
