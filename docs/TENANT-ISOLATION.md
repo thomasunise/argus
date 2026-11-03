@@ -61,3 +61,7 @@ through three read-only migration-owned SECURITY DEFINER functions. The function
 return only a tenant ID, never protected records. The application then sets the
 transaction's tenant and performs all further work under RLS. Restrict database
 access to these functions and review them before changing callback formats.
+
+The in-app production PostgreSQL backup path intentionally refuses to create a
+snapshot with a restricted runtime account: RLS would silently omit rows for
+other tenants. Use a separate privileged pg_dump/restore workflow instead.
