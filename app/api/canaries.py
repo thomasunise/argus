@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.db import get_scoped, scoped
+from ..core.db import get_scoped, scoped, bind_public_token_tenant
 from ..core.errors import NotFound, ArgusError
 from ..core.rbac import Principal
 from ..detections import canaries as svc
