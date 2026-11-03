@@ -55,3 +55,9 @@ The previous owner-role DATABASE_URL is NOT acceptable in production.
 - SQLite development/tests do not enforce PostgreSQL RLS. Validate the
   non-owner PostgreSQL test and conduct a staging migration/rollback drill.
 - This migration intentionally refuses downgrade to the unsafe fail-open policy.
+
+Public canary, OOB and Slack callbacks first resolve a high-entropy token to a tenant
+through three read-only migration-owned SECURITY DEFINER functions. The functions
+return only a tenant ID, never protected records. The application then sets the
+transaction's tenant and performs all further work under RLS. Restrict database
+access to these functions and review them before changing callback formats.

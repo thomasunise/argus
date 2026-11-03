@@ -128,6 +128,8 @@ async def _hit(token: str, request: Request, db: Session) -> None:
     limiter.check(f'canary:{token[:64]}', int(getattr(settings, 'canary_hit_rate_limit_per_token', 60)), 60.0)
     if not svc.valid_token(token):
         return
+    if not bind_public_token_tenant(db, 'canary', token, production=settings.is_production):
+        return
     canary = svc.find_canary(db, token)
     if canary is None:
         return
@@ -196,6 +198,8 @@ async def _record(token: str, request: Request, db: Session, payload: dict):
     limiter.check(f'canary-ip:{ip}', int(getattr(settings, 'canary_hit_rate_limit_per_ip', 300)), 60.0)
     limiter.check(f'canary:{token[:64]}', int(getattr(settings, 'canary_hit_rate_limit_per_token', 60)), 60.0)
     if not svc.valid_token(token):
+        return None
+    if not bind_public_token_tenant(db, 'canary', token, production=settings.is_production):
         return None
     canary = svc.find_canary(db, token)
     if canary is None:

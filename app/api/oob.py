@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
-from ..core.db import session_scope
+from ..core.db import session_scope, bind_public_token_tenant
 from ..core.errors import NotFound, RateLimited
 from ..models import utcnow
 from ..models.oob import OobToken
@@ -25,6 +25,8 @@ def _record(app, token: str, request: Request) -> OobToken:
     if limiter is not None:
         limiter.check(f'oob:{client_ip}', 120, 60.0)
     with session_scope(app.state.db_factory) as db:
+        if not bind_public_token_tenant(db, 'oob', token, production=app.state.settings.is_production):
+            raise NotFound('unknown out-of-band token')
         row = db.execute(select(OobToken).where(OobToken.token == token)).scalar_one_or_none()
         if row is None:
             raise NotFound('unknown out-of-band token')

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..actions import broker
 from ..core.audit import record_audit
-from ..core.db import get_scoped
+from ..core.db import get_scoped, bind_public_token_tenant
 from ..core.errors import ArgusError, Unauthorized
 from ..core.rbac import Principal, Role
 from ..core.security import redact
@@ -172,6 +172,8 @@ async def interactions(integration_id: str, request: Request, db: Session = Depe
     timestamp = request.headers.get('x-slack-request-timestamp', '')
     signature = request.headers.get('x-slack-signature', '')
     if not timestamp or not signature:
+        raise _reject()
+    if not bind_public_token_tenant(db, 'slack', integration_id, production=request.app.state.settings.is_production):
         raise _reject()
     row = db.get(IntegrationConfig, integration_id)
     config = loads(row.config_json, {}) if row is not None else {}

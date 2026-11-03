@@ -173,6 +173,34 @@ def set_tenant_context(db: Session, tenant_id: str | None) -> None:
         db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': tid})
 
 
+_TOKEN_ROUTES = {
+    'canary': text('SELECT public.argus_route_canary(:token)'),
+    'oob': text('SELECT public.argus_route_oob(:token)'),
+    'slack': text('SELECT public.argus_route_slack(:token)'),
+}
+
+
+def bind_public_token_tenant(db: Session, kind: str, token: str, *, production: bool) -> bool:
+    """Resolve only a high-entropy callback token before applying the RLS tenant.
+
+    Production PostgreSQL uses migration-owned SECURITY DEFINER functions that
+    disclose only tenant_id for the exact token; raw table scans cannot bypass
+    RLS. SQLite/development retains its existing direct lookup behavior.
+    """
+    if not token:
+        return False
+    if not production or db.get_bind().dialect.name != 'postgresql':
+        return True
+    query = _TOKEN_ROUTES.get(kind)
+    if query is None:
+        raise ValueError('unsupported public token kind')
+    tenant_id = db.execute(query, {'token': token}).scalar_one_or_none()
+    if not tenant_id:
+        return False
+    set_tenant_context(db, tenant_id)
+    return True
+
+
 def pool_stats(engine: Engine) -> dict[str, int | str]:
     """Return connection pool telemetry for health and monitoring endpoints."""
     pool = getattr(engine, 'pool', None)
