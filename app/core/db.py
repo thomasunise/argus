@@ -60,7 +60,28 @@ def assert_restricted_runtime_role(engine: Engine) -> None:
              WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p')
         """)).all()
         state = {name: (enabled, owner) for name, enabled, owner in rows}
-        unsafe = sorted(name for name in tables if name not in state or not state[name][0] or state[name][1])
+        policy_rows = conn.execute(text("""
+            SELECT tablename, policyname, qual, with_check
+              FROM pg_policies WHERE schemaname = current_schema()
+        """)).all()
+        policies = {}
+        for table, policy, qual, check in policy_rows:
+            policies.setdefault(table, []).append((policy, qual or '', check or ''))
+        unsafe = []
+        for name in sorted(tables):
+            if name not in state or not state[name][0] or state[name][1]:
+                unsafe.append(name)
+                continue
+            # The legacy policy enabled RLS but explicitly allowed NULL/empty
+            # tenant contexts. Require the strict migration's USING + WITH CHECK.
+            found = policies.get(name, [])
+            if len(found) != 1 or found[0][0] != 'tenant_isolation_policy':
+                unsafe.append(name)
+                continue
+            qual, check = found[0][1].lower(), found[0][2].lower()
+            if any('tenant_id' not in part or 'nullif(' not in part
+                   or 'current_setting(' not in part for part in (qual, check)):
+                unsafe.append(name)
         if any(flags) or unsafe:
             raise RuntimeError('Production DATABASE_URL must use non-owner/non-BYPASSRLS credentials '
                                'and every tenant table must have RLS enabled; unsafe tables: '

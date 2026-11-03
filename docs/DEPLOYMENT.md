@@ -94,8 +94,9 @@ or `ARGUS_EXTRAS=1` when building locally).
 docker compose -f compose.yaml -f compose.prod.yaml up -d
 ```
 
-Upgrades: pull or build the new image, `docker compose up -d`; the API applies migrations at
-start. Back up the Postgres volume first (`pg_dump` from the `postgres` container).
+Upgrades: back up the database with a separate privileged backup connection, apply migrations with the
+migration-owner role, then deploy the API/worker with the restricted runtime account.
+The production API no longer runs schema migrations automatically. See `docs/TENANT-ISOLATION.md`.
 
 ### Coolify
 

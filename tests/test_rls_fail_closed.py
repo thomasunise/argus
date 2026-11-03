@@ -32,7 +32,7 @@ def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
     with engine_db.begin() as c:
         c.execute(text(f'CREATE ROLE "{role}" NOLOGIN'))
         c.execute(text(f'GRANT USAGE ON SCHEMA public TO "{role}"'))
-        c.execute(text(f'GRANT SELECT, INSERT ON public.assets TO "{role}"'))
+        c.execute(text(f'GRANT SELECT, INSERT, UPDATE ON public.assets TO "{role}"'))
     try:
         with engine_db.begin() as c:
             c.execute(text(f'SET LOCAL ROLE "{role}"'))
@@ -45,6 +45,30 @@ def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
             # An explicit tenant context is the only way to see tenant rows.
             c.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': app.state.default_tenant_id})
             assert c.execute(text('SELECT COUNT(*) FROM public.assets')).scalar_one() >= 1
+            # WITH CHECK blocks transferring an existing row to a different tenant.
+            with pytest.raises(DBAPIError):
+                with c.begin_nested():
+                    c.execute(text('UPDATE public.assets SET tenant_id = :other WHERE id = :id'),
+                              {'other': 'different-tenant', 'id': seed.id})
+        # SET LOCAL must be reapplied after commit, without leaking across connections.
+        with engine_db.connect() as conn:
+            conn.execute(text(f'SET ROLE "{role}"'))
+            conn.commit()
+            try:
+                from sqlalchemy.orm import Session
+                from app.core.db import set_tenant_context
+                with Session(bind=conn) as scoped_session:
+                    assert scoped_session.execute(text('SELECT COUNT(*) FROM public.assets')).scalar_one() == 0
+                    scoped_session.commit()
+                    set_tenant_context(scoped_session, app.state.default_tenant_id)
+                    assert scoped_session.execute(text('SELECT COUNT(*) FROM public.assets')).scalar_one() >= 1
+                    scoped_session.commit()
+                    assert scoped_session.execute(text('SELECT COUNT(*) FROM public.assets')).scalar_one() >= 1
+                    with pytest.raises(ValueError, match='cannot be switched'):
+                        set_tenant_context(scoped_session, 'other-tenant')
+            finally:
+                conn.execute(text('RESET ROLE'))
+                conn.commit()
     finally:
         with engine_db.begin() as c:
             c.execute(text(f'REVOKE ALL ON public.assets FROM "{role}"'))

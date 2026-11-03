@@ -38,13 +38,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     crypto.configure(settings.data_encryption_keys, settings.data_encryption_key)
 
     engine = make_engine(settings)
+    if settings.is_production:
+        assert_restricted_runtime_role(engine)  # also enforced by standalone workers (which do not run lifespan)
     factory = make_session_factory(engine)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(engine, settings)
-        if settings.is_production:
-            assert_restricted_runtime_role(engine)
         with session_scope(factory) as db:
             tenant = bootstrap(db, settings)
             app.state.default_tenant_id = tenant.id
