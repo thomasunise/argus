@@ -159,7 +159,6 @@ def create_tenant(body: TenantBody, db: Session = Depends(get_db), principal: Pr
     db.add(tenant)
     db.flush()
     db.add(Membership(user_id=principal.user_id, tenant_id=tenant.id, role=Role.owner.value))
-    record_audit(db, principal, 'admin.tenant_created', tenant.id, {'slug': slug, 'name': tenant.name, 'owner': principal.user_id}, tenant_id=tenant.id)
     record_audit(db, principal, 'admin.tenant_created', tenant.id, {'slug': slug, 'name': tenant.name})
     return _tenant_dict(tenant, Role.owner.value)
 
@@ -186,7 +185,7 @@ def patch_tenant(tenant_id: str, body: TenantPatch, db: Session = Depends(get_db
         changes['actions_enabled'] = {'from': tenant.actions_enabled, 'to': body.actions_enabled}
         tenant.actions_enabled = body.actions_enabled
     if changes:
-        record_audit(db, principal, 'admin.tenant_updated', tenant.id, {'changes': changes}, tenant_id=tenant.id)
+        record_audit(db, principal, 'admin.tenant_updated', tenant.id, {'changes': changes})
     return _tenant_dict(tenant)
 
 
