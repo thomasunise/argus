@@ -19,6 +19,9 @@
 # assert_safe_config at startup, so the worker needs the full set too.
 x-production-env: &production-env
   APP_ENV: production
+  DATABASE_URL: ${ARGUS_DATABASE_URL:-}
+  RUN_MIGRATIONS: "false"
+  DB_AUTO_CREATE: "false"
   COOKIE_SECURE: "true"
   LOG_JSON: "true"
   BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN}

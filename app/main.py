@@ -17,7 +17,7 @@ from .core import audit as audit_module
 from .core import crypto
 from .core.bootstrap import bootstrap
 from .core.config import Settings, assert_safe_config, get_settings
-from .core.db import CommitBeforeResponseMiddleware, init_db, make_engine, make_session_factory, pool_stats, session_scope
+from .core.db import CommitBeforeResponseMiddleware, assert_restricted_runtime_role, init_db, make_engine, make_session_factory, pool_stats, session_scope
 from .core.errors import install_error_handlers
 from .core.queue import JobQueue
 from .core.telemetry import BodySizeLimitMiddleware, RequestContextMiddleware, configure_logging, configure_tracing, install_metrics_endpoint
@@ -43,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(engine, settings)
+        if settings.is_production:
+            assert_restricted_runtime_role(engine)
         with session_scope(factory) as db:
             tenant = bootstrap(db, settings)
             app.state.default_tenant_id = tenant.id
