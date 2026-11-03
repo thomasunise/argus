@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.config import Settings
-from ..core.db import get_scoped, scoped, session_scope
+from ..core.db import get_scoped, scoped, session_scope, set_tenant_context
 from ..core.errors import ArgusError, PolicyDenied
 from ..core.events import publish, subscribe
 from ..core.findings import SEVERITIES
@@ -393,48 +393,52 @@ async def sweep_rollbacks(app, now: datetime | None = None) -> dict:
     now = now or _now()
     counts = {'requested': 0, 'done': 0, 'failed': 0, 'waiting': 0}
     with session_scope(app.state.db_factory) as db:
-        rows = db.execute(select(AutoresponseExecution).where(AutoresponseExecution.rollback_state.in_(('pending', 'requested')))
-                          .order_by(AutoresponseExecution.created_at.asc()).limit(200)).scalars().all()
-        for execution in rows:
-            run = get_scoped(db, ActionRun, execution.tenant_id, execution.action_run_id or '')
-            if execution.rollback_state == 'requested':
-                if run is not None and run.status == 'rolled_back':
-                    execution.rollback_state, execution.rolled_back_at = 'done', _aware(run.rolled_back_at) or now
-                    counts['done'] += 1
-                elif run is None or run.status == 'rollback_failed':
+        tenant_ids = list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
+    for tenant_id in tenant_ids:
+        with session_scope(app.state.db_factory) as db:
+            set_tenant_context(db, tenant_id)
+            rows = db.execute(select(AutoresponseExecution).where(AutoresponseExecution.rollback_state.in_(('pending', 'requested')))
+                              .order_by(AutoresponseExecution.created_at.asc()).limit(200)).scalars().all()
+            for execution in rows:
+                run = get_scoped(db, ActionRun, execution.tenant_id, execution.action_run_id or '')
+                if execution.rollback_state == 'requested':
+                    if run is not None and run.status == 'rolled_back':
+                        execution.rollback_state, execution.rolled_back_at = 'done', _aware(run.rolled_back_at) or now
+                        counts['done'] += 1
+                    elif run is None or run.status == 'rollback_failed':
+                        execution.rollback_state = 'failed'
+                        counts['failed'] += 1
+                    continue
+                due = _aware(execution.rollback_due_at)
+                if due is None or due > now:
+                    continue
+                if run is None:
                     execution.rollback_state = 'failed'
                     counts['failed'] += 1
-                continue
-            due = _aware(execution.rollback_due_at)
-            if due is None or due > now:
-                continue
-            if run is None:
-                execution.rollback_state = 'failed'
-                counts['failed'] += 1
-                continue
-            if run.status in ('queued', 'running'):
-                counts['waiting'] += 1
-                continue
-            if run.status != 'executed' or run.rolled_back_at is not None:
-                execution.rollback_state = 'not_needed' if run.status != 'rolled_back' else 'done'
-                continue
-            principal = autoresponse_principal(execution.tenant_id)
-            try:
-                await broker.rollback(app, principal, run.id, db=db)
-            except PolicyDenied as exc:  # kill switch engaged: retry on a later sweep
-                log.warning('autoresponse rollback of run %s blocked: %s', run.id, exc)
-                counts['waiting'] += 1
-                continue
-            except ArgusError as exc:
-                execution.rollback_state = 'failed'
-                execution.reason = redact(f'{execution.reason}; automatic rollback failed: {getattr(exc, "message", exc)}')[:2000]
-                counts['failed'] += 1
-                continue
-            execution.rollback_state = 'requested'
-            record_audit(db, principal, 'autoresponse.rollback_requested', execution.id,
-                         {'action_run_id': run.id, 'manual': False, 'due_at': due.isoformat()}, tenant_id=execution.tenant_id)
-            counts['requested'] += 1
-            db.commit()
+                    continue
+                if run.status in ('queued', 'running'):
+                    counts['waiting'] += 1
+                    continue
+                if run.status != 'executed' or run.rolled_back_at is not None:
+                    execution.rollback_state = 'not_needed' if run.status != 'rolled_back' else 'done'
+                    continue
+                principal = autoresponse_principal(execution.tenant_id)
+                try:
+                    await broker.rollback(app, principal, run.id, db=db)
+                except PolicyDenied as exc:  # kill switch engaged: retry on a later sweep
+                    log.warning('autoresponse rollback of run %s blocked: %s', run.id, exc)
+                    counts['waiting'] += 1
+                    continue
+                except ArgusError as exc:
+                    execution.rollback_state = 'failed'
+                    execution.reason = redact(f'{execution.reason}; automatic rollback failed: {getattr(exc, "message", exc)}')[:2000]
+                    counts['failed'] += 1
+                    continue
+                execution.rollback_state = 'requested'
+                record_audit(db, principal, 'autoresponse.rollback_requested', execution.id,
+                             {'action_run_id': run.id, 'manual': False, 'due_at': due.isoformat()}, tenant_id=execution.tenant_id)
+                counts['requested'] += 1
+                db.commit()
     return counts
 
 

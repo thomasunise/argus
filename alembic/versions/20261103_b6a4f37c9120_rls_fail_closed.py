@@ -16,57 +16,23 @@ down_revision = 'a1b2c3d4e5f6'
 branch_labels = None
 depends_on = None
 
-TENANT_TABLES: tuple[str, ...] = (
-    'assets',
-    'asset_authorizations',
-    'asset_credentials',
-    'findings',
-    'events',
-    'runs',
-    'investigations',
-    'approvals',
-    'detections',
-    'detection_rules',
-    'detection_runs',
-    'collector_configs',
-    'collector_runs',
-    'integration_configs',
-    'webhook_deliveries',
-    'test_scopes',
-    'test_runs',
-    'test_results',
-    'pentest_runs',
-    'pentest_hypotheses',
-    'discovery_runs',
-    'discoveries',
-    'request_captures',
-    'oob_tokens',
-    'poc_requests',
-    'poc_approvals',
-    'poc_runs',
-    'action_requests',
-    'action_approvals',
-    'action_runs',
-    'response_playbooks',
-    'autoresponse_executions',
-    'agent_runs',
-    'ai_services',
-    'ai_gateway_requests',
-    'canaries',
-    'canary_hits',
-    'simulation_runs',
-    'audit_entries',
-)
+# Auth and membership records are resolved before an authenticated tenant exists.
+# They require a separate identity-access design before enabling RLS on them.
+IDENTITY_TABLES = frozenset({'api_keys', 'memberships', 'oidc_identities'})
+
+
+def _tenant_tables(bind):
+    inspector = sa.inspect(bind)
+    return sorted(name for name in inspector.get_table_names()
+                  if name not in IDENTITY_TABLES
+                  and 'tenant_id' in {col['name'] for col in inspector.get_columns(name)})
 
 
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name != 'postgresql':
         return
-    existing = set(sa.inspect(bind).get_table_names())
-    for table in TENANT_TABLES:
-        if table not in existing:
-            continue
+    for table in _tenant_tables(bind):
         op.execute(sa.text(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY'))
         op.execute(sa.text(f'DROP POLICY IF EXISTS tenant_isolation_policy ON "{table}"'))
         op.execute(sa.text(

@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from ..core.db import session_scope
+from ..core.db import session_scope, set_tenant_context
 from ..models import utcnow
 
 log = logging.getLogger('argus.testing')
@@ -37,15 +37,21 @@ def _collect_due(factory) -> list[tuple[str, str]]:
     from sqlalchemy import select
 
     from ..models.testing import TestPlan
+    from ..models import Tenant
 
     now = utcnow()
     due: list[tuple[str, str]] = []
     with session_scope(factory) as db:
-        plans = db.execute(select(TestPlan).where(TestPlan.enabled.is_(True), TestPlan.schedule_minutes.isnot(None))).scalars()
-        for plan in plans:
-            if not plan.schedule_minutes:
-                continue
-            last = plan.last_run_at
-            if last is None or last.replace(tzinfo=last.tzinfo or now.tzinfo) <= now - timedelta(minutes=plan.schedule_minutes):
-                due.append((plan.id, plan.tenant_id))
+        tenant_ids = list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
+    for tenant_id in tenant_ids:
+        with session_scope(factory) as db:
+            set_tenant_context(db, tenant_id)
+            plans = db.execute(select(TestPlan).where(
+                TestPlan.enabled.is_(True), TestPlan.schedule_minutes.isnot(None))).scalars()
+            for plan in plans:
+                if not plan.schedule_minutes:
+                    continue
+                last = plan.last_run_at
+                if last is None or last.replace(tzinfo=last.tzinfo or now.tzinfo) <= now - timedelta(minutes=plan.schedule_minutes):
+                    due.append((plan.id, plan.tenant_id))
     return due

@@ -27,6 +27,8 @@ when `AUTOSCAN_ENABLED=true`. They run in whichever process has them enabled; in
 multi-process deployment the engines tolerate duplicate runs (fingerprint dedupe, idempotency
 keys), but prefer a single API replica running schedulers or a dedicated scheduler replica.
 
+Production PostgreSQL now requires a restricted non-owner runtime DATABASE_URL, with Alembic run separately under migration-owner credentials. See [tenant isolation](TENANT-ISOLATION.md).
+
 Schema: `scripts/migrate.py` runs `alembic upgrade head` (the initial revision creates every
 table). Set `DB_AUTO_CREATE=false` wherever migrations own the schema so the application never
 touches it; for an existing `create_all` database run `python scripts/migrate.py --stamp head`

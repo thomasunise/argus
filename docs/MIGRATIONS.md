@@ -10,6 +10,10 @@ Argus has two ways to get a schema, and exactly one of them should be active per
 `assert_safe_config()` already refuses SQLite in production; set `DB_AUTO_CREATE=false` in the
 same `.env` so the only schema changes are reviewed migration files.
 
+## Tenant isolation and database roles
+
+Production schema migrations must run under a separate owner role, never the API/worker runtime account. The runtime must be a non-owner, non-BYPASSRLS PostgreSQL role and the RLS migration must be applied before it starts. See [TENANT-ISOLATION.md](TENANT-ISOLATION.md). Downgrading to the earlier fail-open RLS policy is prohibited.
+
 ## Layout
 
 - `alembic.ini` — configuration. The URL is intentionally blank.
