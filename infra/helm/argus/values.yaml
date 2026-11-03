@@ -170,6 +170,7 @@ sandbox:
   enabled: false
   namespace: argus-sandbox
   runtimeClassName: gvisor       # install the gVisor RuntimeClass first; use "runc" only for a lab
+  pocImages: ""                # digest-pinned allowed PoC runner images; empty means deny all
   engineImages: ""             # comma separated digest-pinned engine images (Strix); empty refuses every engine
   engineMaxWallSeconds: 14400  # upper bound the executor accepts for an engine job
   executor:

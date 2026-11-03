@@ -1,5 +1,44 @@
 # Security
 
+## Production deployment limitations requiring independent validation
+
+This project is undergoing security hardening. The presence of an implemented feature or
+a passing fixture test does not establish that it is safe to deploy with broad production
+permissions.
+
+- **PostgreSQL RLS is not a complete tenant boundary yet.** The new strict tenant
+  policy migration rejects missing/foreign tenant context for non-owner DB roles,
+  and authenticated API sessions restore that context after transaction commits.
+  The default deployment still connects with the migration owner (which bypasses
+  RLS), and API, worker, webhook, identity and backup DB roles are not fully
+  separated. Do not put mutually untrusted organizations into a shared ARGUS
+  deployment until that split is complete and tested. Deploy a separate instance
+  per organization in the meantime.
+- **Action side-effect reconciliation is incomplete.** Actions with uncertain external
+  outcomes require manual investigation. A timeout is not evidence the change failed.
+  Keep autonomous changes disabled until each enabled provider action has a tested
+  recovery and verification contract.
+- **Network egress controls need deployment enforcement.** Application DNS checks alone
+  cannot prevent rebinding between validation and connection. In production,
+  integration URLs are re-resolved at send time and unresolved names are rejected;
+  this still does not pin the actual socket to the validated address. Use explicit network
+  egress restrictions and permitlists for collectors, outbound integrations and tools.
+- **Tested sandbox rules are not a substitute for runtime isolation.** Confirm image
+  allowlists (including SANDBOX_POC_IMAGES, which defaults to deny-all), policy
+  enforcement by your CNI, RuntimeClass isolation and Kubernetes resource quotas
+  using a real cluster before enabling exploit execution. The Helm chart now
+  includes baseline network policies denying ingress and egress for all
+  PoC/engine-labeled pods before per-job allow rules are established.
+- **AI DLP is text-only.** In enforcing modes, unsupported media and encoded payloads
+  are rejected instead of being described as inspected.
+- **Independent field validation is missing.** Detection confidence heuristics are not
+  calibrated probabilities. Do not treat fixture results or the README as a security
+  effectiveness certification.
+
+See the draft security-hardening work in PR #26. Never expose privileged automation
+to a critical estate without completing your own security acceptance tests.
+
+
 This page states the security model as implemented in this repository, what deployers must
 add, and how to report a vulnerability. The threat analysis is in `docs/THREAT-MODEL.md`;
 procedures are in `docs/RUNBOOKS.md`.
@@ -122,3 +161,12 @@ Supply chain (`.github/`)
 - Key-id-aware verification of the audit HMAC across signing-key rotations (see runbook).
 - Distributed rate limiting (the limiter is per process).
 - Per-tenant encryption keys for stored evidence (encryption at rest is a platform setting).
+
+
+## Reverse proxy headers
+
+The production Compose overlay no longer trusts `X-Forwarded-*` headers
+from arbitrary containers by default. If original client addresses are
+required, explicitly set `FORWARDED_ALLOW_IPS` to the exact trusted reverse
+proxy address or a narrowly managed subnet. Do not use `*`; an attacker on
+the internal Docker network may otherwise forge forwarded client identity.

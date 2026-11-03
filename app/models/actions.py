@@ -14,8 +14,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
-REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved')
-RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed')
+REQUEST_STATUSES = ('pending', 'approved', 'rejected', 'executing', 'executed', 'failed', 'rolled_back', 'cancelled', 'auto_approved', 'uncertain')
+RUN_STATUSES = ('queued', 'running', 'executed', 'failed', 'rolled_back', 'rollback_failed', 'uncertain')
 RISKS = ('low', 'medium', 'high', 'critical')
 EXECUTABLE_STATUSES = ('approved', 'auto_approved')
 OPEN_STATUSES = ('pending', 'approved', 'auto_approved')
@@ -47,7 +47,7 @@ class ActionRequest(TenantMixin, Base):
 
 class ActionApproval(TenantMixin, Base):
     __tablename__ = 'action_approvals'
-    __table_args__ = (Index('ix_action_approvals_request', 'request_id', 'approver_id'),)
+    __table_args__ = (Index('ux_action_approvals_request_actor', 'request_id', 'approver_id', unique=True),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     request_id: Mapped[str] = mapped_column(String(36), ForeignKey('action_requests.id'), index=True)
     approver_id: Mapped[str] = mapped_column(String(64))
@@ -71,6 +71,10 @@ class ActionRun(TenantMixin, Base):
     executed_by: Mapped[str] = mapped_column(String(64), default='')
     job_id: Mapped[str] = mapped_column(String(36), default='')
     rollback_job_id: Mapped[str] = mapped_column(String(36), default='')
+    # Record the original authorization and status in the same transaction as
+    # the pending dispatch. Queue recovery must not elevate the original actor.
+    dispatch_payload_json: Mapped[str] = mapped_column(Text, default='{}')
+    rollback_dispatch_json: Mapped[str] = mapped_column(Text, default='{}')
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     rolled_back_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

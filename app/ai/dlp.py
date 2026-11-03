@@ -87,6 +87,25 @@ def texts(value: Any, *, skip_roles: tuple[str, ...] = (), depth: int = 0) -> It
             yield from texts(item, skip_roles=skip_roles, depth=depth + 1)
 
 
+def uninspectable_media(value: Any, depth: int = 0) -> bool:
+    """Identify content that the text DLP scanner cannot inspect.
+
+    Rejecting unsupported modalities in enforcing modes is safer than passing them
+    through and implying the request was inspected.
+    """
+    if depth > 12:
+        return True
+    if isinstance(value, str):
+        return value.startswith('data:')
+    if isinstance(value, dict):
+        if 'image_url' in value or 'input_image' in value or 'input_audio' in value or 'audio' in value or 'file' in value:
+            return True
+        return any(uninspectable_media(item, depth + 1) for item in value.values())
+    if isinstance(value, list):
+        return any(uninspectable_media(item, depth + 1) for item in value)
+    return False
+
+
 def scan(strings: Iterable[str]) -> dict[str, int]:
     hits: Counter = Counter()
     budget = MAX_SCAN_CHARS

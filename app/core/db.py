@@ -159,6 +159,21 @@ def get_scoped(db: Session, model: type[M], principal: 'Principal | str', object
     return db.execute(select(model).where(model.id == object_id, model.tenant_id == tenant_id)).scalar_one_or_none()  # type: ignore[attr-defined]
 
 
+@event.listens_for(Session, 'after_begin')
+def _restore_tenant_context(session: Session, transaction, connection) -> None:
+    """Reapply LOCAL PostgreSQL RLS identity after each commit/rollback.
+
+    SET LOCAL (set_config with is_local=True) resets at transaction boundaries.
+    Without this listener an authenticated session loses its tenant identity after
+    a handler commits and would fail subsequent RLS-scoped operations.
+    """
+    tid = session.info.get('tenant_id')
+    if tid and connection.dialect.name == 'postgresql' and not transaction.nested:
+        from sqlalchemy import text
+
+        connection.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': str(tid)})
+
+
 def set_tenant_context(db: Session, tenant_id: str | None) -> None:
     """Bind the active tenant ID to the session and, on PostgreSQL, set `app.tenant_id` for RLS."""
     tid = str(tenant_id or '')

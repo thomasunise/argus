@@ -367,3 +367,33 @@ def test_budget_rejects_unpriced_models(client, gw_key, owner):
                                json=chat('hello', model='unpriced-model-for-tests'), headers=bearer(gw_key))
         assert response.status_code == 403 and 'no configured price' in response.text
         assert not route.called
+
+
+
+def test_dlp_fails_closed_on_uninspectable_media(client, gw_key):
+    body = chat('hello')
+    body['messages'][1]['content'] = [
+        {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,AAAA'}}
+    ]
+    response = client.post(f'{BASE}/openai/v1/chat/completions', json=body, headers=bearer(gw_key))
+    assert response.status_code == 403
+    assert 'cannot inspect' in response.json()['error']['message']
+
+
+
+@respx.mock
+def test_budget_requires_bounded_output_before_upstream(client, gw_key, owner):
+    set_policy(owner, monthly_budget_usd=5.0)
+    route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(200, json=openai_reply()))
+    response = client.post(f'{BASE}/openai/v1/chat/completions', json=chat('hello'), headers=bearer(gw_key))
+    assert response.status_code == 400
+    assert route.call_count == 0
+
+
+@respx.mock
+def test_budget_reserves_before_upstream(client, gw_key, owner):
+    set_policy(owner, monthly_budget_usd=0.005)
+    route = respx.post(OPENAI_CHAT).mock(return_value=httpx.Response(200, json=openai_reply()))
+    response = client.post(f'{BASE}/openai/v1/chat/completions', json=chat('hello', max_tokens=20000), headers=bearer(gw_key))
+    assert response.status_code == 429
+    assert route.call_count == 0

@@ -9,6 +9,8 @@ through redact() before it is ever persisted or logged.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import signal
 import hashlib
 import logging
 import os
@@ -104,18 +106,68 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
             *argv, cwd=cwd, env=run_env,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=(os.name == 'posix'),
         )
     except (FileNotFoundError, NotADirectoryError) as exc:
         raise Unavailable(f'tool not available: {argv[0]}') from exc
+    # communicate() buffers the entire process output before truncating. Drain streams
+    # incrementally so a noisy or hostile tool cannot exhaust worker memory.
+    async def bounded_read(stream):
+        chunks, seen = [], 0
+        while True:
+            chunk = await stream.read(65536)
+            if not chunk:
+                break
+            if seen < MAX_OUTPUT_BYTES:
+                kept = chunk[:MAX_OUTPUT_BYTES - seen]
+                chunks.append(kept)
+                seen += len(kept)
+        return b''.join(chunks)
+
     try:
-        out, err = await asyncio.wait_for(process.communicate(input=stdin), timeout=timeout)
-    except asyncio.TimeoutError:
-        process.kill()
-        try:
-            await process.communicate()
-        except Exception:  # noqa: BLE001 - process already gone
-            pass
-        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout')
+        async def communicate_bounded():
+            # Drain both pipes while feeding stdin, otherwise a tool that writes
+            # before reading its input could deadlock on full pipe buffers.
+            out_task = asyncio.create_task(bounded_read(process.stdout))
+            err_task = asyncio.create_task(bounded_read(process.stderr))
+            try:
+                if stdin is not None and process.stdin:
+                    try:
+                        process.stdin.write(stdin)
+                        await process.stdin.drain()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    finally:
+                        process.stdin.close()
+                await process.wait()
+                return await asyncio.gather(out_task, err_task)
+            finally:
+                for task in (out_task, err_task):
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+        out, err = await asyncio.wait_for(communicate_bounded(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        if process.returncode is None:
+            if os.name == 'posix':
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        with contextlib.suppress(Exception):
+            await process.wait()
+        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from exc
+    except asyncio.CancelledError:
+        if process.returncode is None:
+            if os.name == 'posix':
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        with contextlib.suppress(Exception):
+            await process.wait()
+        raise
     stdout = redact(_decode(out))
     stderr = redact(_decode(err))
     return process.returncode or 0, stdout, stderr

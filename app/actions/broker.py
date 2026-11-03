@@ -14,7 +14,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import update, select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
@@ -210,7 +210,10 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
     if not has(principal, 'actions:approve'):
         raise Forbidden('Missing permission actions:approve')
     with _APPROVE_LOCK:
-        req = get_scoped(db, ActionRequest, principal, request_id)
+        stmt = scoped(ActionRequest, principal).where(ActionRequest.id == request_id)
+        if db.get_bind().dialect.name == 'postgresql':
+            stmt = stmt.with_for_update()
+        req = db.execute(stmt).scalar_one_or_none()
         if req is None:
             raise NotFound('action request not found')
         db.refresh(req)
@@ -347,14 +350,20 @@ async def execute(app, principal: Principal, request_id: str, *, db: Session | N
     if claimed.rowcount != 1:
         raise Conflict('action request was already claimed for execution')
     db.refresh(req)
-    run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal))
+    run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal),
+                    dispatch_payload_json=dumps({'previous_status': previous_status, 'principal': _principal_payload(principal)}))
     db.add(run)
     db.flush()
     record_audit(db, principal, 'actions.execute_requested', req.id, {'action_type': req.action_type, 'run_id': run.id})
     db.commit()  # the worker may claim the job before this request finishes; the rows must be visible first
-    job = await app.state.queue.enqueue('actions.execute', {'request_id': req.id, 'run_id': run.id, 'previous_status': previous_status,
-                                                            'principal': _principal_payload(principal)},
-                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.execute:{req.id}', priority=2)
+    try:
+        job = await app.state.queue.enqueue('actions.execute', {'request_id': req.id, 'run_id': run.id, 'previous_status': previous_status,
+                                                                'principal': _principal_payload(principal)},
+                                            tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.execute:{req.id}', priority=2)
+    except Exception:
+        # The committed queued run survives a failed Redis enqueue.
+        log.exception('action dispatch deferred; queued run %s is recoverable', run.id)
+        return run
     run.job_id = job.id
     db.commit()
     return run
@@ -383,10 +392,8 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
         raise Conflict(f'{action.name} is not reversible')
     if run.rollback_payload_json in ('', '{}', 'null'):
         raise Conflict('run has no rollback payload')
-    tenant = _tenant(db, principal.tenant_id)
-    blocked = _kill_switch_reason(tenant, settings)
-    if blocked:
-        raise PolicyDenied(blocked)
+    # Emergency rollback is allowed while new actions are disabled.
+    # The operator must still possess actions:rollback and the run must be reversible.
     claimed = db.execute(
         update(ActionRun)
         .where(
@@ -402,13 +409,71 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     if claimed.rowcount != 1:
         raise Conflict('run is already being rolled back')
     db.refresh(run)
+    run.rollback_dispatch_json = dumps({'principal': _principal_payload(principal)})
     record_audit(db, principal, 'actions.rollback_requested', run.id, {'action_type': req.action_type, 'request_id': req.id})
     db.commit()
-    job = await app.state.queue.enqueue('actions.rollback', {'run_id': run.id, 'request_id': req.id, 'principal': _principal_payload(principal)},
-                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.rollback:{run.id}', priority=1)
+    try:
+        job = await app.state.queue.enqueue('actions.rollback', {'run_id': run.id, 'request_id': req.id, 'principal': _principal_payload(principal)},
+                                            tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.rollback:{run.id}', priority=1)
+    except Exception:
+        log.exception('rollback dispatch deferred; queued run %s is recoverable', run.id)
+        return run
     run.rollback_job_id = job.id
     db.commit()
     return run
+
+async def recover_pending_dispatches(app, limit: int = 100) -> dict:
+    """Recover DB-committed jobs not acknowledged by Redis.
+
+    Reusing the same idempotency keys is safe if Redis accepted the first job.
+    """
+    with session_scope(app.state.db_factory) as db:
+        rows = db.execute(
+            select(ActionRun, ActionRequest).join(ActionRequest, ActionRun.request_id == ActionRequest.id)
+            .where(
+                ((ActionRun.status == 'queued') & (ActionRun.job_id == '') & (ActionRequest.status == 'executing'))
+                | ((ActionRun.status == 'executed') & (ActionRun.rollback_job_id == 'claiming'))
+            ).order_by(ActionRun.created_at).limit(limit)
+        ).all()
+        pending = [
+            (run.id, run.tenant_id, req.id, run.status,
+             run.rollback_dispatch_json if run.status == 'executed' else run.dispatch_payload_json)
+            for run, req in rows if run.tenant_id == req.tenant_id
+        ]
+    result = {'recovered': 0, 'deferred': 0}
+    for run_id, tenant_id, request_id, run_status, stored_payload in pending:
+        rolling_back = run_status == 'executed'
+        kind = 'actions.rollback' if rolling_back else 'actions.execute'
+        saved = loads(stored_payload, {})
+        actor = saved.get('principal') if isinstance(saved, dict) else None
+        if not isinstance(actor, dict) or not actor.get('actor') or not actor.get('role'):
+            log.error('queued action %s has no recoverable original actor; manual reconciliation required', run_id)
+            result['deferred'] += 1
+            continue
+        payload = {'request_id': request_id, 'run_id': run_id, 'principal': actor}
+        if not rolling_back:
+            if saved.get('previous_status') not in EXECUTABLE_STATUSES:
+                log.error('queued action %s has an invalid original approval status', run_id)
+                result['deferred'] += 1
+                continue
+            payload['previous_status'] = saved['previous_status']
+        try:
+            job = await app.state.queue.enqueue(
+                kind, payload, tenant_id=tenant_id, lease_seconds=JOB_LEASE,
+                idempotency_key=f'{kind}:{run_id if rolling_back else request_id}',
+                priority=1 if rolling_back else 2)
+            with session_scope(app.state.db_factory) as db:
+                run = get_scoped(db, ActionRun, tenant_id, run_id)
+                if run is not None:
+                    if rolling_back and run.rollback_job_id == 'claiming':
+                        run.rollback_job_id = job.id
+                    elif not rolling_back and run.status == 'queued' and run.job_id == '':
+                        run.job_id = job.id
+            result['recovered'] += 1
+        except Exception:
+            log.exception('pending action dispatch %s remains queued', run_id)
+            result['deferred'] += 1
+    return result
 
 
 def _kill_switch_reason(tenant: Tenant | None, settings: Settings) -> str:
@@ -450,8 +515,14 @@ async def handle_execute(job, ctx) -> dict:
         if req is None or run is None:
             log.error('actions.execute: request %s / run %s not found for tenant %s', payload.get('request_id'), payload.get('run_id'), job.tenant_id)
             return {'ok': False, 'error': 'request or run not found'}
+        if run.status == 'running':
+            # A worker was interrupted after starting a privileged operation.
+            # External side effects must be reconciled before a retry.
+            _finish(run, req, run_status='uncertain', request_status='uncertain',
+                    error='worker interrupted during external action; manual reconciliation required')
+            return _audit_failure(db, principal, req, run)
         if run.status != 'queued':
-            return {'ok': True, 'skipped': True, 'status': run.status}  # idempotent re-delivery
+            return {'ok': True, 'skipped': True, 'status': run.status}
         run.status, run.started_at, run.job_id = 'running', _now(), run.job_id or job.id
         action = catalog.get(req.action_type)
         tenant = _tenant(db, job.tenant_id)
@@ -508,18 +579,19 @@ async def handle_execute(job, ctx) -> dict:
             return _audit_failure(db, principal, req, run)
         await ctx.heartbeat()
 
-        # 3. execute.
+        # 3. Commit the in-flight state before external side effects begin.
+        db.commit()
         try:
             result = await asyncio.wait_for(action.execute(params, exec_ctx), timeout=EXECUTE_TIMEOUT)
         except ActionError as exc:
             _finish(run, req, run_status='failed', request_status='failed', error=exc.message, result={'dry_run': dry.as_dict(), 'details': exc.details})
             return _audit_failure(db, principal, req, run)
         except asyncio.TimeoutError:
-            _finish(run, req, run_status='failed', request_status='failed', error=f'execution timed out after {EXECUTE_TIMEOUT}s', result={'dry_run': dry.as_dict()})
+            _finish(run, req, run_status='uncertain', request_status='uncertain', error=f'execution timed out after {EXECUTE_TIMEOUT}s; reconcile external state', result={'dry_run': dry.as_dict()})
             return _audit_failure(db, principal, req, run)
         except Exception as exc:
             log.exception('action %s raised during execution', req.action_type)
-            _finish(run, req, run_status='failed', request_status='failed', error=f'{type(exc).__name__}: {exc}', result={'dry_run': dry.as_dict()})
+            _finish(run, req, run_status='uncertain', request_status='uncertain', error=f'{type(exc).__name__}: {exc}; reconcile external state', result={'dry_run': dry.as_dict()})
             return _audit_failure(db, principal, req, run)
         if not isinstance(result, ExecResult) or not result.ok:
             summary = getattr(result, 'summary', 'executor returned failure')
@@ -557,9 +629,8 @@ async def handle_rollback(job, ctx) -> dict:
             return {'ok': True, 'skipped': True, 'status': run.status}
         action = catalog.get(req.action_type)
         tenant = _tenant(db, job.tenant_id)
-        blocked = _kill_switch_reason(tenant, settings)
-        if action is None or not action.reversible or blocked:
-            error = blocked or f'{req.action_type} is not reversible'
+        if action is None or not action.reversible:
+            error = f'{req.action_type} is not reversible'
             record_audit(db, principal, 'actions.rollback_failed', run.id, {'action_type': req.action_type, 'error': error})
             return {'ok': False, 'error': error}
         rollback_payload = loads(run.rollback_payload_json, {})

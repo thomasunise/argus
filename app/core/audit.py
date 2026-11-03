@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
 
-from ..models import AuditEntry, dumps, utcnow
+from ..models import AuditEntry, AuditSinkDelivery, dumps, utcnow
 from .config import Settings
 from .rbac import Principal
 from .security import redact
@@ -187,7 +187,10 @@ def record_audit(db: Session, actor: Principal | str, action: str, subject: str 
               'detail': detail_text, 'previous_hash': previous, 'entry_hash': entry_hash, 'signature': entry.signature,
               'created_at': created_at.isoformat()}
     if _sinks:
-        # Mirrored after the transaction commits (see _flush_outbox): a rolled-back request must not leave phantom entries in a WORM sink.
+        # Persist each delivery obligation in the same transaction as its audit record.
+        # An outage or crash after commit must never silently discard mirror work.
+        for sink in _sinks:
+            db.add(AuditSinkDelivery(entry_id=entry.id, tenant_id=tenant, sink=sink.name))
         db.info.setdefault(_OUTBOX, []).append(record)
     return entry
 
@@ -207,16 +210,62 @@ def _serialize_tenant(db: Session, tenant_id: str) -> None:
         db.execute(text(f'UPDATE {AuditEntry.__tablename__} SET id = id WHERE 0'))
 
 
+def _audit_record(entry: AuditEntry) -> dict:
+    return {'id': entry.id, 'tenant_id': entry.tenant_id, 'actor': entry.actor,
+            'actor_kind': entry.actor_kind, 'action': entry.action, 'subject': entry.subject,
+            'detail': entry.detail, 'request_id': entry.request_id, 'previous_hash': entry.previous_hash,
+            'entry_hash': entry.entry_hash, 'signature': entry.signature, 'created_at': entry.created_at.isoformat()}
+
+
+def replay_audit_deliveries(db: Session, limit: int = 100) -> dict:
+    """Retry committed audit mirror deliveries. Can be called repeatedly after restarts.
+
+    Each destination gets one independent durable obligation. A crash after uploading
+    and before recording success may resend an entry, so sinks must accept idempotent
+    replay (object storage keys use the stable audit entry ID).
+    """
+    sinks = {sink.name: sink for sink in _sinks}
+    if not sinks:
+        return {'delivered': 0, 'failed': 0}
+    stmt = (select(AuditSinkDelivery)
+            .where(AuditSinkDelivery.status == 'pending',
+                   AuditSinkDelivery.sink.in_(list(sinks)))
+            .order_by(AuditSinkDelivery.id).limit(limit))
+    if db.get_bind().dialect.name == 'postgresql':
+        stmt = stmt.with_for_update(skip_locked=True)
+    delivered = failed = 0
+    for obligation in db.execute(stmt).scalars():
+        entry = db.get(AuditEntry, obligation.entry_id)
+        if entry is None or entry.tenant_id != obligation.tenant_id:
+            obligation.last_error = 'audit entry missing or tenant mismatch'
+            failed += 1
+            continue
+        try:
+            sinks[obligation.sink].write(_audit_record(entry))
+            obligation.status = 'delivered'
+            obligation.last_error = ''
+            delivered += 1
+        except Exception as exc:
+            obligation.attempts += 1
+            obligation.last_error = f'{type(exc).__name__}: {exc}'[:500]
+            failed += 1
+            log.exception('audit sink %s failed; delivery remains pending', obligation.sink)
+    db.flush()
+    return {'delivered': delivered, 'failed': failed}
+
+
 def _flush_outbox(session: Session) -> None:
     records = session.info.pop(_OUTBOX, None)
     if not records:
         return
-    for record in records:
-        for sink in _sinks:
-            try:
-                sink.write(record)
-            except Exception:  # a sink outage must never block the operation; it is itself logged
-                log.exception('audit sink %s failed', sink.name)
+    # Best-effort immediate delivery; durable pending rows survive a crash or outage.
+    # Use a separate transaction because this event fires after the source commit.
+    try:
+        with Session(session.get_bind()) as mirror_db:
+            replay_audit_deliveries(mirror_db, limit=max(100, len(records) * len(_sinks)))
+            mirror_db.commit()
+    except Exception:
+        log.exception('audit delivery deferred until scheduled retry')
 
 
 def _discard_outbox(session: Session) -> None:

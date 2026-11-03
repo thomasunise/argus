@@ -35,7 +35,10 @@ services:
     # (SSH tunnel, scripts). Caddy is the only network-reachable ingress.
     environment:
       <<: *production-env
-      FORWARDED_ALLOW_IPS: "*"   # only Caddy can reach the API on the internal network
+      # Never trust forwarded headers from every container on a Docker network.
+      # Explicitly set FORWARDED_ALLOW_IPS to Caddy's source address if
+      # forwarding the original client address/protocol is required.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     restart: always
     logging: &json-logging
       driver: json-file

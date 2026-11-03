@@ -4,7 +4,7 @@ from __future__ import annotations
 from .actions import ActionApproval, ActionRequest, ActionRun  # noqa: F401
 from .agents import AgentRun, AgentStep, EvalRun  # noqa: F401
 from .ai import AIDiscoveryState, AIGatewayRequest, AIService  # noqa: F401
-from .audit import AuditEntry  # noqa: F401
+from .audit import AuditEntry, AuditSinkDelivery  # noqa: F401
 from .autoresponse import AutoresponseExecution, ResponsePlaybook  # noqa: F401
 from .base import Base, TenantMixin, dumps, loads, uid, utcnow  # noqa: F401
 from .collectors import CollectorConfig, CollectorRun  # noqa: F401
