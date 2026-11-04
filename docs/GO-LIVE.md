@@ -41,7 +41,7 @@ Verification after boot (step 3.4): `GET /api/v1/actions/kill-switch` returns
 
 ### 1.1 PostgreSQL 16
 - [ ] Managed instance or `postgres:16` with TLS; connection string `postgresql+psycopg://argus:<pw>@<host>:5432/argus?sslmode=require`.
-- [ ] Database `argus`, role `argus` owning it; no superuser.
+- [ ] Database `argus`, with a separate schema-migration owner and a restricted application runtime role. The runtime user must not own RLS-protected tables, must not be superuser and must not have `BYPASSRLS`.
 - [ ] Automated backups + PITR on; restore rehearsed (section 7).
 - [ ] Compose shape: the `postgres` service in `compose.yaml` (`--data-checksums`, named volume). Set a strong `POSTGRES_PASSWORD`.
 

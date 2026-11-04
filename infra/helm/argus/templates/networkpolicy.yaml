@@ -105,14 +105,20 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # Kubernetes API server (in-cluster service IP + control plane)
+    # Only approved control-plane CIDRs; never unrestricted 0.0.0.0/0.
+    # Sandbox executor operators must supply these before enabling the executor.
+    {{- if not .Values.sandbox.apiServerCIDRs }}
+    {{- fail "sandbox.apiServerCIDRs must contain the Kubernetes API endpoint CIDRs when sandbox.enabled=true" }}
+    {{- end }}
+    {{- range .Values.sandbox.apiServerCIDRs }}
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
+            cidr: {{ . | quote }}
       ports:
         - protocol: TCP
           port: 443
         - protocol: TCP
           port: 6443
+    {{- end }}
 {{- end }}
 {{- end }}

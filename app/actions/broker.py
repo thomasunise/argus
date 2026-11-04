@@ -14,7 +14,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
@@ -210,7 +210,11 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
     if not has(principal, 'actions:approve'):
         raise Forbidden('Missing permission actions:approve')
     with _APPROVE_LOCK:
-        req = get_scoped(db, ActionRequest, principal, request_id)
+        # Database lock serializes approval decisions across replicas.
+        req = db.execute(
+            select(ActionRequest).where(ActionRequest.id == request_id,
+                                        ActionRequest.tenant_id == principal.tenant_id).with_for_update()
+        ).scalar_one_or_none()
         if req is None:
             raise NotFound('action request not found')
         db.refresh(req)
@@ -391,6 +395,7 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     if blocked:
         record_audit(db, principal, 'actions.emergency_rollback', run.id,
                      {'request_id': req.id, 'reason': blocked})
+    previous_run_status = run.status
     claimed = db.execute(
         update(ActionRun)
         .where(
@@ -408,10 +413,17 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     db.refresh(run)
     record_audit(db, principal, 'actions.rollback_requested', run.id, {'action_type': req.action_type, 'request_id': req.id})
     db.commit()
-    job = await app.state.queue.enqueue('actions.rollback', {'run_id': run.id, 'request_id': req.id, 'principal': _principal_payload(principal)},
-                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE,
-                                        idempotency_key=None,
-                                        priority=1)
+    try:
+        job = await app.state.queue.enqueue('actions.rollback',
+                                            {'run_id': run.id, 'request_id': req.id, 'principal': _principal_payload(principal)},
+                                            tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, priority=1)
+    except BaseException:
+        # Do not strand a permanent 'claiming' state if enqueue fails.
+        db.refresh(run)
+        if run.rollback_job_id == 'claiming':
+            run.status, run.rollback_job_id = previous_run_status, ''
+            db.commit()
+        raise
     run.rollback_job_id = job.id
     db.commit()
     return run

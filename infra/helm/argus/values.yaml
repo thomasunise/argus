@@ -168,6 +168,9 @@ auditVolume:
 # and config.EXPLOIT_SANDBOX_IMAGE=<digest-pinned runtime image>.
 sandbox:
   enabled: false
+  # Explicit Kubernetes API server service/control-plane CIDRs, e.g. ["10.96.0.1/32"].
+  # Mandatory when sandbox.enabled=true. Avoid granting arbitrary HTTPS egress.
+  apiServerCIDRs: []
   namespace: argus-sandbox
   runtimeClassName: gvisor       # install the gVisor RuntimeClass first; use "runc" only for a lab
   engineImages: ""             # comma separated digest-pinned engine images (Strix); empty refuses every engine
