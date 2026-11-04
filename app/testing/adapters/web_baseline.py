@@ -11,6 +11,9 @@ from __future__ import annotations
 import asyncio
 import socket
 import ssl
+
+from ...core.errors import ScopeDenied
+from ...core.policy import allowed_ip
 from datetime import datetime, timezone
 
 import httpx
@@ -34,9 +37,9 @@ MISSING_HEADERS = [
 WEAK_TLS = {'TLSv1', 'TLSv1.1', 'SSLv3', 'SSLv2'}
 
 
-def _tls_inspect(hostname: str, port: int) -> dict:
+def _tls_inspect(hostname: str, port: int, pinned_address: str | None = None) -> dict:
     context = ssl.create_default_context()
-    with socket.create_connection((hostname, port), timeout=6) as sock:
+    with socket.create_connection((pinned_address or hostname, port), timeout=6) as sock:
         with context.wrap_socket(sock, server_hostname=hostname) as wrapped:
             cert = wrapped.getpeercert() or {}
             expiry_str = cert.get('notAfter')
@@ -45,6 +48,17 @@ def _tls_inspect(hostname: str, port: int) -> dict:
                 expiry = datetime.fromtimestamp(ssl.cert_time_to_seconds(expiry_str), tz=timezone.utc)
                 days = (expiry - datetime.now(timezone.utc)).days
             return {'version': wrapped.version(), 'days_left': days}
+
+
+def _pin_target(hostname: str, port: int, settings) -> str:
+    """Pin production traffic to approved DNS answers. Deny any mixed unsafe IPs."""
+    try:
+        addresses = {entry[4][0] for entry in socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)}
+    except socket.gaierror as exc:
+        raise ScopeDenied('Could not resolve scan target') from exc
+    if not addresses or any(not allowed_ip(ip, settings) for ip in addresses):
+        raise ScopeDenied('Scan target resolves outside authorized IP ranges')
+    return sorted(addresses)[0]
 
 
 class WebBaselineAdapter(TestAdapter):
@@ -61,12 +75,19 @@ class WebBaselineAdapter(TestAdapter):
         host = httpx.URL(url).host
         port = httpx.URL(url).port or 443
         findings: list[NormalizedFinding] = []
+        # Pin the TCP destination for both the HTTP request and certificate check,
+        # keeping the original hostname for Host and TLS SNI verification.
+        pin = _pin_target(host, port, ctx.settings) if ctx.settings.is_production else None
+        request_url = str(httpx.URL(url).copy_with(host=pin)) if pin else url
+        host_header = f'{host}:{port}' if port != 443 else host
+        pin_kwargs = {'headers': {'Host': host_header}, 'extensions': {'sni_hostname': host}} if pin else {}
 
         # Acquire capacity before performing any network I/O (including TLS).
         await ctx.rate_limiter.acquire()
         # --- TLS handshake (verified; never disables CA/hostname verification) ---
         try:
-            tls = await asyncio.to_thread(_tls_inspect, host, port)
+            tls = (await asyncio.to_thread(_tls_inspect, host, port, pin) if pin
+                   else await asyncio.to_thread(_tls_inspect, host, port))
             days = tls.get('days_left')
             if days is not None and days < 30:
                 findings.append(NormalizedFinding(
@@ -93,10 +114,10 @@ class WebBaselineAdapter(TestAdapter):
         # --- a single read-only HTTP response (HEAD, GET fallback) ---
         async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=httpx.Timeout(10.0),
                                      verify=True, limits=httpx.Limits(max_connections=1)) as client:
-            async with client.stream('HEAD', url) as response:
+            async with client.stream('HEAD', request_url, **pin_kwargs) as response:
                 if response.status_code in {405, 501}:
                     await ctx.rate_limiter.acquire()
-                    async with client.stream('GET', url) as fallback:
+                    async with client.stream('GET', request_url, **pin_kwargs) as fallback:
                         headers, status = fallback.headers, fallback.status_code
                         set_cookies = fallback.headers.get_list('set-cookie')
                 else:

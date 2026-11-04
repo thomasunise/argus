@@ -245,3 +245,34 @@ async def test_caldera_run(settings):
         findings = await caldera.CalderaAdapter().run({'adversary_id': 'adv1', 'group': 'red'},
                                                       _asset('host', 'red'), _scope(), _ctx(settings, tier='intrusive'))
     assert len(findings) == 1 and findings[0].evidence['technique_id'] == 'T1005'
+
+
+
+@pytest.mark.asyncio
+async def test_web_baseline_production_rejects_unsafe_dns(settings, monkeypatch):
+    from app.core.errors import ScopeDenied
+    prod = settings.model_copy(update={'app_env': 'production'})
+    monkeypatch.setattr(web_baseline.socket, 'getaddrinfo',
+                        lambda *a, **k: [(2, 1, 6, '', ('127.0.0.1', 443))])
+    with pytest.raises(ScopeDenied):
+        await web_baseline.WebBaselineAdapter().run(
+            {}, _asset('web', 'https://private.example.test'), _scope(),
+            _ctx(prod, target='https://private.example.test'))
+
+
+@pytest.mark.asyncio
+async def test_web_baseline_production_pins_authorized_ip(settings, monkeypatch):
+    prod = settings.model_copy(update={'app_env': 'production'})
+    monkeypatch.setattr(web_baseline.socket, 'getaddrinfo',
+                        lambda *a, **k: [(2, 1, 6, '', ('8.8.8.8', 443))])
+    seen = {}
+    def fake_tls(host, port, pinned):
+        seen['hostname'], seen['address'] = host, pinned
+        return {'version': 'TLSv1.3', 'days_left': 180}
+    monkeypatch.setattr(web_baseline, '_tls_inspect', fake_tls)
+    with respx.mock(assert_all_called=False) as mock:
+        mock.route(method='HEAD', host='8.8.8.8').mock(return_value=httpx.Response(200, headers={'server': 'test'}))
+        await web_baseline.WebBaselineAdapter().run(
+            {}, _asset('web', 'https://scanner.example.test'), _scope(),
+            _ctx(prod, target='https://scanner.example.test'))
+    assert seen == {'hostname': 'scanner.example.test', 'address': '8.8.8.8'}

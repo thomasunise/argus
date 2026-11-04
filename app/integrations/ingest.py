@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.errors import NotFound, ArgusError
 from ..core.findings import upsert_event, upsert_finding
+from ..core.telemetry import INGEST_EVENTS
 from ..core.rbac import Principal
 from ..models import dumps
 from ..models.integrations import IngestBatch
@@ -137,6 +138,12 @@ def ingest(db: Session, tenant_id: str, source: str, payload: dict | list, *, ac
         record_audit(db, actor, 'integrations.ingest', parser.name, {'batch_id': batch.id, 'received': result.received, 'accepted': result.accepted,
                                                                       'duplicates': result.duplicates, 'findings': result.findings, 'errors': len(result.errors)},
                      tenant_id=tenant_id)
+    if result.accepted:
+        INGEST_EVENTS.labels('accepted').inc(result.accepted)
+    if result.duplicates:
+        INGEST_EVENTS.labels('duplicate').inc(result.duplicates)
+    if result.errors:
+        INGEST_EVENTS.labels('dropped').inc(len(result.errors))
     return result
 
 

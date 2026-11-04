@@ -170,67 +170,87 @@ def default_scenarios(now: datetime | None = None) -> list[BenchmarkScenario]:
 
 
 def run_benchmark(db: Session, tenant_id: str, scenarios: list[BenchmarkScenario] | None = None) -> dict[str, Any]:
-    """Execute the detection benchmark dataset against `tenant_id` and return precision/recall/FPR metrics."""
+    """Evaluate each labeled scenario in an isolated, rolled-back savepoint.
+
+    Unlike a rule-union score, an alert for scenario A cannot count as a hit
+    for scenario B. Benchmark events and detections never persist in customer
+    data; results are smoke-test evidence, not production attack coverage.
+    """
     now = datetime.now(timezone.utc).replace(microsecond=0)
     suite = scenarios if scenarios is not None else default_scenarios(now)
-    for sc in suite:
-        for ev in sc.events:
-            draft = EventDraft(
-                source=ev['source'],
-                external_id=ev['external_id'],
-                title=ev.get('title') or f"{ev['actor']} {ev['action']} {ev['entity']}",
-                severity=ev.get('severity', 'low'),
-                category=ev.get('category', ''),
-                actor=ev.get('actor', ''),
-                entity=ev.get('entity', ''),
-                action=ev.get('action', ''),
-                occurred_at=ev.get('occurred_at') or now,
-                metadata=ev.get('metadata') or {},
-            )
-            upsert_event(db, tenant_id, draft)
-    db.flush()
-
-    started = time.perf_counter()
-    engine_summary = run_detections(db, tenant_id, now=now, trigger='benchmark')
-    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-
-    detections = list(db.execute(select(Detection).where(Detection.tenant_id == tenant_id)).scalars().all())
-    fired_rules = {d.rule_id for d in detections}
-
-    attack_scenarios = [s for s in suite if s.expected_rule is not None]
-    benign_scenarios = [s for s in suite if s.expected_rule is None]
-    benign_actors = {ev.get('actor') for s in benign_scenarios for ev in s.events if ev.get('actor')}
-    benign_entities = {ev.get('entity') for s in benign_scenarios for ev in s.events if ev.get('entity')}
-
-    true_positives = sum(1 for s in attack_scenarios if s.expected_rule in fired_rules)
-    false_negatives = len(attack_scenarios) - true_positives
-    false_positives = sum(
-        1 for d in detections if d.entity in benign_actors or d.entity in benign_entities
-    )
-
-    recall = round(true_positives / max(1, len(attack_scenarios)), 4)
-    precision = round(true_positives / max(1, true_positives + false_positives), 4)
-    false_positive_rate = round(false_positives / max(1, len(benign_scenarios)), 4)
-
+    seen_ids: set[str] = set()
+    case_results: list[dict[str, Any]] = []
+    total_latency = 0.0
+    engine_summaries: list[dict[str, Any]] = []
+    true_positives = false_negatives = false_positives = 0
     by_category: dict[str, dict[str, int]] = {}
-    for s in attack_scenarios:
-        bucket = by_category.setdefault(s.category, {'total': 0, 'detected': 0})
-        bucket['total'] += 1
-        if s.expected_rule in fired_rules:
-            bucket['detected'] += 1
 
+    for sc in suite:
+        if sc.id in seen_ids:
+            raise ValueError(f'duplicate scenario id {sc.id}')
+        seen_ids.add(sc.id)
+        # A nested transaction protects the calling tenant even when it already
+        # has legitimate security data and lets each scenario run separately.
+        tx = db.begin_nested()
+        try:
+            for ev in sc.events:
+                draft = EventDraft(
+                    source=ev['source'],
+                    external_id=ev['external_id'],
+                    title=ev.get('title') or f"{ev.get('actor', '')} {ev.get('action', '')} {ev.get('entity', '')}",
+                    severity=ev.get('severity', 'low'),
+                    category=ev.get('category', ''),
+                    actor=ev.get('actor', ''),
+                    entity=ev.get('entity', ''),
+                    action=ev.get('action', ''),
+                    occurred_at=ev.get('occurred_at') or now,
+                    metadata=ev.get('metadata') or {},
+                )
+                upsert_event(db, tenant_id, draft)
+            db.flush()
+            existing_ids = set(db.execute(select(Detection.id).where(Detection.tenant_id == tenant_id)).scalars())
+            started = time.perf_counter()
+            summary = run_detections(db, tenant_id, now=now, trigger='benchmark')
+            latency = round((time.perf_counter() - started) * 1000, 2)
+            total_latency += latency
+            engine_summaries.append(summary)
+            observed = list(db.execute(select(Detection).where(
+                Detection.tenant_id == tenant_id, Detection.id.notin_(existing_ids)
+            )).scalars())
+            rules = {row.rule_id for row in observed}
+            matched = sc.expected_rule in rules if sc.expected_rule else False
+            if sc.expected_rule:
+                category = by_category.setdefault(sc.category, {'total': 0, 'detected': 0})
+                category['total'] += 1
+                if matched:
+                    true_positives += 1
+                    category['detected'] += 1
+                else:
+                    false_negatives += 1
+            else:
+                false_positives += len(observed)
+            case_results.append({'id': sc.id, 'category': sc.category, 'technique': sc.technique,
+                                 'expected_rule': sc.expected_rule, 'fired_rules': sorted(rules),
+                                 'detected': matched, 'alerts': len(observed), 'engine_latency_ms': latency})
+        finally:
+            tx.rollback()
+            db.expire_all()
+
+    attacks = sum(s.expected_rule is not None for s in suite)
+    benign = len(suite) - attacks
     return {
         'scenarios_total': len(suite),
-        'attack_scenarios': len(attack_scenarios),
-        'benign_scenarios': len(benign_scenarios),
+        'attack_scenarios': attacks,
+        'benign_scenarios': benign,
         'true_positives': true_positives,
         'false_negatives': false_negatives,
         'false_positives': false_positives,
-        'recall': recall,
-        'precision': precision,
-        'false_positive_rate': false_positive_rate,
-        'time_to_detect_ms': elapsed_ms,
-        'techniques_covered': sorted({s.technique for s in attack_scenarios if s.expected_rule in fired_rules}),
+        'recall': round(true_positives / max(1, attacks), 4),
+        'precision': round(true_positives / max(1, true_positives + false_positives), 4),
+        'false_positive_rate': round(false_positives / max(1, benign), 4),
+        'time_to_detect_ms': round(total_latency, 2),  # engine execution time, not real-world detection latency
+        'techniques_covered': sorted({case['technique'] for case in case_results if case['detected']}),
         'by_category': by_category,
-        'engine_summary': engine_summary,
+        'scenario_results': case_results,
+        'engine_summary': {'runs': engine_summaries},
     }
