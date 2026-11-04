@@ -66,6 +66,9 @@ api:
 # ---------------------------------------------------------------- worker deployment
 worker:
   enabled: true
+  # Optional separate image built with sandbox/offensive-tools.Dockerfile; pin by digest.
+  # A scanner image still requires restrictive worker egress rules.
+  image: ""
   replicas: 2
   concurrency: 4
   resources:
@@ -143,6 +146,18 @@ networkPolicy:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
+
+  # Worker egress is intentionally separate from API egress. Default permits
+  # database and Redis in the private network only. To use external collectors,
+  # model providers, and scanners, add exact authorized CIDRs/ports here and
+  # enforce per-scope egress in the dedicated sandbox executor for exploit jobs.
+  workerEgress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 6379}
 
 serviceMonitor:
   enabled: false

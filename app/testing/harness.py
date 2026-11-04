@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import signal
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
@@ -92,33 +93,78 @@ def get_adapter(name: str) -> TestAdapter | None:
 # -- bounded, shell-free subprocess runner ----------------------------------
 
 
+async def _read_bounded(stream: asyncio.StreamReader) -> bytes:
+    """Drain a child pipe continuously without buffering unbounded output in memory."""
+    data = bytearray()
+    while True:
+        chunk = await stream.read(65536)
+        if not chunk:
+            break
+        remaining = MAX_OUTPUT_BYTES - len(data)
+        if remaining > 0:
+            data.extend(chunk[:remaining])
+    return bytes(data)
+
+
 async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: dict | None = None,
                    stdin: bytes | None = None) -> tuple[int, str, str]:
-    """Run an external tool with a fixed argv (never a shell). Output is bounded to 2 MB per
-    stream, the process is killed on timeout, and stdout/stderr are redacted before return."""
-    if not argv or not isinstance(argv, list):
-        raise ValueError('run_tool requires a non-empty argv list')
+    """Execute a bounded, shell-free subprocess; terminate its process group on cancel/timeout.
+
+    This protects memory and process lifecycle, NOT network isolation. Production
+    workers must have an externally enforced egress policy.
+    """
+    if not argv or not isinstance(argv, list) or not all(isinstance(arg, str) for arg in argv):
+        raise ValueError('run_tool requires a non-empty string argv list')
     run_env = env if env is not None else _base_env()
     try:
         process = await asyncio.create_subprocess_exec(
             *argv, cwd=cwd, env=run_env,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=(os.name == 'posix'),
         )
     except (FileNotFoundError, NotADirectoryError) as exc:
         raise Unavailable(f'tool not available: {argv[0]}') from exc
+
+    async def feed_stdin() -> None:
+        if process.stdin is not None:
+            try:
+                if stdin:
+                    process.stdin.write(stdin)
+                    await process.stdin.drain()
+            finally:
+                process.stdin.close()
+
+    readers = [asyncio.create_task(_read_bounded(process.stdout)),
+               asyncio.create_task(_read_bounded(process.stderr))]
+    if stdin is not None:
+        readers.append(asyncio.create_task(feed_stdin()))
     try:
-        out, err = await asyncio.wait_for(process.communicate(input=stdin), timeout=timeout)
-    except asyncio.TimeoutError:
-        process.kill()
+        output = await asyncio.wait_for(
+            asyncio.gather(*readers, process.wait()), timeout=timeout,
+        )
+    except BaseException as exc:
+        # Kill descendants as well as the scanner process. A worker cancellation
+        # must not leave an orphaned scanner continuing activity off-lease.
+        if process.returncode is None:
+            try:
+                if os.name == 'posix':
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+        for reader in readers:
+            reader.cancel()
+        await asyncio.gather(*readers, return_exceptions=True)
         try:
-            await process.communicate()
-        except Exception:  # noqa: BLE001 - process already gone
-            pass
-        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout')
-    stdout = redact(_decode(out))
-    stderr = redact(_decode(err))
-    return process.returncode or 0, stdout, stderr
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            log.error('scanner process %s did not exit after termination', process.pid)
+        if isinstance(exc, asyncio.TimeoutError):
+            raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from exc
+        raise
+    return process.returncode or 0, redact(_decode(output[0])), redact(_decode(output[1]))
 
 
 def _base_env() -> dict:

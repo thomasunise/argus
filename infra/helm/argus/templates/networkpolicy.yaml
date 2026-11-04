@@ -1,9 +1,9 @@
 {{- if .Values.networkPolicy.enabled }}
 # Default deny for every Argus pod, then explicit allows:
 #   ingress  -> API :8080 from the ingress controller namespace and Prometheus
-#   egress   -> DNS, plus the allowlist in values (Postgres, Redis, HTTPS to the internet
-#               for model providers / IdP / cloud APIs). Workers get the same egress because
-#               collectors and test adapters run there.
+#   egress   -> DNS plus separate API and worker allowlists.
+#               Worker connections are restricted by default; scanner jobs require
+#               operator-approved destinations and a separate sandbox for per-run pinning.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -56,6 +56,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "argus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
   policyTypes: [Egress]
   egress:
     # DNS
@@ -70,6 +71,46 @@ spec:
         - protocol: TCP
           port: 53
     {{- with .Values.networkPolicy.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.sandbox.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "argus.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: sandbox-executor
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+---
+# The shared worker can run scanning adapters; it MUST NOT inherit the API's
+# broad HTTPS egress. Operators explicitly populate workerEgress for authorized
+# upstreams. No policy can provide per-run CIDR isolation within a shared pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "argus.fullname" . }}-worker-egress
+  labels:
+    {{- include "argus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "argus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- with .Values.networkPolicy.workerEgress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- if .Values.sandbox.enabled }}

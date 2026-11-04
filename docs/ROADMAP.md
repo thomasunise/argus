@@ -89,7 +89,7 @@ Security hardening
 - [x] PostgreSQL fail-closed tenant RLS and restricted runtime role (production integration tests required)
 - [x] Distributed Redis API rate limiting; [ ] per-tenant concurrency quotas
 - [ ] Identity-based Azure audit sink (replace the connection string)
-- [ ] Dedicated test-tool worker image with pinned binaries and an isolated egress path; DNS pinning in web adapters
+- [x] Separate worker egress NetworkPolicy, configurable pinned scanner-worker image, bounded subprocess output and cancellation cleanup; [ ] per-scope network isolation for every scanner via dedicated sandbox jobs
 - [x] Database-backed account-wide session invalidation, forced logout and password reset revocation
 - [ ] Per-tenant encryption keys for stored evidence
 - [ ] Cancel of an agent run stops the model loop promptly (today the run is marked cancelled but the in-flight loop runs to its step/time budget)
