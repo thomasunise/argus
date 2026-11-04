@@ -154,3 +154,39 @@ async def test_runtime_cost_ceiling_trips_for_custom_priced_model(app, settings,
     capped = settings.model_copy(update={'agent_cost_ceiling_usd': 1.5, 'agent_max_tokens': 10_000_000})
     result = await AgentRuntime(capped, make_registry(), provider).run(SPEC, 't', {}, principal, app.state.db_factory)
     assert result.status == 'budget_exhausted' and 'cost ceiling' in result.error
+
+
+
+@pytest.mark.asyncio
+async def test_cancelled_job_interrupts_inflight_model_call(app, settings, default_tenant_id):
+    import asyncio
+
+    class SlowProvider(Provider):
+        name = 'slow'
+        model = 'slow-1'
+        stopped = False
+
+        def price(self):
+            return (0.0, 0.0)
+
+        async def complete(self, system, messages, tools, max_tokens=16000):
+            try:
+                await asyncio.sleep(30)
+            finally:
+                self.stopped = True
+            return ModelTurn(text='', tool_calls=[], stop_reason='end_turn')
+
+    provider = SlowProvider()
+    principal = Principal(tenant_id=default_tenant_id, role=Role.analyst, user_id='u', email='u@test.local')
+    beats = {'count': 0}
+
+    async def heartbeat():
+        beats['count'] += 1
+        if beats['count'] >= 2:
+            raise asyncio.CancelledError('cancelled by job control')
+
+    with pytest.raises(asyncio.CancelledError):
+        await AgentRuntime(settings, make_registry(), provider).run(
+            SPEC, 'cancel this call', {}, principal, app.state.db_factory, heartbeat=heartbeat)
+    assert provider.stopped
+    assert beats['count'] >= 2
