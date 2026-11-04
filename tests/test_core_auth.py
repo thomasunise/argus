@@ -138,3 +138,32 @@ def test_scoped_operator_key_cannot_bypass_ingest_scope(owner):
     denied = client.post('/api/v1/ingest/generic', json=[{'id': 'ev-1', 'title': 'test'}], headers=scoped_headers)
     assert denied.status_code == 403, denied.text
 
+
+
+
+def test_logout_invalidates_replayed_signed_cookie(client):
+    headers = login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    stolen = client.cookies.get('argus_session')
+    assert stolen
+    assert client.post('/api/v1/auth/logout', headers=headers).status_code == 200
+    client.cookies.set('argus_session', stolen)
+    assert client.get('/api/v1/auth/session').json()['authenticated'] is False
+
+
+def test_forced_session_revoke_and_password_reset(client, make_user):
+    user_id = make_user('session-revoke@test.local', 'valid-password-long-123', 'analyst')
+    from fastapi.testclient import TestClient
+    other = TestClient(client.app)
+    try:
+        login(other, 'session-revoke@test.local', 'valid-password-long-123')
+        admin_headers = login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+        result = client.post(f'/api/v1/admin/users/{user_id}/revoke-sessions', headers=admin_headers)
+        assert result.status_code == 200, result.text
+        assert other.get('/api/v1/auth/session').json()['authenticated'] is False
+        login(other, 'session-revoke@test.local', 'valid-password-long-123')
+        result = client.post(f'/api/v1/admin/users/{user_id}/reset-password',
+                             json={'password': 'new-password-long-123'}, headers=admin_headers)
+        assert result.status_code == 200
+        assert other.get('/api/v1/auth/session').json()['authenticated'] is False
+    finally:
+        other.close()

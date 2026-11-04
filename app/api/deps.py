@@ -134,6 +134,8 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
     user = db.get(User, user_id)
     if not user or not user.is_active:
         return None
+    if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
+        return None
     tenant = db.get(Tenant, tenant_id)
     if not tenant or not tenant.is_active:
         return None
@@ -153,14 +155,11 @@ def current_principal(request: Request, db: Session = Depends(get_db), settings:
             raise Unauthorized('Invalid API key')
         set_tenant_context(db, principal.tenant_id)
         request.state.principal = principal
-        set_tenant_context(db, principal.tenant_id)
         return principal
     principal = _principal_from_session(db, request, settings)
     if principal is not None:
         set_tenant_context(db, principal.tenant_id)
     request.state.principal = principal
-    if principal is not None:
-        set_tenant_context(db, principal.tenant_id)
     return principal
 
 

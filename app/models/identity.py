@@ -31,6 +31,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    sessions_invalidated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class Membership(Base):

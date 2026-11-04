@@ -86,11 +86,11 @@ Infrastructure and documentation
 
 Security hardening
 
-- [ ] PostgreSQL row-level security as defence in depth under the application scoping
-- [ ] Distributed rate limiting (Redis-backed) and per-tenant quotas
+- [x] PostgreSQL fail-closed tenant RLS and restricted runtime role (production integration tests required)
+- [x] Distributed Redis API rate limiting; [ ] per-tenant concurrency quotas
 - [ ] Identity-based Azure audit sink (replace the connection string)
 - [ ] Dedicated test-tool worker image with pinned binaries and an isolated egress path; DNS pinning in web adapters
-- [ ] Session revocation list and admin-forced logout
+- [x] Database-backed account-wide session invalidation, forced logout and password reset revocation
 - [ ] Per-tenant encryption keys for stored evidence
 - [ ] Cancel of an agent run stops the model loop promptly (today the run is marked cancelled but the in-flight loop runs to its step/time budget)
 
@@ -128,4 +128,4 @@ Operations
 - [x] Backup and restore automation: scheduled encrypted backups to local disk, S3 and Azure, pruning, verified restore with Alembic, Postgres restore drill in CI (`docs/BACKUP.md`)
 - [ ] Retention for test results and scan output (they back findings, so they need a finding-aware policy)
 - [ ] Evidence bundle export for assessors (zip of the items in `docs/COMPLIANCE.md`)
-- [ ] Redis-backed login throttling and rate limits shared across replicas
+- [x] Redis-backed failed-login throttling and shared API rate limits across replicas

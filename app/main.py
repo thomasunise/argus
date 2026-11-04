@@ -16,6 +16,7 @@ from .api.deps import RateLimiter
 from .core import audit as audit_module
 from .core import crypto
 from .core import events
+from .core.login_limiter import LoginFailureLimiter
 from .core.bootstrap import bootstrap
 from .core.config import Settings, assert_safe_config, get_settings
 from .core.db import CommitBeforeResponseMiddleware, assert_restricted_runtime_role, init_db, make_engine, make_session_factory, pool_stats, session_scope
@@ -79,7 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.db_factory = factory
-    app.state.login_attempts = {}
+    app.state.login_limiter = LoginFailureLimiter(redis_url=settings.redis_url)
     app.state.rate_limiter = RateLimiter(redis_url=settings.redis_url)
     app.state.queue = JobQueue(settings, db_factory=factory, app=app)
     app.state.startup_hooks = []
