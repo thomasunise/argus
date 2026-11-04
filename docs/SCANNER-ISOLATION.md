@@ -30,3 +30,7 @@ Docker Compose's worker does **not** provide per-scope network isolation. Limit 
 6. Confirm sandbox-executor service account and namespace cannot create privileged pods or overly broad egress rules.
 
 Independent validation of deployment-specific CNI, credentials and allowed CIDRs is mandatory before claiming per-scope containment.
+
+## Native TCP scanners
+
+The Nmap service/version adapter and built-in TCP port probe resolve and approve every returned DNS address once in production, then connect to a pinned literal IP across the run. This eliminates the gap between scope validation and subsequent hostname lookups for these two scanners. Other external web scanners still require independent network egress enforcement; DNS rebinding risks are not solved for every adapter by this change.
