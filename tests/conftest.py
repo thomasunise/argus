@@ -82,19 +82,29 @@ def settings(tmp_path) -> Settings:
 def app(settings):
     application = create_app(settings)
     if TEST_DATABASE_URL:
-        # Shared external database: start every test from empty tables (including any prior alembic_version).
+        # Shared external database: terminate any lingering connections from previous tests, drop alembic_version,
+        # and start every test from clean tables.
         from app.models import Base
 
-        with application.state.engine.begin() as conn:
-            conn.exec_driver_sql('DROP TABLE IF EXISTS alembic_version')
+        if TEST_DATABASE_URL.startswith('postgresql'):
+            with application.state.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                conn.exec_driver_sql(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+                )
+                conn.exec_driver_sql('DROP TABLE IF EXISTS alembic_version')
+        else:
+            with application.state.engine.begin() as conn:
+                conn.exec_driver_sql('DROP TABLE IF EXISTS alembic_version')
         Base.metadata.drop_all(application.state.engine)
         Base.metadata.create_all(application.state.engine)
     if TEST_REDIS_URL:
         import redis as _redis
 
         _redis.from_url(TEST_REDIS_URL).flushdb()
-    yield application
-    if TEST_DATABASE_URL:
+    try:
+        yield application
+    finally:
         application.state.engine.dispose()
 
 
@@ -149,8 +159,11 @@ def second_tenant(app, client):
         db.commit()
         tenant_id = tenant.id
     other = TestClient(app)
-    headers = login(other, 'owner@acme.test', 'acme-password-long-123456')
-    return {'tenant_id': tenant_id, 'slug': 'acme', 'client': other, 'headers': headers, 'email': 'owner@acme.test'}
+    try:
+        headers = login(other, 'owner@acme.test', 'acme-password-long-123456')
+        yield {'tenant_id': tenant_id, 'slug': 'acme', 'client': other, 'headers': headers, 'email': 'owner@acme.test'}
+    finally:
+        other.close()
 
 
 @pytest.fixture

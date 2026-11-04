@@ -52,6 +52,9 @@ try:
     FINDINGS_OPEN = Gauge('argus_findings_open', 'Open findings', ['tenant', 'severity'])
     ACTIONS = Counter('argus_actions_total', 'Broker actions', ['action', 'status'])
     DETECTIONS = Counter('argus_detections_total', 'Detections', ['rule', 'severity'])
+    INGEST_EVENTS = Counter('argus_ingest_events_total', 'Ingested security events', ['status'])
+    QUEUE_DELAY = Histogram('argus_queue_delay_seconds', 'Queue wait time from enqueue to execution start', ['kind'])
+    COLLECTOR_RUNS = Counter('argus_collector_runs_total', 'Collector runs', ['collector', 'status'])
     METRICS_AVAILABLE = True
 except ImportError:  # pragma: no cover
     METRICS_AVAILABLE = False
@@ -73,6 +76,7 @@ class _Noop:
 
 if not METRICS_AVAILABLE:  # pragma: no cover
     HTTP_REQUESTS = HTTP_LATENCY = JOBS = AGENT_TOKENS = AGENT_RUNS = FINDINGS_OPEN = ACTIONS = DETECTIONS = _Noop()
+    INGEST_EVENTS = QUEUE_DELAY = COLLECTOR_RUNS = _Noop()
 
 
 class BodySizeLimitMiddleware:

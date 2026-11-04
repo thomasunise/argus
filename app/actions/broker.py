@@ -374,7 +374,7 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     req = get_scoped(db, ActionRequest, principal, run.request_id)
     if req is None:
         raise NotFound('action request not found')
-    if run.status != 'executed' or run.rolled_back_at is not None:
+    if run.status not in {'executed', 'rollback_failed'} or run.rolled_back_at is not None:
         raise Conflict(f'run is {run.status}; only executed runs can be rolled back')
     action = catalog.get(req.action_type)
     if action is None:
@@ -392,11 +392,11 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
         .where(
             ActionRun.id == run.id,
             ActionRun.tenant_id == principal.tenant_id,
-            ActionRun.status == 'executed',
+            ActionRun.status.in_(('executed', 'rollback_failed')),
             ActionRun.rolled_back_at.is_(None),
             ActionRun.rollback_job_id == '',
         )
-        .values(rollback_job_id='claiming')
+        .values(status='executed', rollback_job_id='claiming')
         .execution_options(synchronize_session=False)
     )
     if claimed.rowcount != 1:
@@ -559,6 +559,7 @@ async def handle_rollback(job, ctx) -> dict:
         tenant = _tenant(db, job.tenant_id)
         blocked = _kill_switch_reason(tenant, settings)
         if action is None or not action.reversible or blocked:
+            run.rollback_job_id = ''
             error = blocked or f'{req.action_type} is not reversible'
             record_audit(db, principal, 'actions.rollback_failed', run.id, {'action_type': req.action_type, 'error': error})
             return {'ok': False, 'error': error}
@@ -584,7 +585,7 @@ async def handle_rollback(job, ctx) -> dict:
             ACTIONS.labels(req.action_type, 'rolled_back').inc()
             await publish('action.rolled_back', _event(req, run_id=run.id, summary=redact(result.summary)[:500]))
             return {'ok': True, 'run_id': run.id}
-        run.status, run.error = 'rollback_failed', redact(result.summary)[:4000]
+        run.status, run.error, run.rollback_job_id = 'rollback_failed', redact(result.summary)[:4000], ''
         record_audit(db, principal, 'actions.rollback_failed', req.id, {'action_type': req.action_type, 'run_id': run.id, 'error': run.error[:500]})
         ACTIONS.labels(req.action_type, 'rollback_failed').inc()
         await publish('action.rollback_failed', _event(req, run_id=run.id, error=run.error[:500]))

@@ -7,7 +7,7 @@ from ...models import dumps
 from ..engine import DetectionDraft, DetectionRule, RuleContext, registry
 from ..util import event_time, iso, meta, source_ip, user_agent, window_bucket
 
-_WILDCARD_PRINCIPAL = re.compile(r'"(Principal|AWS|principal|members?)":\s*(\[\s*)?"\*"')
+_WILDCARD_PRINCIPAL = re.compile(r'\\?"(Principal|AWS|principal|members?)\\?":\s*(\[\s*)?\\?"\*\\?"')
 
 
 class PublicExposureChange(DetectionRule):

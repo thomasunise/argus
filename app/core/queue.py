@@ -252,7 +252,12 @@ class JobQueue:
 
     async def _run_job(self, job: Job) -> None:
         handler = self._handlers.get(job.kind)
-        job.status, job.attempts, job.started_at = 'running', job.attempts + 1, time.time()
+        now = time.time()
+        job.status, job.attempts, job.started_at = 'running', job.attempts + 1, now
+        with contextlib.suppress(Exception):
+            from .telemetry import QUEUE_DELAY
+
+            QUEUE_DELAY.labels(job.kind).observe(max(0.0, now - max(job.created_at, job.not_before)))
         await self._backend.update(job)
         ctx = JobContext(self, job)
         if handler is None:
@@ -430,6 +435,10 @@ class _RedisBackend:
         self.redis = redis.from_url(self.url, decode_responses=True)
         await self.redis.ping()
 
+    async def _ensure_connected(self):
+        if self.redis is None:
+            await self.connect()
+
     async def close(self):
         if self.redis:
             try:
@@ -441,11 +450,11 @@ class _RedisBackend:
         return f'argus:job:{job_id}'
 
     async def _save(self, job: Job):
+        await self._ensure_connected()
         await self.redis.set(self._key(job.id), json.dumps(job.to_dict(), default=str), ex=7 * 86400)
 
     async def put(self, job: Job):
-        if self.redis is None:
-            await self.connect()
+        await self._ensure_connected()
         await self._save(job)
         if job.idempotency_key:
             await self.redis.hset('argus:idem', job.idempotency_key, job.id)
@@ -455,12 +464,14 @@ class _RedisBackend:
             await self.redis.rpush(f'argus:q:{job.priority}', job.id)
 
     async def update(self, job: Job):
+        await self._ensure_connected()
         await self._save(job)
         if job.status in {'completed', 'failed', 'cancelled'}:
             await self.redis.srem('argus:running', job.id)
             await self.redis.delete(f'argus:lease:{job.id}')
 
     async def requeue(self, job: Job):
+        await self._ensure_connected()
         await self._save(job)
         await self.redis.srem('argus:running', job.id)
         await self.redis.delete(f'argus:lease:{job.id}')
@@ -470,14 +481,12 @@ class _RedisBackend:
             await self.redis.rpush(f'argus:q:{job.priority}', job.id)
 
     async def get(self, job_id: str) -> Job | None:
-        if self.redis is None:
-            await self.connect()
+        await self._ensure_connected()
         raw = await self.redis.get(self._key(job_id))
         return Job(**json.loads(raw)) if raw else None
 
     async def find_by_idempotency(self, key: str) -> Job | None:
-        if self.redis is None:
-            await self.connect()
+        await self._ensure_connected()
         job_id = await self.redis.hget('argus:idem', key)
         return await self.get(job_id) if job_id else None
 
@@ -490,8 +499,13 @@ class _RedisBackend:
         return True
 
     async def claim(self, timeout: float) -> Job | None:
+        await self._ensure_connected()
         keys = [f'argus:q:{p}' for p in range(10)]
-        item = await self.redis.blpop(keys, timeout=max(1, int(timeout)))
+        try:
+            item = await self.redis.blpop(keys, timeout=max(1, int(timeout)))
+        except Exception:
+            await self.close()
+            raise
         if not item:
             return None
         job = await self.get(item[1])
@@ -502,9 +516,11 @@ class _RedisBackend:
         return job
 
     async def extend(self, job: Job):
+        await self._ensure_connected()
         await self.redis.expire(f'argus:lease:{job.id}', job.lease_seconds)
 
     async def reap(self, settings: Settings):
+        await self._ensure_connected()
         now = time.time()
         # Promote delayed jobs whose time has come.
         ready = await self.redis.zrangebyscore('argus:delayed', 0, now)

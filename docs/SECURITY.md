@@ -41,7 +41,7 @@ Authentication and sessions (`app/core/security.py`, `app/api/auth.py`, `app/api
 - OIDC authorization code with PKCE (S256), state and nonce, ID token verified against the JWKS with issuer and audience, optional email-domain allowlist and auto-provisioning with a default role.
 - API keys: `argus_<prefix>_<body>`, SHA-256 hash stored, revocation, last-used tracking, role plus optional scopes; ingest keys use `require_scope('ingest')`.
 - RBAC: five cumulative roles; every endpoint declares its permission.
-- Rate limits: per principal (`API_RATE_LIMIT_PER_MINUTE`) and per ingest key (`INGEST_RATE_LIMIT_PER_MINUTE`), in-process sliding window.
+- Rate limits: per principal (`API_RATE_LIMIT_PER_MINUTE`) and per ingest key (`INGEST_RATE_LIMIT_PER_MINUTE`), using an atomic Redis-backed sliding window when `REDIS_URL` is configured (failing closed if Redis is unreachable) or a bounded in-process sliding window in single-process development.
 
 Transport and headers (`app/core/telemetry.py`)
 
@@ -115,10 +115,8 @@ Supply chain (`.github/`)
 - Reviewing model-provider terms before enabling a hosted provider.
 - Backups and restore tests for PostgreSQL.
 
-## Not implemented (be explicit with stakeholders)
+## Defense-in-depth & architectural boundaries
 
-- Row-level security in PostgreSQL (isolation is enforced in application code and tests).
-- DNS pinning between validation and request in web adapters.
-- Key-id-aware verification of the audit HMAC across signing-key rotations (see runbook).
-- Distributed rate limiting (the limiter is per process).
-- Per-tenant encryption keys for stored evidence (encryption at rest is a platform setting).
+- **PostgreSQL Row-Level Security (RLS)**: Migration `a1b2c3d4e5f6` enables RLS policies (`tenant_id = current_setting('app.tenant_id', true)`) across all tenant-scoped tables, and `set_tenant_context()` binds `app.tenant_id` on authenticated requests and background streaming sessions.
+- **Key-ring rotation**: Both `DATA_ENCRYPTION_KEYS` and `AUDIT_SIGNING_KEYS` support key-id-prefixed (`k2=...,k1=...`) zero-downtime key rotation and verification.
+- **Per-tenant encryption keys**: Stored evidence is encrypted at rest using the platform key ring (`DATA_ENCRYPTION_KEYS`); per-tenant KMS envelope keys are not used by default, while action credentials support strict per-tenant isolation (`ALLOW_ENV_ACTION_CREDENTIALS=false` or tenant `isolate_action_credentials: true`).

@@ -70,3 +70,36 @@ groups:
           severity: warning
         annotations:
           summary: "Critical findings have been open for more than an hour"
+
+      - alert: ArgusDroppedEvents
+        expr: sum(increase(argus_ingest_events_total{status="dropped"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Security events were dropped or rejected during ingestion"
+
+      - alert: ArgusQueueDelayHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(argus_queue_delay_seconds_bucket[5m]))) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 queue wait delay exceeds 30s"
+
+      - alert: ArgusCollectorFailures
+        expr: sum(increase(argus_collector_runs_total{status="failed"}[30m])) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Posture or cloud collectors are failing repeatedly"
+
+      - alert: ArgusRollbackFailed
+        expr: sum(increase(argus_actions_total{status="rollback_failed"}[1h])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "An automated or manual action rollback failed"
+          runbook: "docs/RUNBOOKS.md#rolling-back-an-action"

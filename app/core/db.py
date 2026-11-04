@@ -107,9 +107,7 @@ def make_engine(settings: Settings) -> Engine:
 
         return engine
     if not settings.is_production:
-        from sqlalchemy.pool import NullPool
-
-        return create_engine(url, poolclass=NullPool, future=True)
+        return create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=5, pool_timeout=15, future=True)
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, future=True)
 
 

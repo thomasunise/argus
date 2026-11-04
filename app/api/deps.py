@@ -151,10 +151,13 @@ def current_principal(request: Request, db: Session = Depends(get_db), settings:
         principal = _principal_from_api_key(db, raw, request)
         if principal is None:
             raise Unauthorized('Invalid API key')
+        set_tenant_context(db, principal.tenant_id)
         request.state.principal = principal
         set_tenant_context(db, principal.tenant_id)
         return principal
     principal = _principal_from_session(db, request, settings)
+    if principal is not None:
+        set_tenant_context(db, principal.tenant_id)
     request.state.principal = principal
     if principal is not None:
         set_tenant_context(db, principal.tenant_id)

@@ -28,7 +28,7 @@ from ..ai.catalog import BY_KEY
 from ..ai.discovery import upsert_service
 from ..core.audit import record_audit
 from ..core.config import Settings
-from ..core.db import scoped, session_scope
+from ..core.db import scoped, session_scope, set_tenant_context
 from ..core.errors import Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import Principal, has
 from ..models import ApiKey, Tenant, dumps, loads, utcnow
@@ -78,7 +78,7 @@ class _Call:
         return int((time.monotonic() - self.started) * 1000)
 
     def reject(self, status: int, reason: str, *, kind: str = 'argus_policy', state: str = 'blocked') -> JSONResponse:
-        self.row.status, self.row.block_reason, self.row.latency_ms = state, reason[:300], self.elapsed_ms()
+        self.row.status, self.row.block_reason, self.row.latency_ms, self.row.cost_usd = state, reason[:300], self.elapsed_ms(), 0.0
         self.db.add(self.row)
         self.db.flush()
         if state == 'blocked':
@@ -161,10 +161,6 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     if policy.monthly_budget_usd is not None:
         if gw.price_for(gw.prices(settings), model) is None:
             return call.reject(403, f'model {model} has no configured price; cannot enforce the monthly budget')
-        async with _BUDGET_LOCK:
-            spent = gw.month_spend(db, principal.tenant_id)
-            if spent >= policy.monthly_budget_usd:
-                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
     inspection = gw.inspect(provider, endpoint, body, policy)
     call.row.stream = inspection.stream
     call.row.dlp_hits_json = dumps(inspection.dlp_hits)
@@ -172,6 +168,21 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     call.row.prompt_injection = inspection.prompt_injection
     if inspection.block_reason:
         return call.reject(403, inspection.block_reason)
+    if policy.monthly_budget_usd is not None:
+        est_in = max(1000, len(raw) // 4)
+        est_out = int(body.get('max_tokens') or body.get('max_completion_tokens') or 500)
+        reserve = max(0.0001, gw.cost(settings, model, est_in, est_out))
+        async with _BUDGET_LOCK:
+            bind = db.get_bind()
+            if bind is not None and bind.dialect.name == 'postgresql':
+                db.execute(select(Tenant.id).where(Tenant.id == principal.tenant_id).with_for_update())
+            spent = gw.month_spend(db, principal.tenant_id)
+            if spent >= policy.monthly_budget_usd:
+                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
+            call.row.status = 'running'
+            call.row.cost_usd = reserve
+            db.add(call.row)
+            db.commit()
 
     url = gw.provider_base(settings, provider) + gw.ENDPOINTS[(provider, endpoint)]
     headers = _upstream_headers(request, provider, key)
@@ -214,13 +225,13 @@ async def _stream(request: Request, call: _Call, settings: Settings, url: str, h
         body = await upstream.aread()
         await upstream.aclose()
         await client.aclose()
-        call.row.upstream_status, call.row.status = upstream.status_code, 'error'
+        call.row.upstream_status, call.row.status, call.row.cost_usd = upstream.status_code, 'error', 0.0
         call.row.block_reason, call.row.latency_ms = f'upstream returned {upstream.status_code}', call.elapsed_ms()
         call.db.add(call.row)
         call.db.flush()
         return Response(content=body, status_code=upstream.status_code, media_type=upstream.headers.get('content-type', 'application/json'),
                         headers={'x-argus-gateway-request-id': call.row.id})
-    call.row.upstream_status = upstream.status_code
+    call.row.upstream_status, call.row.status = upstream.status_code, 'allowed'
     call.db.add(call.row)
     _sanction(call.db, call.principal, call.provider)
     call.db.flush()
@@ -230,14 +241,16 @@ async def _stream(request: Request, call: _Call, settings: Settings, url: str, h
 
     def _finish(error: str) -> None:
         with session_scope(factory) as session:
+            set_tenant_context(session, tenant_id)
             row = session.get(AIGatewayRequest, row_id)
             if row is None or row.tenant_id != tenant_id:
                 return
             row.input_tokens, row.output_tokens = usage.input_tokens, usage.output_tokens
             row.cost_usd = gw.cost(settings, model, usage.input_tokens, usage.output_tokens)
             row.latency_ms = call.elapsed_ms()
+            row.status = 'error' if error else 'allowed'
             if error:
-                row.status, row.block_reason = 'error', error[:300]
+                row.block_reason = error[:300]
 
     async def relay():
         error = ''

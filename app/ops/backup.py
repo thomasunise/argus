@@ -512,12 +512,39 @@ def _reset_sequences(conn, meta: MetaData) -> None:
             conn.execute(text(query), {'seq': seq})
 
 
+def verify_tenant_integrity(engine: Engine, tenant_id: str) -> dict:
+    """Verify tenant-level integrity (row counts across tenant-scoped tables and audit hash chain)."""
+    from sqlalchemy.orm import Session
+
+    from ..core.audit import verify_chain
+
+    meta = MetaData()
+    meta.reflect(bind=engine)
+    table_counts: dict[str, int] = {}
+    with engine.connect() as conn:
+        for name, table in sorted(meta.tables.items()):
+            if name in SKIP_TABLES or name.startswith('sqlite_') or 'tenant_id' not in table.c:
+                continue
+            count = conn.execute(select(func.count()).select_from(table).where(table.c.tenant_id == tenant_id)).scalar() or 0
+            if count:
+                table_counts[name] = int(count)
+    with Session(engine) as db:
+        chain = verify_chain(db, tenant_id)
+    return {
+        'tenant_id': tenant_id,
+        'ok': bool(chain.get('valid', True)),
+        'audit_chain': chain,
+        'table_counts': table_counts,
+        'total_rows': sum(table_counts.values()),
+    }
+
+
 def check_database(engine: Engine, expected: dict[str, int] | None = None) -> dict:
     """Row counts against the backup and the audit chain of every tenant."""
     from sqlalchemy.orm import Session
 
     from ..core.audit import verify_chain
-    from ..models import AuditEntry
+    from ..models import AuditEntry, Tenant
 
     problems: list[str] = []
     meta = MetaData()
@@ -528,11 +555,17 @@ def check_database(engine: Engine, expected: dict[str, int] | None = None) -> di
             if actual != n:
                 problems.append(f'{name}: {actual} rows, backup has {n}')
     chains: dict[str, dict] = {}
+    tenant_integrity: dict[str, dict] = {}
     with Session(engine) as db:
-        for tenant_id in db.execute(select(AuditEntry.tenant_id).distinct()).scalars():
+        tenant_ids = set(db.execute(select(AuditEntry.tenant_id).distinct()).scalars())
+        if 'tenants' in meta.tables:
+            tenant_ids |= set(db.execute(select(Tenant.id)).scalars())
+        for tenant_id in sorted(tenant_ids):
             result = verify_chain(db, tenant_id)
             chains[tenant_id] = result
             if not result.get('valid'):
                 problems.append(f'audit chain of tenant {tenant_id} breaks at entry {result.get("broken_at")}')
+            tenant_integrity[tenant_id] = verify_tenant_integrity(engine, tenant_id)
     return {'ok': not problems, 'problems': problems, 'audit_chains': len(chains),
-            'audit_entries': sum(c.get('checked', 0) for c in chains.values())}
+            'audit_entries': sum(c.get('checked', 0) for c in chains.values()),
+            'tenant_integrity': tenant_integrity}
