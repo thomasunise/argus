@@ -108,7 +108,7 @@ Autonomy and AI security
 
 Agents
 
-- [ ] Larger eval datasets with measured precision, recall and latency per provider and model
+- [ ] Larger independently labeled eval datasets; synthetic detection benchmark runner and external dataset import are available
 - [ ] Specialist-level tool allowlists per tenant; per-tenant provider and model selection exposed in admin settings UI
 - [ ] Cost reporting per tenant from `agent_runs`
 
@@ -123,7 +123,7 @@ Frontend
 
 Operations
 
-- [ ] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
+- [x] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
 - [x] Retention and purge jobs: per-tenant policies for events, closed detections, agent runs and steps, job runs, deliveries, ingest batches, AI gateway log and canary hits
 - [x] Backup and restore automation: scheduled encrypted backups to local disk, S3 and Azure, pruning, verified restore with Alembic, Postgres restore drill in CI (`docs/BACKUP.md`)
 - [ ] Retention for test results and scan output (they back findings, so they need a finding-aware policy)
