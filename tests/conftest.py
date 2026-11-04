@@ -105,6 +105,8 @@ def app(settings):
     try:
         yield application
     finally:
+        from app.core.events import unsubscribe_app
+        unsubscribe_app(application)
         application.state.engine.dispose()
 
 

@@ -62,6 +62,8 @@ class WebBaselineAdapter(TestAdapter):
         port = httpx.URL(url).port or 443
         findings: list[NormalizedFinding] = []
 
+        # Acquire capacity before performing any network I/O (including TLS).
+        await ctx.rate_limiter.acquire()
         # --- TLS handshake (verified; never disables CA/hostname verification) ---
         try:
             tls = await asyncio.to_thread(_tls_inspect, host, port)
@@ -86,19 +88,20 @@ class WebBaselineAdapter(TestAdapter):
                 remediation='Check TLS certificate validity, trust chain, and hostname configuration.',
                 severity='high', evidence={'failure_type': type(exc).__name__}))
 
+        # A second request must not evade the scope's request rate limit.
+        await ctx.rate_limiter.acquire()
         # --- a single read-only HTTP response (HEAD, GET fallback) ---
         async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=httpx.Timeout(10.0),
                                      verify=True, limits=httpx.Limits(max_connections=1)) as client:
             async with client.stream('HEAD', url) as response:
                 if response.status_code in {405, 501}:
+                    await ctx.rate_limiter.acquire()
                     async with client.stream('GET', url) as fallback:
                         headers, status = fallback.headers, fallback.status_code
                         set_cookies = fallback.headers.get_list('set-cookie')
                 else:
                     headers, status = response.headers, response.status_code
                     set_cookies = response.headers.get_list('set-cookie')
-
-        await ctx.rate_limiter.acquire()
 
         for header, title, level, remediation in MISSING_HEADERS:
             if header not in headers:

@@ -15,6 +15,7 @@ from .api import discover_routers
 from .api.deps import RateLimiter
 from .core import audit as audit_module
 from .core import crypto
+from .core import events
 from .core.bootstrap import bootstrap
 from .core.config import Settings, assert_safe_config, get_settings
 from .core.db import CommitBeforeResponseMiddleware, assert_restricted_runtime_role, init_db, make_engine, make_session_factory, pool_stats, session_scope
@@ -71,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
             if settings.workers_inprocess:
                 await app.state.queue.stop()
+            events.unsubscribe_app(app)
             engine.dispose()
 
     app = FastAPI(title=settings.app_name, version=VERSION, lifespan=lifespan, docs_url='/api/docs', openapi_url='/api/openapi.json')
@@ -83,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.startup_hooks = []
     app.state.shutdown_hooks = []
     app.state.background_tasks = set()
+    app.state.event_subscriptions = []
 
     app.add_middleware(CommitBeforeResponseMiddleware)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
@@ -95,16 +98,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_metrics_endpoint(app, settings)
     configure_tracing(app, settings)
 
-    for package in PACKAGES:
-        try:
-            module = importlib.import_module(package)
-        except ModuleNotFoundError as exc:
-            if exc.name == package:
-                continue
-            raise
-        setup = getattr(module, 'setup', None)
-        if setup:
-            setup(app)
+    # Event-bus callbacks registered by packages must be removed at app shutdown.
+    # Otherwise each TestClient lifetime leaves subscribers retaining old engines.
+    with events.registration_scope(app):
+        for package in PACKAGES:
+            try:
+                module = importlib.import_module(package)
+            except ModuleNotFoundError as exc:
+                if exc.name == package:
+                    continue
+                raise
+            setup = getattr(module, 'setup', None)
+            if setup:
+                setup(app)
 
     for router in discover_routers():
         app.include_router(router)

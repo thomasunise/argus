@@ -383,10 +383,14 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
         raise Conflict(f'{action.name} is not reversible')
     if run.rollback_payload_json in ('', '{}', 'null'):
         raise Conflict('run has no rollback payload')
+    # A kill switch forbids NEW changes, not an authorized attempt to undo a
+    # previously executed reversible change. Permission, tenant and payload checks
+    # above still apply, and this exception is audited for incident review.
     tenant = _tenant(db, principal.tenant_id)
     blocked = _kill_switch_reason(tenant, settings)
     if blocked:
-        raise PolicyDenied(blocked)
+        record_audit(db, principal, 'actions.emergency_rollback', run.id,
+                     {'request_id': req.id, 'reason': blocked})
     claimed = db.execute(
         update(ActionRun)
         .where(
@@ -405,7 +409,9 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
     record_audit(db, principal, 'actions.rollback_requested', run.id, {'action_type': req.action_type, 'request_id': req.id})
     db.commit()
     job = await app.state.queue.enqueue('actions.rollback', {'run_id': run.id, 'request_id': req.id, 'principal': _principal_payload(principal)},
-                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE, idempotency_key=f'actions.rollback:{run.id}', priority=1)
+                                        tenant_id=req.tenant_id, lease_seconds=JOB_LEASE,
+                                        idempotency_key=None,
+                                        priority=1)
     run.rollback_job_id = job.id
     db.commit()
     return run
@@ -557,10 +563,10 @@ async def handle_rollback(job, ctx) -> dict:
             return {'ok': True, 'skipped': True, 'status': run.status}
         action = catalog.get(req.action_type)
         tenant = _tenant(db, job.tenant_id)
-        blocked = _kill_switch_reason(tenant, settings)
-        if action is None or not action.reversible or blocked:
+        # Emergency recovery must still work while automated execution is killed.
+        if action is None or not action.reversible:
             run.rollback_job_id = ''
-            error = blocked or f'{req.action_type} is not reversible'
+            error = f'{req.action_type} is not reversible'
             record_audit(db, principal, 'actions.rollback_failed', run.id, {'action_type': req.action_type, 'error': error})
             return {'ok': False, 'error': error}
         rollback_payload = loads(run.rollback_payload_json, {})

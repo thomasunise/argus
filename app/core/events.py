@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections import defaultdict
 from typing import Any, Awaitable, Callable
 
@@ -12,11 +14,38 @@ log = logging.getLogger('argus.events')
 Subscriber = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 _subscribers: dict[str, list[Subscriber]] = defaultdict(list)
+# App setup happens synchronously. Attribute its subscriptions to that specific
+# application so shutdown cannot leave closures holding an old database engine.
+_registration_owner: ContextVar[Any | None] = ContextVar('argus_event_registration_owner', default=None)
+
+
+@contextmanager
+def registration_scope(app):
+    token = _registration_owner.set(app)
+    try:
+        yield
+    finally:
+        _registration_owner.reset(token)
 
 
 def subscribe(topic: str, fn: Subscriber) -> None:
-    """topic may end with '*' to match a prefix, e.g. 'finding.*'."""
+    """Register an event handler, retaining an app-scoped removal handle."""
     _subscribers[topic].append(fn)
+    owner = _registration_owner.get()
+    if owner is not None:
+        owner.state.event_subscriptions.append((topic, fn))
+
+
+def unsubscribe_app(app) -> None:
+    """Remove only this application's callbacks; other running apps are unaffected."""
+    subscriptions = getattr(app.state, 'event_subscriptions', ())
+    for topic, callback in subscriptions:
+        remaining = [fn for fn in _subscribers.get(topic, ()) if fn is not callback]
+        if remaining:
+            _subscribers[topic] = remaining
+        else:
+            _subscribers.pop(topic, None)
+    app.state.event_subscriptions = []
 
 
 def clear() -> None:
