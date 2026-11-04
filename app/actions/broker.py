@@ -424,9 +424,20 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
             run.status, run.rollback_job_id = previous_run_status, ''
             db.commit()
         raise
-    run.rollback_job_id = job.id
+    # The worker can finish and clear rollback_job_id *before enqueue returns*.
+    # Never write a stale job id over a completed/failed rollback; that strands
+    # subsequent authorized retries in "already being rolled back".
+    db.execute(
+        update(ActionRun)
+        .where(ActionRun.id == run.id, ActionRun.tenant_id == principal.tenant_id,
+               ActionRun.rollback_job_id == 'claiming')
+        .values(rollback_job_id=job.id)
+        .execution_options(synchronize_session=False)
+    )
     db.commit()
+    db.refresh(run)
     return run
+
 
 
 def _kill_switch_reason(tenant: Tenant | None, settings: Settings) -> str:
