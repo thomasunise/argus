@@ -1,4 +1,4 @@
-import { get, post } from '../api.js';
+import { get, post, patch } from '../api.js';
 import { store } from '../store.js';
 import { section, readFilters, setQuery, trackJob } from '../common.js';
 import { $, bind, closeDrawer, confirm, drawer, empty, esc, fields, formActions, heading, json, kv, metrics, ms, newPager, onSubmit, pageNext, pagePrev, pageReset, pager, panel, readFields, selectHtml, table, tabs, tag, time, toDate, toast, mono, link, fmt, num } from '../ui.js';
@@ -95,28 +95,56 @@ async function renderGateway(node) {
 }
 
 async function renderAiInventory(node) {
-  node.innerHTML = `<div data-ai-stats></div><div class="panel" data-ai-list style="margin-top:16px"></div>`;
-  section($('[data-ai-stats]', node), () => get('/ai/stats'), (s) => metrics([
-    { label: 'AI services', value: s.total, caption: `${num(s.unapproved)} unapproved (shadow AI)` },
-    { label: 'High risk', value: s.by_risk?.high || 0, caption: `${s.by_risk?.critical || 0} critical` },
-    { label: 'MCP servers', value: s.by_kind?.mcp_server || 0, caption: `${s.by_kind?.agent || 0} agents` },
-    { label: 'Internet exposed', value: s.exposed || 0, caption: 'reachable externally' },
-  ]));
-  section($('[data-ai-list]', node), () => get('/ai/services', { limit: 50 }), (data) => panel({
-    title: 'AI & MCP service inventory',
-    flush: true,
-    body: table({
-      columns: [
-        { label: 'Service', render: (s) => `<span class="cell-main">${esc(s.name)}</span><span class="cell-sub">${esc(s.kind)} · ${esc(s.provider || '')}</span>` },
-        { label: 'Endpoint', render: (s) => mono(s.endpoint || '') },
-        { label: 'Risk', render: (s) => tag(s.risk) },
-        { label: 'Approved', render: (s) => tag(s.approved ? 'approved' : 'shadow') },
-        { label: 'Last seen', render: (s) => time(s.last_seen_at) },
-      ],
-      rows: data.items || [],
-      empty: 'No AI or MCP services registered yet',
-    }),
-  }));
+  node.innerHTML = '<div class="toolbar"><span class="muted">Inventory is inferred from observed usage; review services before sanctioning them.</span>' +
+    (store.can('ai:write') ? '<button class="btn" data-act="discover-ai">Run discovery</button>' : '') +
+    '</div><div data-ai-stats></div><div data-ai-list></div>';
+  let stats, list;
+  const load = () => {
+    stats = section($('[data-ai-stats]', node), () => get('/ai/services/stats'), (s) => metrics([
+      { label: 'Observed services', value: s.total, caption: 'Actor/channel records' },
+      { label: 'Unreviewed', value: s.by_status?.unreviewed || 0, caption: 'Requires analyst review' },
+      { label: 'Blocked', value: s.by_status?.blocked || 0, caption: 'Policy status, not automatically enforced network blocking' },
+      { label: 'Sanctioned', value: s.by_status?.sanctioned || 0, caption: 'Approved use' },
+    ]));
+    list = section($('[data-ai-list]', node), () => get('/ai/services', { limit: 100 }), (data) => panel({
+      title: 'Observed AI services',
+      flush: true,
+      body: table({
+        columns: [
+          { label: 'Service', render: s => `<span class="cell-main">${esc(s.service)}</span><span class="cell-sub">${esc(s.provider || '')} · ${esc(s.category || '')}</span>` },
+          { label: 'Actor / Channel', render: s => `<span class="cell-main">${esc(s.actor || 'unknown')}</span><span class="cell-sub">${esc(s.channel || '')}</span>` },
+          { label: 'Events', render: s => num(s.event_count) },
+          { label: 'Status', render: s => tag(s.status) },
+          { label: 'Last seen', render: s => time(s.last_seen_at) },
+          { label: '', render: s => store.can('ai:write') ? `<button class="btn small" data-act="ai-review" data-id="${esc(s.id)}">Review</button>` : '' },
+        ],
+        rows: data.items || [],
+        empty: 'No AI service usage detected',
+      }),
+    }));
+  };
+  load();
+  bind(node, {
+    'discover-ai': async () => {
+      const run = await post('/ai/discover', {});
+      toast('AI discovery queued');
+      if (run.job_id) trackJob(run.job_id, 'AI discovery').then(() => { stats?.reload(true); list?.reload(true); });
+    },
+    'ai-review': async el => {
+      const service = await get('/ai/services/' + encodeURIComponent(el.dataset.id));
+      const defs = [
+        { name: 'status', label: 'Review outcome', type: 'select', options: ['unreviewed', 'sanctioned', 'blocked'], value: service.status },
+        { name: 'notes', label: 'Review rationale', type: 'textarea', rows: 3, value: service.notes || '' },
+        { name: 'apply_to_service', label: 'Apply to the entire service', type: 'checkbox', value: true, text: 'Apply status to all observed actors and channels for this service' },
+      ];
+      const body = drawer('Review ' + service.service, `<form class="form-stack">${fields(defs)}${formActions('Save review')}</form>`);
+      onSubmit($('form', body), async form => {
+        const data = readFields(form, defs);
+        await patch('/ai/services/' + encodeURIComponent(service.id), data);
+        closeDrawer(); toast('AI service reviewed'); stats?.reload(true); list?.reload(true);
+      });
+    },
+  });
 }
 
 async function renderIndex({ root, params, query, navigate }) {
