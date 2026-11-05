@@ -102,6 +102,10 @@ class PortProbeAdapter(TestAdapter):
         host = urlsplit(target).hostname or ''
         if not host:
             return []
+        if ctx.settings.is_production:
+            # Each connect must use the same approved literal destination.
+            from .web_baseline import _pin_target
+            host = await asyncio.to_thread(_pin_target, host, 443, ctx.settings)
         ports = sorted(set(WEB_PORTS) | set(RISKY_PORTS))
         if plan_params.get('extended'):
             ports = sorted(set(ports) | set(TOP_PORTS))

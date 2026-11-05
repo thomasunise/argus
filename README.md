@@ -131,7 +131,7 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Integrations: 15 inbound sources (14 parser modules; network covers Suricata and Zeek) behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Backups and retention: scheduled encrypted backups to disk, S3 and Azure, verified one-command restore, per-tenant retention policies | implemented | `app/ops/`, `app/api/backups.py`, `app/api/retention.py`, `docs/BACKUP.md` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
-| Alembic migrations (15 revisions, through fail-closed tenant RLS) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Alembic migrations (18 revisions, through fail-closed tenant RLS, session revocation and unique action approvals) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
 | Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.

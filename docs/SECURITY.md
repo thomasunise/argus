@@ -120,3 +120,23 @@ Supply chain (`.github/`)
 - **PostgreSQL Row-Level Security (RLS)**: Migration `a1b2c3d4e5f6` enables RLS policies (`tenant_id = current_setting('app.tenant_id', true)`) across all tenant-scoped tables, and `set_tenant_context()` binds `app.tenant_id` on authenticated requests and background streaming sessions.
 - **Key-ring rotation**: Both `DATA_ENCRYPTION_KEYS` and `AUDIT_SIGNING_KEYS` support key-id-prefixed (`k2=...,k1=...`) zero-downtime key rotation and verification.
 - **Per-tenant encryption keys**: Stored evidence is encrypted at rest using the platform key ring (`DATA_ENCRYPTION_KEYS`); per-tenant KMS envelope keys are not used by default, while action credentials support strict per-tenant isolation (`ALLOW_ENV_ACTION_CREDENTIALS=false` or tenant `isolate_action_credentials: true`).
+
+
+## Remediation notes (2026-11-04)
+
+- Signed browser sessions have a database-backed account-wide invalidation timestamp.
+  Logout revokes all the account's sessions. Password resets and the admin
+  `POST /api/v1/admin/users/{user_id}/revoke-sessions` endpoint do the same.
+- Authentication failure counts are shared through Redis in production, with
+  an atomic sliding window and failure-closed backend errors.
+- The passive HTTPS baseline pins production scan connections to an approved IP
+  and retains TLS SNI and the original Host header. Other scanner binaries
+  and sandbox runners MUST still have egress restrictions independently.
+- Rollback of an already executed reversible action is permitted during the
+  action kill switch. This is an authorized recovery action and is audited.
+- AI spending is checked against current spend PLUS a reserved request estimate.
+  Provider token usage must be reconciled after completion. This reduces
+  concurrency overshoot, but budget correctness relies on providers enforcing
+  the requested output limit, accurate model pricing and reliable metering.
+- The built-in detection benchmark uses a small synthetic regression suite;
+  it is not evidence of independently verified enterprise detection accuracy.

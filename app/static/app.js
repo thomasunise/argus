@@ -19,9 +19,11 @@ const NAV = [
     { id: 'agents', label: 'Agents', perm: 'agents:read' },
     { id: 'testing', label: 'Testing', perm: 'tests:read' },
     { id: 'pentest', label: 'Pentest', perm: 'tests:read' },
+    { id: 'autopilot', label: 'Autopilot runs', perm: 'tests:read' },
   ] },
   { group: 'Response', items: [
     { id: 'actions', label: 'Actions', perm: 'actions:read' },
+    { id: 'autoresponse', label: 'Autonomous response', perm: 'autoresponse:read' },
     { id: 'integrations', label: 'Integrations', perm: 'integrations:read' },
   ] },
   { group: 'Governance', items: [

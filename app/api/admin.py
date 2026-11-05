@@ -286,11 +286,28 @@ def reset_password(user_id: str, body: ResetBody | None = None, db: Session = De
     supplied = body.password if body else None
     temporary = supplied or _temp_password()
     user.password_hash = hash_password(temporary)
+    user.sessions_invalidated_at = utcnow()
     record_audit(db, principal, 'admin.password_reset', user.id, {'email': user.email, 'generated': supplied is None})
     out: dict[str, Any] = {'ok': True, 'user_id': user.id}
     if supplied is None:
         out['temporary_password'] = temporary
     return out
+
+
+@router.post('/users/{user_id}/revoke-sessions')
+def revoke_user_sessions(user_id: str, db: Session = Depends(get_db),
+                         principal: Principal = Depends(require('admin:users'))):
+    """Invalidate every signed session issued before this call."""
+    membership = _membership(db, principal.tenant_id, user_id)
+    user = db.get(User, user_id) if membership else None
+    if membership is None or user is None:
+        raise NotFound('User not found in this tenant')
+    if membership.role == Role.owner.value and principal.role != Role.owner and user_id != principal.user_id:
+        raise Forbidden('Only owners can revoke another owner account')
+    _assert_home_tenant(db, principal.tenant_id, user_id)
+    user.sessions_invalidated_at = utcnow()
+    record_audit(db, principal, 'admin.sessions_revoked', user_id, {'email': user.email})
+    return {'ok': True, 'user_id': user_id}
 
 
 @router.delete('/users/{user_id}')

@@ -22,6 +22,7 @@ from ..core.db import session_scope, set_tenant_context
 from ..core.findings import upsert_event
 from ..core.rbac import system_principal
 from ..core.security import resolve_secret
+from ..core.telemetry import COLLECTOR_RUNS
 from ..models import Tenant, dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
 from .base import Collector, CollectorContext, CollectorResult, registry
@@ -141,16 +142,19 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
             raise LookupError('collector config or run not found for tenant')
         if not config.enabled:
             run.status, run.error, run.finished_at = 'failed', 'collector config is disabled', utcnow()
+            COLLECTOR_RUNS.labels(config.collector, 'failed').inc()
             return {'run_id': run_id, 'status': run.status}
         try:
             collector: Collector = registry.get(config.collector)
         except KeyError:
             run.status, run.error, run.finished_at = 'failed', f'unknown collector {config.collector}', utcnow()
             config.last_error = run.error
+            COLLECTOR_RUNS.labels(config.collector, 'failed').inc()
             return {'run_id': run_id, 'status': run.status}
         if not collector.available():
             run.status, run.error, run.finished_at = 'failed', f'collector {collector.name} is not available: {collector.install_hint()}', utcnow()
             config.last_error = run.error
+            COLLECTOR_RUNS.labels(config.collector, 'failed').inc()
             return {'run_id': run_id, 'status': run.status}
         merged, missing = resolved_config(config, settings)
         run.status, run.started_at, run.job_id = 'running', utcnow(), job_id or run.job_id
@@ -173,6 +177,7 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
             run = db.get(CollectorRun, run_id)
             if run is not None:
                 run.status, run.error, run.finished_at = 'failed', 'cancelled', utcnow()
+        COLLECTOR_RUNS.labels(collector_name, 'failed').inc()
         raise
     except Exception as exc:
         log.exception('collector %s failed (config %s)', collector_name, config_id)
@@ -213,6 +218,7 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
                      {'run_id': run_id, 'collector': collector_name, 'status': run.status, 'nodes': stats.get('nodes', 0), 'edges': stats.get('edges', 0),
                       'events': stats.get('events', 0), 'warnings': len(warnings), 'error': error[:300]})
         status = run.status
+    COLLECTOR_RUNS.labels(collector_name, status).inc()
     if error:
         raise RuntimeError(error)  # surfaces in the job record and triggers retry/backoff policy
     return {'run_id': run_id, 'status': status, 'stats': stats}

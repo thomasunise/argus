@@ -170,16 +170,27 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     if inspection.block_reason:
         return call.reject(403, inspection.block_reason)
     if policy.monthly_budget_usd is not None:
-        est_in = max(1000, len(raw) // 4)
-        est_out = int(body.get('max_tokens') or body.get('max_completion_tokens') or 500)
-        reserve = max(0.0001, gw.cost(settings, model, est_in, est_out))
+        # A budgeted chat request must have a bounded output. Set a conservative
+        # provider-enforced default for clients that omit it.
+        if endpoint == 'chat.completions' and not any(
+            inspection.body.get(k) is not None for k in ('max_tokens', 'max_completion_tokens')
+        ):
+            inspection.body['max_completion_tokens'] = 500
+        if endpoint == 'messages' and inspection.body.get('max_tokens') is None:
+            return call.reject(400, 'max_tokens is required for budgeted Anthropic requests', kind='invalid_request_error')
+        output_raw = inspection.body.get('max_completion_tokens', inspection.body.get('max_tokens', 0))
+        if isinstance(output_raw, bool) or not isinstance(output_raw, int) or output_raw < 0 or output_raw > 131072:
+            return call.reject(400, 'invalid max_tokens for a budgeted request', kind='invalid_request_error')
+        # UTF-8 byte count is deliberately conservative compared with common tokenizers.
+        est_in = max(1000, len(raw))
+        reserve = max(0.0001, gw.cost(settings, model, est_in, output_raw))
         async with _BUDGET_LOCK:
             bind = db.get_bind()
             if bind is not None and bind.dialect.name == 'postgresql':
                 db.execute(select(Tenant.id).where(Tenant.id == principal.tenant_id).with_for_update())
             spent = gw.month_spend(db, principal.tenant_id)
-            if spent >= policy.monthly_budget_usd:
-                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} is exhausted (spent ${spent:.2f})', kind='insufficient_quota')
+            if spent + reserve > policy.monthly_budget_usd + 1e-12:
+                return call.reject(429, f'monthly AI budget of ${policy.monthly_budget_usd:.2f} cannot reserve ${reserve:.4f} (spent ${spent:.4f})', kind='insufficient_quota')
             call.row.status = 'running'
             call.row.cost_usd = reserve
             db.add(call.row)

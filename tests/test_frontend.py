@@ -35,7 +35,7 @@ ANALYST_PASSWORD = 'analyst-password-long-123456'
 PAGES = [
     'overview', 'assets', 'findings', 'events', 'graph', 'graph/paths', 'graph/exposures',
     'detections', 'detections/rules', 'detections/canaries', 'collectors', 'collectors/types',
-    'agents', 'agents/runs', 'agents/evals', 'agents/tools', 'testing', 'testing/plans', 'testing/runs', 'testing/adapters',
+    'agents', 'agents/runs', 'agents/evals', 'agents/tools', 'agents/inventory', 'autoresponse', 'autopilot', 'testing', 'testing/plans', 'testing/runs', 'testing/adapters',
     'actions', 'actions/requests', 'actions/runs', 'actions/requests/new',
     'integrations', 'integrations/types', 'integrations/ingest', 'integrations/deliveries', 'integrations/batches',
     'audit', 'reports', 'reports/compliance', 'reports/trends', 'admin', 'admin/keys', 'admin/tenants', 'admin/settings',

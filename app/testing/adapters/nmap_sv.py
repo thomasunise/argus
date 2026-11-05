@@ -6,6 +6,7 @@ targeted templates against what actually answers.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from urllib.parse import urlsplit
 
@@ -164,6 +165,11 @@ class NmapSvAdapter(TestAdapter):
     async def run(self, plan_params: dict, asset, scope, ctx: HarnessContext) -> list[NormalizedFinding]:
         settings = ctx.settings
         host = extract_host(ctx.target or asset.target)
+        if settings.is_production:
+            # Nmap must never re-resolve an approved hostname to a different
+            # destination after the scope check. Scan the pinned literal IP.
+            from .web_baseline import _pin_target
+            host = await asyncio.to_thread(_pin_target, host, 443, settings)
         ports = safe_ports(plan_params.get('ports')) if plan_params.get('ports') else ''
         try:
             top_ports = max(1, min(MAX_TOP_PORTS, int(plan_params.get('top_ports') or DEFAULT_TOP_PORTS)))

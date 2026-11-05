@@ -51,6 +51,9 @@ jobs:
             requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q --maxfail=20 --ignore=tests/test_frontend.py
+      - name: Repeatable detection benchmark smoke
+        if: matrix.python == '3.12'
+        run: python scripts/benchmark_detections.py --min-scenarios 5 --min-recall 1.0 --min-precision 1.0 --max-false-positive-rate 0
 
   browser:
     name: playwright e2e (chromium)
@@ -102,6 +105,8 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Apply schema
         run: python scripts/migrate.py
+      - name: Assert PostgreSQL models match Alembic migrations
+        run: python scripts/migrate.py --check
       - run: python -m pytest -q --maxfail=20 --ignore=tests/test_frontend.py
 
   security:
@@ -236,6 +241,8 @@ jobs:
         env:
           ARGUS_URL: http://127.0.0.1:8080
         run: ARGUS_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' .env)" python3 scripts/smoke_test.py
+      - name: Bounded readiness load smoke (40 requests, 4 workers)
+        run: python3 scripts/load_smoke.py --url http://127.0.0.1:8080 --requests 40 --concurrency 4 --max-p95-ms 5000
       - if: failure()
         run: docker compose -f compose.yaml logs --tail=200
       - if: always()

@@ -519,18 +519,21 @@ def verify_tenant_integrity(engine: Engine, tenant_id: str) -> dict:
     from sqlalchemy.orm import Session
 
     from ..core.audit import verify_chain
+    from ..core.db import set_tenant_context
 
     meta = MetaData()
     meta.reflect(bind=engine)
     table_counts: dict[str, int] = {}
-    with engine.connect() as conn:
+    with Session(engine) as db:
+        # A restricted production role sees no tenant rows until app.tenant_id
+        # is set. Verify real scoped data, never a silently empty result.
+        set_tenant_context(db, tenant_id)
         for name, table in sorted(meta.tables.items()):
             if name in SKIP_TABLES or name.startswith('sqlite_') or 'tenant_id' not in table.c:
                 continue
-            count = conn.execute(select(func.count()).select_from(table).where(table.c.tenant_id == tenant_id)).scalar() or 0
+            count = db.execute(select(func.count()).select_from(table).where(table.c.tenant_id == tenant_id)).scalar() or 0
             if count:
                 table_counts[name] = int(count)
-    with Session(engine) as db:
         chain = verify_chain(db, tenant_id)
     return {
         'tenant_id': tenant_id,
@@ -545,8 +548,7 @@ def check_database(engine: Engine, expected: dict[str, int] | None = None) -> di
     """Row counts against the backup and the audit chain of every tenant."""
     from sqlalchemy.orm import Session
 
-    from ..core.audit import verify_chain
-    from ..models import AuditEntry, Tenant
+    from ..models import Tenant
 
     problems: list[str] = []
     meta = MetaData()
@@ -558,16 +560,19 @@ def check_database(engine: Engine, expected: dict[str, int] | None = None) -> di
                 problems.append(f'{name}: {actual} rows, backup has {n}')
     chains: dict[str, dict] = {}
     tenant_integrity: dict[str, dict] = {}
+    # Tenant and identity tables are global; audit entries are tenant-RLS
+    # protected. Never query the audit table without binding a tenant context.
     with Session(engine) as db:
-        tenant_ids = set(db.execute(select(AuditEntry.tenant_id).distinct()).scalars())
-        if 'tenants' in meta.tables:
-            tenant_ids |= set(db.execute(select(Tenant.id)).scalars())
-        for tenant_id in sorted(tenant_ids):
-            result = verify_chain(db, tenant_id)
-            chains[tenant_id] = result
-            if not result.get('valid'):
-                problems.append(f'audit chain of tenant {tenant_id} breaks at entry {result.get("broken_at")}')
-            tenant_integrity[tenant_id] = verify_tenant_integrity(engine, tenant_id)
+        tenant_ids = set(db.execute(select(Tenant.id)).scalars()) if 'tenants' in meta.tables else set()
+    for tenant_id in sorted(tenant_ids):
+        integrity = verify_tenant_integrity(engine, tenant_id)
+        tenant_integrity[tenant_id] = integrity
+        result = integrity['audit_chain']
+        chains[tenant_id] = result
+        if not result.get('valid'):
+            problems.append(f'audit chain of tenant {tenant_id} breaks at entry {result.get("broken_at")}')
+        if not integrity['ok']:
+            problems.append(f'tenant integrity check failed for {tenant_id}')
     return {'ok': not problems, 'problems': problems, 'audit_chains': len(chains),
             'audit_entries': sum(c.get('checked', 0) for c in chains.values()),
             'tenant_integrity': tenant_integrity}

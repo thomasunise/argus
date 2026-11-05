@@ -94,6 +94,35 @@ class RunResult:
     usage: dict = field(default_factory=dict)
 
 
+async def _complete_with_cancellation(provider: Provider, system: str, messages: list[dict],
+                                      tool_defs: list[dict], heartbeat, deadline: float) -> ModelTurn:
+    """Poll job cancellation while a model call is in flight.
+
+    The broker's job heartbeat detects revoked/cancelled jobs. Merely calling
+    heartbeat between turns cannot stop a slow model call. Cancel its asyncio
+    task on job cancellation or deadline and give the provider a short time to
+    tear down network resources.
+    """
+    model_task = asyncio.create_task(provider.complete(system, messages, tool_defs, max_tokens=16000))
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('agent model call exceeded run deadline')
+            done, _ = await asyncio.wait({model_task}, timeout=min(1.0, remaining))
+            if model_task in done:
+                return model_task.result()
+            if heartbeat is not None:
+                await heartbeat()
+    finally:
+        if not model_task.done():
+            model_task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.gather(model_task, return_exceptions=True), timeout=2)
+            except (TimeoutError, asyncio.CancelledError):
+                log.warning('provider model task did not shut down promptly after cancellation')
+
+
 class AgentRuntime:
     def __init__(self, settings: Settings, tool_registry: ToolRegistry | None = None, provider: Provider | None = None, app: Any = None):
         self.settings = settings
@@ -173,7 +202,8 @@ class AgentRuntime:
                     status, error = 'budget_exhausted', f'cost ceiling ${self.settings.agent_cost_ceiling_usd} exceeded'
                     break
                 t0 = time.perf_counter()
-                turn = await provider.complete(system, messages, tool_defs, max_tokens=16000)
+                turn = await _complete_with_cancellation(provider, system, messages, tool_defs, heartbeat,
+                                                         started + max_seconds)
                 latency = int((time.perf_counter() - t0) * 1000)
                 total_in += turn.usage.input_tokens
                 total_out += turn.usage.output_tokens
@@ -212,6 +242,8 @@ class AgentRuntime:
                     break
             else:
                 status, error = 'budget_exhausted', f'step budget of {max_steps} exceeded'
+        except TimeoutError:
+            status, error = 'budget_exhausted', f'wall clock budget of {max_seconds}s exceeded'
         except asyncio.CancelledError:
             status, error = 'cancelled', 'cancelled'
             raise

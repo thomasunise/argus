@@ -228,6 +228,57 @@ async def test_failed_rollback_can_be_retried(app, default_tenant_id, db):
         catalog.unregister('test.flaky.rollback')
 
 
+@pytest.mark.asyncio
+async def test_emergency_rollback_not_blocked_by_action_kill_switch(app, db, default_tenant_id):
+    """Operator-authorized recovery must remain possible during a response freeze."""
+    class RecoverableAction(ActionType):
+        name = 'test.emergency.rollback'
+        description = 'Recovery kill switch regression'
+        risk = 'low'
+        reversible = True
+        platforms = ['argus']
+        params_schema = {'type': 'object', 'properties': {}, 'additionalProperties': False}
+
+        async def dry_run(self, params, ctx):
+            return DryRunResult(ok=True, summary='ok', blast_radius={'kind': 'host', 'entities': 1, 'ids': ['h1']})
+
+        async def execute(self, params, ctx):
+            return ExecResult(ok=True, summary='applied', rollback_payload={'host': 'h1'})
+
+        async def rollback(self, payload, ctx):
+            return ExecResult(ok=True, summary='restored')
+
+    catalog.register(RecoverableAction)
+    try:
+        tenant = db.get(Tenant, default_tenant_id)
+        tenant.actions_enabled = True
+        db.commit()
+        requester = Principal(tenant_id=default_tenant_id, role=Role.operator, user_id='emerg-req')
+        approver = Principal(tenant_id=default_tenant_id, role=Role.admin, user_id='emerg-admin')
+        req = await broker.request(db, requester, 'test.emergency.rollback', {}, 'recovery', settings=app.state.settings)
+        db.commit()
+        broker.approve(db, approver, req.id, 'approve')
+        db.commit()
+        run = await broker.execute(app, approver, req.id, db=db)
+        for _ in range(80):
+            db.expire_all()
+            if broker.get_run(db, approver, run.id).status == 'executed':
+                break
+            await asyncio.sleep(0.05)
+        assert broker.get_run(db, approver, run.id).status == 'executed'
+        app.state.settings.actions_kill_switch = True
+        await broker.rollback(app, approver, run.id)
+        for _ in range(80):
+            db.expire_all()
+            if broker.get_run(db, approver, run.id).status == 'rolled_back':
+                break
+            await asyncio.sleep(0.05)
+        assert broker.get_run(db, approver, run.id).status == 'rolled_back'
+    finally:
+        app.state.settings.actions_kill_switch = False
+        catalog.unregister('test.emergency.rollback')
+
+
 @respx.mock
 def test_streaming_gateway_sets_tenant_context_and_meters_usage(app, owner):
     client, headers = owner

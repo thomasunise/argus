@@ -40,11 +40,16 @@ async function usersTab(node) {
       { label: 'User', render: (u) => `<span class="cell-main">${esc(u.email)}${u.id === me ? ' <span class="subtle">(you)</span>' : ''}</span><span class="cell-sub">${esc(u.display_name || '')}</span>` },
       { label: 'Role', render: (u) => `<select class="select" data-change="role" data-id="${esc(u.id)}" ${u.id === me || (u.role === 'owner' && store.role !== 'owner') ? 'disabled' : ''}>${ROLES.map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''} ${grantable().includes(r) ? '' : 'disabled'}>${r}</option>`).join('')}</select>` },
       { label: 'State', render: (u) => `${tag(u.is_active ? 'active' : 'disabled')}${u.totp_enabled ? ' <span class="pill">TOTP</span>' : ''}${u.has_password ? '' : ' <span class="pill">SSO / invited</span>'}` }, { label: 'Last login', render: (u) => time(u.last_login_at) }, { label: 'Member since', render: (u) => esc(fmt(u.member_since)) },
-      { label: '', render: (u) => `<div class="inline-actions"><button class="btn small" data-act="reset" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Reset password</button>${u.id !== me ? `<button class="btn small" data-act="toggle" data-id="${esc(u.id)}" data-active="${u.is_active ? '1' : ''}">${u.is_active ? 'Deactivate' : 'Activate'}</button><button class="btn small negative" data-act="remove" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Remove</button>` : ''}</div>` }],
+      { label: '', render: (u) => `<div class="inline-actions"><button class="btn small" data-act="reset" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Reset password</button><button class="btn small" data-act="revoke-sessions" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Revoke sessions</button>${u.id !== me ? `<button class="btn small" data-act="toggle" data-id="${esc(u.id)}" data-active="${u.is_active ? '1' : ''}">${u.is_active ? 'Deactivate' : 'Activate'}</button><button class="btn small negative" data-act="remove" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Remove</button>` : ''}</div>` }],
     rows: data.items, empty: 'No members' });
   });
   bind(node, {
     'user-new': () => userForm(() => { store.forget('users:'); list.reload(true); }),
+    'revoke-sessions': async (el) => {
+      if (!(await confirm(`Force logout all sessions for ${el.dataset.email}?`, { label: 'Revoke sessions', danger: true }))) return;
+      await post(`/admin/users/${el.dataset.id}/revoke-sessions`, {});
+      toast('Active sessions revoked');
+    },
     reset: async (el) => {
       const result = await confirm(`Reset the password for ${el.dataset.email}? Leave the field empty to generate a temporary password.`, { label: 'Reset', comment: 'New password (optional, 14+ characters)' });
       if (!result) return;

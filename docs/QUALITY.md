@@ -16,7 +16,7 @@ be skipped to get a green build; fix the finding or record the debt here.
 
 ## Recorded debt
 
-- **mypy**: 103 errors in 54 files at the last ratchet lowering
+- **mypy**: 102 errors in 53 files at the last ratchet lowering
   (`docs/mypy-baseline.txt`). The ratchet fails CI if the count grows. Lower
   the baseline in the same change that fixes errors. Do not raise it, and do
   not weaken `[tool.mypy]` to make the count drop.

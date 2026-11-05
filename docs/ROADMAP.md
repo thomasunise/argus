@@ -86,13 +86,13 @@ Infrastructure and documentation
 
 Security hardening
 
-- [ ] PostgreSQL row-level security as defence in depth under the application scoping
-- [ ] Distributed rate limiting (Redis-backed) and per-tenant quotas
+- [x] PostgreSQL fail-closed tenant RLS and restricted runtime role (production integration tests required)
+- [x] Distributed Redis API rate limiting; [ ] per-tenant concurrency quotas
 - [ ] Identity-based Azure audit sink (replace the connection string)
-- [ ] Dedicated test-tool worker image with pinned binaries and an isolated egress path; DNS pinning in web adapters
-- [ ] Session revocation list and admin-forced logout
+- [x] Separate worker egress NetworkPolicy, configurable pinned scanner-worker image, bounded subprocess output and cancellation cleanup; [ ] per-scope network isolation for every scanner via dedicated sandbox jobs
+- [x] Database-backed account-wide session invalidation, forced logout and password reset revocation
 - [ ] Per-tenant encryption keys for stored evidence
-- [ ] Cancel of an agent run stops the model loop promptly (today the run is marked cancelled but the in-flight loop runs to its step/time budget)
+- [x] Agent model calls poll the job heartbeat while in flight and cancel the provider task when the job is cancelled or its deadline expires
 
 Detection and response
 
@@ -108,7 +108,7 @@ Autonomy and AI security
 
 Agents
 
-- [ ] Larger eval datasets with measured precision, recall and latency per provider and model
+- [ ] Larger independently labeled eval datasets; synthetic detection benchmark runner and external dataset import are available
 - [ ] Specialist-level tool allowlists per tenant; per-tenant provider and model selection exposed in admin settings UI
 - [ ] Cost reporting per tenant from `agent_runs`
 
@@ -123,9 +123,9 @@ Frontend
 
 Operations
 
-- [ ] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
+- [x] CI migration drift check (`scripts/migrate.py --check`) against PostgreSQL
 - [x] Retention and purge jobs: per-tenant policies for events, closed detections, agent runs and steps, job runs, deliveries, ingest batches, AI gateway log and canary hits
 - [x] Backup and restore automation: scheduled encrypted backups to local disk, S3 and Azure, pruning, verified restore with Alembic, Postgres restore drill in CI (`docs/BACKUP.md`)
 - [ ] Retention for test results and scan output (they back findings, so they need a finding-aware policy)
 - [ ] Evidence bundle export for assessors (zip of the items in `docs/COMPLIANCE.md`)
-- [ ] Redis-backed login throttling and rate limits shared across replicas
+- [x] Redis-backed failed-login throttling and shared API rate limits across replicas

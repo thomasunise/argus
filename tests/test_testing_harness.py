@@ -293,3 +293,26 @@ async def test_execute_run_respects_scope_max_concurrency(app, settings, default
         db.commit()
     result = await harness.execute_run(run_id, factory, settings, app)
     assert result['status'] == 'completed'
+
+
+
+@pytest.mark.asyncio
+async def test_run_tool_limits_output_while_child_is_running():
+    # The subprocess must not buffer multi-megabyte output before truncation.
+    code, out, err = await harness.run_tool(
+        [sys.executable, '-c', "import sys;sys.stdout.write('A' * (3 * 1024 * 1024));sys.stderr.write('B' * (3 * 1024 * 1024))"],
+        timeout=15)
+    assert code == 0
+    assert len(out.encode()) == harness.MAX_OUTPUT_BYTES
+    assert len(err.encode()) == harness.MAX_OUTPUT_BYTES
+
+
+@pytest.mark.asyncio
+async def test_run_tool_cancel_terminates_child_group():
+    import asyncio
+    task = asyncio.create_task(harness.run_tool(
+        [sys.executable, '-c', "import time;time.sleep(30)"], timeout=40))
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task

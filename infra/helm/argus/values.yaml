@@ -66,6 +66,9 @@ api:
 # ---------------------------------------------------------------- worker deployment
 worker:
   enabled: true
+  # Optional separate image built with sandbox/offensive-tools.Dockerfile; pin by digest.
+  # A scanner image still requires restrictive worker egress rules.
+  image: ""
   replicas: 2
   concurrency: 4
   resources:
@@ -149,6 +152,18 @@ networkPolicy:
       ports:
         - {protocol: TCP, port: 443}
 
+  # Worker egress is intentionally separate from API egress. Default permits
+  # database and Redis in the private network only. To use external collectors,
+  # model providers, and scanners, add exact authorized CIDRs/ports here and
+  # enforce per-scope egress in the dedicated sandbox executor for exploit jobs.
+  workerEgress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 6379}
+
 serviceMonitor:
   enabled: false
   namespace: ""          # defaults to release namespace
@@ -173,6 +188,9 @@ auditVolume:
 # and config.EXPLOIT_SANDBOX_IMAGE=<digest-pinned runtime image>.
 sandbox:
   enabled: false
+  # Explicit Kubernetes API server service/control-plane CIDRs, e.g. ["10.96.0.1/32"].
+  # Mandatory when sandbox.enabled=true. Avoid granting arbitrary HTTPS egress.
+  apiServerCIDRs: []
   namespace: argus-sandbox
   runtimeClassName: gvisor       # install the gVisor RuntimeClass first; use "runc" only for a lab
   engineImages: ""             # comma separated digest-pinned engine images (Strix); empty refuses every engine

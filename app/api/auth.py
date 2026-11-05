@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.db import set_tenant_context
-from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
+from ..core.errors import Conflict, Forbidden, NotFound, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
 from ..core.security import (
     generate_api_key,
@@ -57,31 +57,18 @@ def _client_key(request: Request) -> str:
 
 
 def _throttle(request: Request, settings: Settings, *extra_keys: str) -> None:
-    """Sliding-window limit per client address and per extra key (account, TOTP session). In-process; replicas
-    each keep their own window, so put an edge limiter in front for production."""
-    attempts: dict = request.app.state.login_attempts
-    now = time.monotonic()
-    if len(attempts) > 10000:  # scanners create keys that never return; prune idle ones
-        for stale in [k for k, v in attempts.items() if not v or now - v[-1] > settings.login_window_seconds]:
-            attempts.pop(stale, None)
-    for key in (_client_key(request), *extra_keys):
-        recent = [t for t in attempts.get(key, []) if now - t < settings.login_window_seconds]
-        if recent:
-            attempts[key] = recent
-        else:
-            attempts.pop(key, None)
-        if len(recent) >= settings.login_max_attempts:
-            raise RateLimited('Too many attempts, try again later')
+    """Check shared failed-login counters, using Redis across replicas."""
+    request.app.state.login_limiter.check((_client_key(request), *extra_keys),
+                                          settings.login_max_attempts, settings.login_window_seconds)
 
 
 def _record_failure(request: Request, *extra_keys: str) -> None:
-    for key in (_client_key(request), *extra_keys):
-        request.app.state.login_attempts.setdefault(key, []).append(time.monotonic())
+    request.app.state.login_limiter.record((_client_key(request), *extra_keys),
+                                           request.app.state.settings.login_window_seconds)
 
 
 def _clear_failures(request: Request, *extra_keys: str) -> None:
-    for key in (_client_key(request), *extra_keys):
-        request.app.state.login_attempts.pop(key, None)
+    request.app.state.login_limiter.clear((_client_key(request), *extra_keys))
 
 
 def _memberships(db: Session, user_id: str) -> list[tuple[Membership, Tenant]]:
@@ -163,6 +150,10 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
 @router.post('/logout')
 def logout(request: Request, db: Session = Depends(get_db), principal: Principal | None = Depends(current_principal)):
     if principal and principal.auth == 'session':
+        # Invalidate all previously issued signed cookies for this account.
+        user = db.get(User, principal.user_id)
+        if user is not None:
+            user.sessions_invalidated_at = utcnow()
         record_audit(db, principal, 'auth.logout', principal.user_id or '')
     request.session.clear()
     return {'ok': True}
