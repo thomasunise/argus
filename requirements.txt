@@ -16,7 +16,7 @@ PyYAML>=6,<7
 defusedxml>=0.7,<1
 
 # Model providers
-anthropic>=0.60
-openai>=1.40,<3
+anthropic>=2.3.0
+openai>=3.42.1,<4
 
 # Test-only dependencies live in requirements-dev.txt (not shipped in the image).
