@@ -79,7 +79,7 @@ def validate_outbound_url(url: Any, settings: Settings, *, resolve: bool = True,
             results = socket.getaddrinfo(hostname, parts.port or (443 if scheme == 'https' else 80), type=socket.SOCK_STREAM)
         except (socket.gaierror, OSError, UnicodeError):
             results = []
-        addresses = {entry[4][0] for entry in results}
+        addresses = {str(entry[4][0]) for entry in results}
         if addresses and any(not allowed_ip(ip, settings) for ip in addresses):
             raise EgressDenied(f'{label} resolves to a private, loopback or link-local address')
     return text

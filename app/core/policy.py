@@ -38,7 +38,7 @@ def validate_web_target(target: str, settings: Settings, *, resolve: bool = True
             results = socket.getaddrinfo(hostname, value.port or 443, type=socket.SOCK_STREAM)
         except socket.gaierror as exc:
             raise PolicyDenied('Could not resolve target hostname') from exc
-        ips = {entry[4][0] for entry in results}
+        ips = {str(entry[4][0]) for entry in results}
         if not ips or any(not allowed_ip(ip, settings) for ip in ips):
             raise PolicyDenied('Target resolves outside permitted IP ranges')
     return f'https://{hostname}' + (':8443' if value.port == 8443 else '')
