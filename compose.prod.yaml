@@ -13,6 +13,8 @@
 #   TOTP_REQUIRED=false             only together with OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET (single sign-on)
 #   AUDIT_S3_BUCKET / AUDIT_AZURE_CONTAINER   object-lock mirror; needs the `<tag>-extras` image (boto3 / azure-storage-blob).
 #   AUDIT_JSONL_PATH is set by compose.yaml.
+# Set ARGUS_DATABASE_URL to the restricted, non-owner PostgreSQL runtime connection;
+# apply migrations separately with ALEMBIC_DATABASE_URL (docs/TENANT-ISOLATION.md).
 # Pin ARGUS_IMAGE to a signed, digest-pinned release (see .github/workflows/release.yml).
 
 # Production settings shared by every Argus process; both api and worker call
@@ -26,7 +28,7 @@ x-production-env: &production-env
   LOG_JSON: "true"
   BASE_URL: https://${ARGUS_DOMAIN:?set ARGUS_DOMAIN}
   TOTP_REQUIRED: ${TOTP_REQUIRED:-true}   # OIDC deployments set TOTP_REQUIRED=false in .env together with OIDC_ISSUER
-  BACKUP_ENABLED: ${BACKUP_ENABLED:-true}      # daily encrypted backups into the argus-data volume (docs/BACKUP.md); add BACKUP_S3_BUCKET for off-host copies
+  BACKUP_ENABLED: ${BACKUP_ENABLED:-false}     # restricted runtime role cannot back up all tenants; use separate privileged backup job (docs/TENANT-ISOLATION.md)
   RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
 
 services:

@@ -210,6 +210,7 @@ jobs:
           {
             python3 scripts/generate_secrets.py
             echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
+             echo "GRAFANA_ADMIN_PASSWORD=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
             echo "ARGUS_IMAGE=argus:ci"
             echo "DB_AUTO_CREATE=false"
             echo "LOG_JSON=true"

@@ -21,6 +21,12 @@ variable "image" {
   type        = string
 }
 
+variable "runtime_database_url" {
+  description = "Restricted non-owner PostgreSQL application URL (argus_runtime). Provision the role and apply Alembic migrations separately as the schema owner; never supply the Azure administrator connection."
+  type        = string
+  sensitive   = true
+}
+
 variable "domain_name" {
   description = "Public hostname served by Front Door (BASE_URL)."
   type        = string

@@ -34,7 +34,8 @@ spec:
     scaleDown:
       stabilizationWindowSeconds: 300
 {{- end }}
-{{- if .Values.worker.hpa.enabled }}
+{{ if .Values.worker.hpa.enabled }}
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

@@ -38,7 +38,7 @@ containerSecurityContext:
 # ---------------------------------------------------------------- API deployment
 api:
   replicas: 2
-  runMigrations: true          # entrypoint runs scripts/migrate.py before uvicorn (one replica wins; migrations are idempotent)
+  runMigrations: false         # production runtime must use a non-owner RLS role; migrate separately using owner credentials
   uvicornWorkers: 1
   forwardedAllowIps: "*"       # the ingress controller is the only client inside the cluster network policy
   resources:

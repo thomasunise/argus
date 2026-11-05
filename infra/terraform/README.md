@@ -11,7 +11,7 @@ adapt, not a turnkey module: read every file before `apply`.
 |---|---|---|
 | Network | VPC, 2 public + 2 private subnets, NAT per AZ, S3 gateway endpoint | Tasks and data stores have no public IPs |
 | Compute | ECS cluster, `api` and `worker` Fargate services | Same image, `command` selects the role; read-only root FS, all capabilities dropped, non-root UID 10001 |
-| Database | RDS PostgreSQL 16, Multi-AZ, encrypted with a CMK, `rds.force_ssl=1`, deletion protection | `DATABASE_URL` is assembled into Secrets Manager with `sslmode=require` |
+| Database | RDS PostgreSQL 16, Multi-AZ, encrypted with a CMK, `rds.force_ssl=1`, deletion protection | `DATABASE_URL` in Secrets Manager uses the externally provisioned restricted `runtime_database_url` (not the master login) |
 | Queue | ElastiCache Redis 7 replication group, TLS + AUTH, `noeviction` | `REDIS_URL` uses `rediss://` |
 | Audit WORM | S3 bucket, versioning, Object Lock COMPLIANCE default retention, SSE-KMS, TLS-only policy | The task role may only `s3:PutObject` under the audit prefix |
 | Secrets | Secrets Manager entries for `SESSION_SECRET`, `ADMIN_PASSWORD`, `INGEST_API_KEY`, `AUDIT_SIGNING_KEY`, `DATABASE_URL`, `REDIS_URL`; empty containers for `OIDC_CLIENT_SECRET`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Injected as task `secrets`, never as plain environment |
@@ -36,8 +36,14 @@ Then:
    `aws secretsmanager get-secret-value --secret-id argus-production/ADMIN_PASSWORD --query SecretString --output text`
 3. Log in at `https://<domain_name>` and follow the production checklist in `docs/DEPLOYMENT.md`.
 
-The API task runs `scripts/migrate.py` at start (`RUN_MIGRATIONS=true`). Migrations are
-idempotent, so two API tasks starting at once is safe.
+**Required before starting ECS tasks:** provision a separate `argus_runtime` login on RDS
+that does not own tables or bypass RLS, and apply Alembic migrations with the database
+schema-owner credentials. Follow `docs/TENANT-ISOLATION.md`. Supply the restricted
+`runtime_database_url` to Terraform (sensitive; persisted in Terraform state and Secrets
+Manager). The API and worker set `RUN_MIGRATIONS=false`; neither has privileges to run
+migrations. For a brand-new RDS instance, provision the database infrastructure first,
+then bootstrap the schema/role and apply the complete stack. Do not use the RDS master
+connection string as the runtime URL.
 
 ## Decisions you must make
 

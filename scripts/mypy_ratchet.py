@@ -28,6 +28,9 @@ def main() -> int:
     count = int(match.group(1))
     print(f'mypy: {count} errors (baseline allows {allowed})')
     if count > allowed:
+        print(proc.stdout, end='')  # Surface the exact regressions in CI.
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr, end='')
         print('mypy ratchet: error count grew. Fix the new errors; do not raise the baseline.')
         return 1
     if count < allowed:

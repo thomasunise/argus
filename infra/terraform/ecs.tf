@@ -57,7 +57,7 @@ resource "aws_ecs_task_definition" "api" {
       linuxParameters        = local.linux_parameters
       portMappings           = [{ containerPort = 8080, protocol = "tcp" }]
       environment = concat(local.environment_list, [
-        { name = "RUN_MIGRATIONS", value = "true" },
+        { name = "RUN_MIGRATIONS", value = "false" },
         { name = "WORKERS_INPROCESS", value = "false" },
       ])
       secrets = local.secret_list

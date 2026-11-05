@@ -7,6 +7,10 @@ location    = "eastus2"
 # (boto3 / azure-storage-blob); use the "Extras image" digest from the release notes, not the base one.
 image = "ghcr.io/thomasunise/argus@sha256:REPLACE_WITH_RELEASE_EXTRAS_DIGEST"
 
+# Provision the database and restricted argus_runtime role first (docs/TENANT-ISOLATION.md).
+# Use the non-owner account, never the Flexible Server administrator. Treat this as a secret.
+runtime_database_url = "postgresql+psycopg://argus_runtime:REPLACE_WITH_SECRET@AZURE_PG_HOST:5432/argus?sslmode=require"
+
 domain_name = "argus.example.com"
 
 api_min_replicas = 2

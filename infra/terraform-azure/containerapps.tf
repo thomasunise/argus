@@ -77,7 +77,7 @@ resource "azurerm_container_app" "api" {
 
       dynamic "env" {
         for_each = concat(local.env_list, [
-          { name = "RUN_MIGRATIONS", value = "true" },
+          { name = "RUN_MIGRATIONS", value = "false" },
           { name = "WORKERS_INPROCESS", value = "false" },
           { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = azurerm_application_insights.this.connection_string },
         ])

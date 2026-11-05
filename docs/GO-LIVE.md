@@ -130,7 +130,7 @@ Then set these by hand. Every one of them is enforced by `assert_safe_config` at
 | `AUTOSCAN_ENABLED` | `false` | |
 | `ALLOW_PRIVATE_TARGETS` | `false` | |
 | `ENABLE_TRIVY`, `NUCLEI_TEMPLATES`, `ZAP_URL`, `CALDERA_URL` | `false` / empty | |
-| `RUN_MIGRATIONS` | `true` on the API | compose and Helm set it; the worker never migrates |
+| `RUN_MIGRATIONS` | `false` in production | Apply migrations separately with `ALEMBIC_DATABASE_URL` and owner credentials; API and worker run restricted |
 | `FORWARDED_ALLOW_IPS` | `*` behind Caddy/ingress/ALB on an isolated network | compose.prod.yaml sets it |
 | `POSTGRES_PASSWORD` | 32 random chars | compose `postgres` service only |
 | `ARGUS_DOMAIN`, `ACME_EMAIL` | public hostname, ops mailbox | compose.prod.yaml only |
@@ -157,13 +157,13 @@ docker run --rm --env-file .env -e DATABASE_URL=postgresql+psycopg://x:x@localho
   docker compose -f compose.yaml -f compose.prod.yaml up -d postgres redis
   docker compose ps            # postgres and redis "healthy"
   ```
-- [ ] **3.3 Migrate explicitly**, then start the API and worker (the API would also migrate on start; doing it first gives a clean log line to attach to the ticket):
+- [ ] **3.3 Migrate explicitly as the schema owner**, then start the API and worker (production runtime credentials cannot migrate):
   ```bash
-  docker compose -f compose.yaml -f compose.prod.yaml run --rm --no-deps api migrate
-  docker compose -f compose.yaml -f compose.prod.yaml run --rm --no-deps api python scripts/migrate.py --current   # expect "Rev: <head>"
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://SCHEMA_OWNER:...@HOST/argus?sslmode=require" python scripts/migrate.py
+  ALEMBIC_DATABASE_URL="postgresql+psycopg://SCHEMA_OWNER:...@HOST/argus?sslmode=require" python scripts/migrate.py --current
   docker compose -f compose.yaml -f compose.prod.yaml up -d api worker caddy
   ```
-  Kubernetes: `helm upgrade --install ...` (the API pods migrate, `maxUnavailable: 0`). ECS/Container Apps: the API task migrates at start.
+  Kubernetes, ECS and Container Apps: run migrations separately with the schema-owner credential before deploying; application services use a non-owner runtime role.
 - [ ] **3.4 Health, readiness, kill switch**:
   ```bash
   curl -fsS "$BASE/health"      # {"status":"healthy","version":"1.0.0"}

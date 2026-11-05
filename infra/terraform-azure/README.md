@@ -12,7 +12,7 @@ Door origin wiring, Key Vault network rules) are deliberately left for you to de
 |---|---|---|
 | Network | VNet with delegated subnets for Container Apps and Postgres, a private-endpoint subnet, private DNS zones | Postgres, Redis and Storage have no public endpoints |
 | Compute | Container Apps environment (internal, zone redundant), `api` app with HTTP scaling, `worker` app between `worker_replicas` and `worker_max_replicas` | Same image; `args` selects the role; user-assigned identity reads Key Vault. The azurerm 4.x provider has no CPU scale rule for Container Apps, so the worker scales within its replica range via Container Apps defaults or an external scaler (KEDA Redis scaler on `argus:q:*` depth); AWS (ECS CPU target tracking) and Helm (worker HPA) scale on CPU directly. |
-| Database | PostgreSQL Flexible Server 16, zone-redundant HA, `require_secure_transport=on`, `prevent_destroy` | `DATABASE_URL` assembled into Key Vault with `sslmode=require` |
+| Database | PostgreSQL Flexible Server 16, zone-redundant HA, `require_secure_transport=on`, `prevent_destroy` | `DATABASE_URL` in Key Vault uses the externally provisioned restricted `runtime_database_url` (not the administrator login) |
 | Queue | Azure Cache for Redis, TLS only, `noeviction`, private endpoint | `REDIS_URL` uses `rediss://` |
 | Audit WORM | GZRS storage account, versioning, container with a time-based immutability policy | `lock_audit_policy=true` makes it irreversible, which is the point of WORM |
 | Secrets | Key Vault (RBAC, purge protection) with generated secrets and placeholders for OIDC / model keys | Container Apps reference Key Vault secrets via the app identity |
@@ -39,6 +39,14 @@ Then:
 3. Read the bootstrap owner password:
    `az keyvault secret show --vault-name <key_vault_name> --name admin-password --query value -o tsv`
 4. Follow the production checklist in `docs/DEPLOYMENT.md`.
+
+**Required before starting Container Apps:** provision a separate `argus_runtime` login
+on PostgreSQL that does not own tables or bypass RLS; run Alembic with the schema-owner
+credentials, as described in `docs/TENANT-ISOLATION.md`. Set the sensitive
+`runtime_database_url` Terraform variable to this restricted connection (it is stored
+in Terraform state and Key Vault). The API and worker use `RUN_MIGRATIONS=false` and
+cannot run schema migrations. For a new server, provision database infrastructure
+first, then run schema/role bootstrap and apply the complete stack.
 
 ## Decisions you must make
 

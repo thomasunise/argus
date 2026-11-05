@@ -38,7 +38,7 @@ locals {
     INGEST_API_KEY      = "argus_${random_id.ingest_prefix.hex}_${random_password.ingest_api_key.result}"
     AUDIT_SIGNING_KEY   = random_password.audit_signing_key.result
     DATA_ENCRYPTION_KEY = random_password.data_encryption_key.result
-    DATABASE_URL        = "postgresql+psycopg://argus:${random_password.db.result}@${aws_db_instance.this.address}:5432/argus?sslmode=require"
+    DATABASE_URL        = var.runtime_database_url
     REDIS_URL           = "rediss://:${random_password.redis.result}@${aws_elasticache_replication_group.this.primary_endpoint_address}:6379/0"
   }
 }

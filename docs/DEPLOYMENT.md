@@ -27,7 +27,7 @@ when `AUTOSCAN_ENABLED=true`. They run in whichever process has them enabled; in
 multi-process deployment the engines tolerate duplicate runs (fingerprint dedupe, idempotency
 keys), but prefer a single API replica running schedulers or a dedicated scheduler replica.
 
-Production PostgreSQL now requires a restricted non-owner runtime DATABASE_URL, with Alembic run separately under migration-owner credentials. See [tenant isolation](TENANT-ISOLATION.md).
+Production PostgreSQL requires a restricted non-owner runtime DATABASE_URL, with Alembic run separately under migration-owner credentials. This also applies to production Compose, Helm, and AWS/Azure Terraform templates; the API must not run migrations. Supply `runtime_database_url` explicitly in Terraform after provisioning the role. See [tenant isolation](TENANT-ISOLATION.md).
 
 Schema: `scripts/migrate.py` runs `alembic upgrade head` (the initial revision creates every
 table). Set `DB_AUTO_CREATE=false` wherever migrations own the schema so the application never
@@ -146,7 +146,7 @@ What the chart renders:
 
 - `Deployment` api (rolling, `maxUnavailable: 0`, startup/liveness `/health`, readiness `/ready`) and worker (exec liveness; the Redis lease reaper requeues jobs of a dead worker).
 - `HorizontalPodAutoscaler` for the API (CPU and memory), `PodDisruptionBudget` for both.
-- `ConfigMap` from `values.config`, `Secret` from `values.secrets` unless `existingSecret` is set (recommended; pods roll on checksum change).
+- `ConfigMap` from `values.config`, `Secret` from `values.secrets` unless `existingSecret` is set (recommended; pods roll on checksum change). Run Alembic with separate migration credentials before Helm deployment; `api.runMigrations` defaults to `false` for restricted production runtime roles.
 - `Service`, `Ingress` with TLS and nginx annotations (redirect, body size, timeouts, `limit-rps`). The chart does not block `/metrics` itself: ingress-nginx 1.12+ rejects the `server-snippet` annotation at admission, so block it at your edge or disable it (see below).
 - `NetworkPolicy`: default deny; API ingress from the ingress-controller namespace (and the monitoring namespace when `serviceMonitor.enabled`); egress allows DNS plus the list in `networkPolicy.egress` (Postgres, Redis, HTTPS). Workers get the same egress because collectors and adapters run there.
 - `ServiceAccount` with `automountServiceAccountToken: false`; annotate it for IRSA or Workload Identity if the audit sink uses S3 or Azure.
