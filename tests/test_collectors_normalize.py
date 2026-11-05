@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from app.collectors import load_builtin, registry
 from app.collectors.aws import summarize_policy
 from app.collectors.base import CollectorResult, is_private_ip, is_secret_ref, jsonable, parse_time, validate_config
@@ -82,16 +81,16 @@ def test_validate_config_subset():
 def test_secret_ref_and_time_helpers():
     assert is_secret_ref('env:AWS_SECRET') and is_secret_ref('file:/run/secrets/x') and is_secret_ref('secrets:okta') and is_secret_ref('literal:abc')
     assert not is_secret_ref('AKIAIOSFODNN7EXAMPLE') and not is_secret_ref('env:') and not is_secret_ref(123)
-    assert parse_time('2026-10-23T12:00:00Z') == datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
-    assert parse_time(1761220800) == datetime(2025, 10, 23, 12, tzinfo=timezone.utc)
-    assert parse_time('1761220800') == datetime(2025, 10, 23, 12, tzinfo=timezone.utc)
-    assert parse_time(1761220800000) == datetime(2025, 10, 23, 12, tzinfo=timezone.utc)  # milliseconds
+    assert parse_time('2026-10-23T12:00:00Z') == datetime(2026, 10, 23, 12, tzinfo=UTC)
+    assert parse_time(1761220800) == datetime(2025, 10, 23, 12, tzinfo=UTC)
+    assert parse_time('1761220800') == datetime(2025, 10, 23, 12, tzinfo=UTC)
+    assert parse_time(1761220800000) == datetime(2025, 10, 23, 12, tzinfo=UTC)  # milliseconds
     assert parse_time('2026-10-23T12:00:00.1234567+00:00').microsecond == 123456
     assert parse_time('garbage') is None and parse_time(None) is None
     assert is_private_ip('10.1.2.3') and is_private_ip('192.168.0.1') and is_private_ip('127.0.0.1') and is_private_ip('fe80::1') and is_private_ip('100.64.0.9')
     assert not is_private_ip('203.0.113.5') and not is_private_ip('8.8.8.8') and not is_private_ip('nope')
     assert is_private_ip('203.0.113.5', ['203.0.113.0/24'])
-    assert jsonable({'when': datetime(2026, 1, 1, tzinfo=timezone.utc), 'b': b'x', 's': {1, 2}}) == {'when': '2026-01-01T00:00:00+00:00', 'b': '<bytes>', 's': [1, 2]}
+    assert jsonable({'when': datetime(2026, 1, 1, tzinfo=UTC), 'b': b'x', 's': {1, 2}}) == {'when': '2026-01-01T00:00:00+00:00', 'b': '<bytes>', 's': [1, 2]}
 
 
 def test_result_dedupes_nodes_edges_and_events():
@@ -266,7 +265,7 @@ def test_okta_normalize():
     assert node(r, 'identity', 'okta:user:00u4dave').props['status'] == 'SUSPENDED'
     failure = next(e for e in r.events if e.action == 'sign_in_failure')
     assert failure.actor == 'bob@acme.com' and failure.metadata['ip'] == '203.0.113.45' and failure.metadata['user_agent'] == 'Mozilla/5.0'
-    assert failure.metadata['reason'] == 'INVALID_CREDENTIALS' and failure.occurred_at == datetime(2026, 10, 23, 6, tzinfo=timezone.utc)
+    assert failure.metadata['reason'] == 'INVALID_CREDENTIALS' and failure.occurred_at == datetime(2026, 10, 23, 6, tzinfo=UTC)
     grant = next(e for e in r.events if e.action == 'admin_privilege_granted')
     assert grant.actor == 'alice@acme.com' and grant.entity == 'carol@acme.com' and grant.external_id == 'okta:log:e1-0004'
     assert not any(e.external_id == 'okta:log:e1-0002' for e in r.events)  # successful sign-in is not an event

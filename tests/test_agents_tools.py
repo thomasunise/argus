@@ -1,4 +1,4 @@
-﻿"""Agent tools against seeded data, graceful degradation for missing sibling packages, and
+"""Agent tools against seeded data, graceful degradation for missing sibling packages, and
 tenant isolation."""
 from __future__ import annotations
 
@@ -6,15 +6,13 @@ import types
 
 import httpx
 import pytest
-from sqlalchemy import select
-
-from app.agents.tools import actions, assets, detections, events, findings, graph, intel, memory, tests_tool  # noqa: F401
+from app.agents.tools import actions, assets, detections, events, exploit, findings, graph, intel, memory, tests_tool  # noqa: F401
 from app.agents.tools.registry import registry
 from app.core.audit import record_audit
 from app.core.rbac import Role
 from app.models import AuditEntry
+from sqlalchemy import select
 from tests.test_agents_support import fake_modules, module, no_network, principal_for, seed_estate, tool_ctx  # noqa: F401
-
 
 
 async def call(ctx, name, **args):
@@ -131,7 +129,7 @@ async def test_detection_tools_degrade_and_rule_catalog(app, db, default_tenant_
 
 
 @pytest.mark.asyncio
-async def test_intel_tools(app, db, default_tenant_id, no_network):
+async def test_intel_tools(app, db, default_tenant_id, no_network):  # noqa: F811 - fixture imported above, not a redefinition
     ctx = tool_ctx(app, db, default_tenant_id)
     # Network failure never raises.
     failed = await call(ctx, 'cve_lookup', cve_id='CVE-2024-3094')

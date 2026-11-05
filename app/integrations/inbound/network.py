@@ -5,7 +5,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, event, first, hash_item
+from ._common import ParseContext, Parser, as_dict, event, first, hash_item
 
 
 class SuricataParser(Parser):
@@ -21,12 +21,12 @@ class SuricataParser(Parser):
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
         kind = str(item.get('event_type') or 'event').lower()
-        alert = item.get('alert') if isinstance(item.get('alert'), dict) else {}
+        alert = as_dict(item.get('alert'))
         level = int(alert.get('severity') or 4) if str(alert.get('severity') or 4).isdigit() else 4
         severity = {1: 'critical', 2: 'high', 3: 'medium'}.get(level, 'low') if kind == 'alert' else 'informational'
         src = str(item.get('src_ip') or '')
         dst = str(item.get('dest_ip') or '')
-        modbus = item.get('modbus') if isinstance(item.get('modbus'), dict) else {}
+        modbus = as_dict(item.get('modbus'))
         try:
             fc = int(modbus.get('function_code')) if modbus.get('function_code') is not None else 0
         except (ValueError, TypeError):

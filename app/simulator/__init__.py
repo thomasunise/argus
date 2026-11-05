@@ -51,20 +51,25 @@ def execute(db_factory, settings, tenant_id: str, run_id: str) -> dict:
         for scenario_id in scenario_ids:
             with session_scope(db_factory) as db:
                 tenant = db.get(Tenant, tenant_id)
+                assert tenant is not None
                 sandbox = runner.sandbox_for(db, tenant)
                 reports.append(runner.run_scenario(db, tenant, sandbox, scenario_id, intensity=intensity, evasion=evasion, run_id=run_id, settings=settings))
     except Exception as exc:
         log.exception('simulation %s failed', run_id)
         with session_scope(db_factory) as db:
             run = db.get(SimulationRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'failed', f'{type(exc).__name__}: {exc}'[:500], utcnow()
             run.results_json = dumps(reports, limit=200_000)
-            sandbox = runner.sandbox_for(db, db.get(Tenant, tenant_id))
+            tenant2 = db.get(Tenant, tenant_id)
+            assert tenant2 is not None
+            sandbox = runner.sandbox_for(db, tenant2)
             runner.purge(db, sandbox)
         raise
     summary = runner.summarize(reports)
     with session_scope(db_factory) as db:
         run = db.get(SimulationRun, run_id)
+        assert run is not None
         run.status, run.finished_at = 'completed', utcnow()
         run.results_json = dumps(reports, limit=200_000)
         run.summary_json = dumps(summary)

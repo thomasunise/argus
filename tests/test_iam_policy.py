@@ -1,6 +1,5 @@
 """Bounded IAM simulation must not report authorization as proven."""
 import pytest
-
 from app.ai.iam_policy import evaluate_identity_policies
 
 

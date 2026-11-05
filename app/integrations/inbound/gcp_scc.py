@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, hash_item, scan_markers, snake
+from ._common import ParseContext, Parser, as_dict, dig, event, first, hash_item, scan_markers, snake
 
 # methodName (lower-case) -> dotted action the rules recognise.
 _METHODS = {
@@ -87,8 +87,8 @@ class GcpSccParser(Parser):
 
     def _finding(self, finding: dict, resource: dict) -> EventDraft:
         category = str(finding.get('category') or 'FINDING')
-        access = finding.get('access') if isinstance(finding.get('access'), dict) else {}
-        source_props = finding.get('sourceProperties') if isinstance(finding.get('sourceProperties'), dict) else {}
+        access = as_dict(finding.get('access'))
+        source_props = as_dict(finding.get('sourceProperties'))
         name = str(finding.get('name') or '')
         resource_name = str(finding.get('resourceName') or resource.get('name') or '')
         parent_parts = [p for p in str(finding.get('parent') or '').split('/') if p]
@@ -117,11 +117,11 @@ class GcpSccParser(Parser):
         service_name = str(proto.get('serviceName') or '')
         method = str(proto.get('methodName') or 'unknown')
         action = _audit_action(service_name, method)
-        request_meta = proto.get('requestMetadata') if isinstance(proto.get('requestMetadata'), dict) else {}
-        auth = proto.get('authenticationInfo') if isinstance(proto.get('authenticationInfo'), dict) else {}
-        resource = entry.get('resource') if isinstance(entry.get('resource'), dict) else {}
-        labels = resource.get('labels') if isinstance(resource.get('labels'), dict) else {}
-        request = proto.get('request') if isinstance(proto.get('request'), dict) else {}
+        request_meta = as_dict(proto.get('requestMetadata'))
+        auth = as_dict(proto.get('authenticationInfo'))
+        resource = as_dict(entry.get('resource'))
+        labels = as_dict(resource.get('labels'))
+        request = as_dict(proto.get('request'))
         markers = scan_markers(request) if action in _EXPOSURE else []
         actor = str(auth.get('principalEmail') or auth.get('principalSubject') or '')
         delegation = dig(auth, 'serviceAccountDelegationInfo')
@@ -137,7 +137,7 @@ class GcpSccParser(Parser):
             severity = 'medium' if any(w in action for w in ('.insert', '.delete', '.patch', '.update', '.create', '.set_')) else 'low'
         if markers and action in _EXPOSURE:
             severity = 'high'
-        status = proto.get('status') if isinstance(proto.get('status'), dict) else {}
+        status = as_dict(proto.get('status'))
         meta: dict[str, Any] = {
             'ip': request_meta.get('callerIp') or '', 'user_agent': request_meta.get('callerSuppliedUserAgent') or '', 'service': _SERVICE_SHORT.get(service_name.lower(), service_name.split('.')[0]),
             'service_name': service_name, 'method': method, 'project': labels.get('project_id') or '', 'region': labels.get('location') or labels.get('zone') or '',

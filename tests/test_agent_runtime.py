@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
-
 from app.agents.providers import ModelTurn, Provider, ToolCall, Usage
 from app.agents.runtime import AgentRuntime, AgentSpec, wrap_untrusted
 from app.agents.tools.registry import Tool, ToolRegistry
 from app.core.rbac import Principal, Role
 from app.models import AgentRun, AgentStep
+from sqlalchemy import select
 
 
 class ScriptedProvider(Provider):

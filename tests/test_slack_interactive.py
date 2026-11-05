@@ -9,14 +9,13 @@ from urllib.parse import urlencode
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
 from app.actions import catalog
 from app.api import slack as slack_api
 from app.integrations.outbound import OutboundEvent
 from app.integrations.outbound.slack import build_blocks
 from app.models import AuditEntry
+from fastapi.testclient import TestClient
+from sqlalchemy import select
 from tests.conftest import login, wait_for
 from tests.test_autoresponse import Fake, FakeHigh
 

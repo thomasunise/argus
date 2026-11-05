@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AI_PROVIDERS = {'none', 'anthropic', 'openai', 'ollama'}
@@ -113,8 +113,8 @@ class Settings(BaseSettings):
     # --- autonomous pentesting (autopilot) ---
     autopentest_enabled: bool = False
     autopentest_kill_switch: bool = False
-    # --- native autonomous pentest (app.pentest; installed by default, gated by scope) ---
-    pentest_enabled: bool = True
+    # --- native autonomous pentest (app.pentest; off by default, gated by scope) ---
+    pentest_enabled: bool = False
     pentest_kill_switch: bool = False
     pentest_max_steps: int = 20
     pentest_max_rounds: int = 3
@@ -225,7 +225,7 @@ class Settings(BaseSettings):
     secrets_backend: str = 'env'  # env, file
     secrets_file: str = ''
     data_encryption_key: str = ''
-    secret_env_prefix: str = 'ARGUS_SECRET_'  # env: refs must start with this prefix or be allowlisted
+    secret_env_prefix: str = 'ARGUS_SECRET_'  # noqa: S105 - env var name prefix, not a secret  # env: refs must start with this prefix or be allowlisted
     secret_env_allowlist: str = ''  # comma separated env names; '*' allows any (development only)
     secrets_dir: Path = Path('/run/secrets')  # file: refs must resolve under this directory
     max_request_body_bytes: int = 8 * 1024 * 1024
@@ -241,6 +241,14 @@ class Settings(BaseSettings):
     # --- limits ---
     ingest_rate_limit_per_minute: int = 1200
     api_rate_limit_per_minute: int = 600
+
+    @field_validator('app_env')
+    @classmethod
+    def _app_env(cls, value: str) -> str:
+        value = (value or 'development').lower()
+        if value not in {'development', 'staging', 'production'}:
+            raise ValueError('APP_ENV must be development, staging or production')
+        return value
 
     @field_validator('ai_provider')
     @classmethod
@@ -295,6 +303,62 @@ def parse_model_prices(raw: str) -> dict[str, tuple[float, float]]:
     return prices
 
 
+def _assert_production(settings: Settings) -> None:
+    if settings.sqlite:
+        raise RuntimeError('Production requires PostgreSQL (DATABASE_URL=postgresql+psycopg://...)')
+    if not settings.cookie_secure:
+        raise RuntimeError('Production requires COOKIE_SECURE=true behind HTTPS')
+    if not settings.redis_url:
+        raise RuntimeError('Production requires REDIS_URL for durable job processing')
+    if not settings.base_url.startswith('https://'):
+        raise RuntimeError('Production requires BASE_URL to be an https:// URL')
+    if not (settings.data_encryption_key or settings.data_encryption_keys):
+        raise RuntimeError('Production requires DATA_ENCRYPTION_KEY (or DATA_ENCRYPTION_KEYS) for encryption at rest')
+    if not (settings.audit_signing_key or settings.audit_signing_keys):
+        raise RuntimeError('Production requires AUDIT_SIGNING_KEY (or AUDIT_SIGNING_KEYS)')
+    if not (settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
+        raise RuntimeError('Production requires an external audit sink (AUDIT_JSONL_PATH, AUDIT_S3_BUCKET or AUDIT_AZURE_CONTAINER)')
+    if not settings.totp_required and not settings.oidc_issuer:
+        raise RuntimeError('Production requires TOTP_REQUIRED=true or OIDC single sign-on')
+    if settings.secret_env_allowlist.strip() == '*':
+        raise RuntimeError('SECRET_ENV_ALLOWLIST=* is not permitted in production; list the exact variable names')
+    if settings.allow_private_targets and not settings.private_target_cidrs:
+        raise RuntimeError('ALLOW_PRIVATE_TARGETS requires an explicit PRIVATE_TARGET_CIDRS allowlist')
+    settings.__dict__['allow_literal_secret_refs'] = False
+
+
+def _assert_exploit_family(settings: Settings) -> None:
+    if settings.exploit_enabled:
+        if not settings.exploit_sandbox_image.strip():
+            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_SANDBOX_IMAGE')
+        if settings.exploit_require_image_digest and '@sha256:' not in settings.exploit_sandbox_image:
+            raise RuntimeError('EXPLOIT_SANDBOX_IMAGE must be pinned by digest (image@sha256:...) unless EXPLOIT_REQUIRE_IMAGE_DIGEST=false')
+        if not settings.exploit_executor_url.strip():
+            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_EXECUTOR_URL (the sandbox executor control API)')
+        if settings.is_production and not settings.exploit_executor_url.startswith('https://'):
+            raise RuntimeError('Production requires EXPLOIT_EXECUTOR_URL to be an https:// URL')
+        if settings.exploit_max_wall_seconds < 10 or settings.exploit_max_memory_mb < 64 or settings.exploit_max_pids < 16:
+            raise RuntimeError('Exploit sandbox limits are too low: require EXPLOIT_MAX_WALL_SECONDS >= 10, EXPLOIT_MAX_MEMORY_MB >= 64, EXPLOIT_MAX_PIDS >= 16')
+    if settings.discovery_enabled:
+        if not settings.exploit_executor_url:
+            raise RuntimeError('DISCOVERY_ENABLED requires EXPLOIT_EXECUTOR_URL (discovery runs in the sandbox executor)')
+        if '@sha256:' not in settings.discovery_image:
+            raise RuntimeError('DISCOVERY_IMAGE must be pinned by digest (image@sha256:...)')
+        if settings.discovery_max_endpoints < 1 or settings.discovery_max_wall_seconds < 30:
+            raise RuntimeError('DISCOVERY_MAX_ENDPOINTS must be >= 1 and DISCOVERY_MAX_WALL_SECONDS >= 30')
+    if settings.strix_enabled:
+        if not settings.exploit_enabled:
+            raise RuntimeError('STRIX_ENABLED requires EXPLOIT_ENABLED: the engine runs at tier exploit')
+        if '@sha256:' not in settings.strix_image:
+            raise RuntimeError('STRIX_IMAGE must be pinned by digest (image@sha256:...)')
+        if not settings.strix_model:
+            raise RuntimeError('STRIX_ENABLED requires STRIX_MODEL')
+        if not settings.strix_llm_api_key:
+            raise RuntimeError('STRIX_ENABLED requires STRIX_LLM_API_KEY')
+        if settings.strix_max_budget_usd <= 0 or settings.strix_max_wall_seconds < 60:
+            raise RuntimeError('STRIX_MAX_BUDGET_USD must be > 0 and STRIX_MAX_WALL_SECONDS >= 60')
+
+
 def assert_safe_config(settings: Settings) -> None:
     try:
         parse_model_prices(settings.agent_model_prices)
@@ -314,59 +378,8 @@ def assert_safe_config(settings: Settings) -> None:
     if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
         raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
     if settings.is_production:
-        if settings.sqlite:
-            raise RuntimeError('Production requires PostgreSQL (DATABASE_URL=postgresql+psycopg://...)')
-        if not settings.cookie_secure:
-            raise RuntimeError('Production requires COOKIE_SECURE=true behind HTTPS')
-        if not settings.redis_url:
-            raise RuntimeError('Production requires REDIS_URL for durable job processing')
-        if not settings.base_url.startswith('https://'):
-            raise RuntimeError('Production requires BASE_URL to be an https:// URL')
-        if not (settings.data_encryption_key or settings.data_encryption_keys):
-            raise RuntimeError('Production requires DATA_ENCRYPTION_KEY (or DATA_ENCRYPTION_KEYS) for encryption at rest')
-        if not (settings.audit_signing_key or settings.audit_signing_keys):
-            raise RuntimeError('Production requires AUDIT_SIGNING_KEY (or AUDIT_SIGNING_KEYS)')
-        if not (settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
-            raise RuntimeError('Production requires an external audit sink (AUDIT_JSONL_PATH, AUDIT_S3_BUCKET or AUDIT_AZURE_CONTAINER)')
-        if not settings.totp_required and not settings.oidc_issuer:
-            raise RuntimeError('Production requires TOTP_REQUIRED=true or OIDC single sign-on')
-        if settings.secret_env_allowlist.strip() == '*':
-            raise RuntimeError('SECRET_ENV_ALLOWLIST=* is not permitted in production; list the exact variable names')
-        if settings.allow_private_targets and not settings.private_target_cidrs:
-            raise RuntimeError('ALLOW_PRIVATE_TARGETS requires an explicit PRIVATE_TARGET_CIDRS allowlist')
-        settings_dict = settings.__dict__
-        settings_dict['allow_literal_secret_refs'] = False
-    if settings.exploit_enabled:
-        if not settings.exploit_sandbox_image.strip():
-            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_SANDBOX_IMAGE')
-        if settings.exploit_require_image_digest and '@sha256:' not in settings.exploit_sandbox_image:
-            raise RuntimeError('EXPLOIT_SANDBOX_IMAGE must be pinned by digest (image@sha256:...) unless EXPLOIT_REQUIRE_IMAGE_DIGEST=false')
-        if not settings.exploit_executor_url.strip():
-            raise RuntimeError('EXPLOIT_ENABLED requires EXPLOIT_EXECUTOR_URL (the sandbox executor control API)')
-        if settings.is_production and not settings.exploit_executor_url.startswith('https://'):
-            raise RuntimeError('Production requires EXPLOIT_EXECUTOR_URL to be an https:// URL')
-        if settings.exploit_max_wall_seconds < 10 or settings.exploit_max_memory_mb < 64 or settings.exploit_max_pids < 16:
-            raise RuntimeError('Exploit sandbox limits are too low: require EXPLOIT_MAX_WALL_SECONDS >= 10, EXPLOIT_MAX_MEMORY_MB >= 64, EXPLOIT_MAX_PIDS >= 16')
-
-    if settings.discovery_enabled:
-        if not settings.exploit_executor_url:
-            raise RuntimeError('DISCOVERY_ENABLED requires EXPLOIT_EXECUTOR_URL (discovery runs in the sandbox executor)')
-        if '@sha256:' not in settings.discovery_image:
-            raise RuntimeError('DISCOVERY_IMAGE must be pinned by digest (image@sha256:...)')
-        if settings.discovery_max_endpoints < 1 or settings.discovery_max_wall_seconds < 30:
-            raise RuntimeError('DISCOVERY_MAX_ENDPOINTS must be >= 1 and DISCOVERY_MAX_WALL_SECONDS >= 30')
-
-    if settings.strix_enabled:
-        if not settings.exploit_enabled:
-            raise RuntimeError('STRIX_ENABLED requires EXPLOIT_ENABLED: the engine runs at tier exploit')
-        if '@sha256:' not in settings.strix_image:
-            raise RuntimeError('STRIX_IMAGE must be pinned by digest (image@sha256:...)')
-        if not settings.strix_model:
-            raise RuntimeError('STRIX_ENABLED requires STRIX_MODEL')
-        if not settings.strix_llm_api_key:
-            raise RuntimeError('STRIX_ENABLED requires STRIX_LLM_API_KEY')
-        if settings.strix_max_budget_usd <= 0 or settings.strix_max_wall_seconds < 60:
-            raise RuntimeError('STRIX_MAX_BUDGET_USD must be > 0 and STRIX_MAX_WALL_SECONDS >= 60')
+        _assert_production(settings)
+    _assert_exploit_family(settings)
     try:
         parse_model_prices(settings.ai_gateway_model_prices)
     except ValueError as exc:

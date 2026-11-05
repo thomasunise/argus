@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -107,7 +107,7 @@ def status(request: Request, db: Session = Depends(get_db), principal: Principal
     settings = request.app.state.settings
     tenant = db.get(Tenant, principal.tenant_id)
     since = utcnow() - timedelta(hours=1)
-    playbooks = db.execute(scoped(ResponsePlaybook, principal)).scalars().all()
+    playbooks: Any = db.execute(scoped(ResponsePlaybook, principal)).scalars().all()
     return {'global_enabled': bool(settings.autoresponse_enabled), 'tenant_enabled': svc.tenant_enabled(tenant),
             'effective': bool(settings.autoresponse_enabled) and svc.tenant_enabled(tenant),
             'max_per_hour': svc.tenant_hourly_cap(tenant, settings),

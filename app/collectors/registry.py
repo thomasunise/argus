@@ -18,9 +18,9 @@ BUILTIN = ('aws', 'azure', 'gcp', 'kubernetes', 'github', 'okta', 'entra', 'osqu
 
 class Registry:
     def __init__(self) -> None:
-        self._items: dict[str, 'Collector'] = {}
+        self._items: dict[str, Collector] = {}
 
-    def register(self, collector: 'Collector') -> 'Collector':
+    def register(self, collector: Collector) -> Collector:
         if not collector.name:
             raise ValueError('collector needs a name')
         if collector.kind not in KINDS:
@@ -31,13 +31,13 @@ class Registry:
     def unregister(self, name: str) -> None:
         self._items.pop(name, None)
 
-    def get(self, name: str) -> 'Collector':
+    def get(self, name: str) -> Collector:
         try:
             return self._items[name]
         except KeyError:
             raise KeyError(f'unknown collector {name!r}') from None
 
-    def all(self) -> list['Collector']:
+    def all(self) -> list[Collector]:
         return [self._items[k] for k in sorted(self._items)]
 
     def names(self) -> list[str]:
@@ -63,7 +63,7 @@ def load_builtin() -> Registry:
     return registry
 
 
-def register(collector: 'Collector') -> 'Collector':
+def register(collector: Collector) -> Collector:
     return registry.register(collector)
 
 
@@ -71,11 +71,11 @@ def unregister(name: str) -> None:
     registry.unregister(name)
 
 
-def get(name: str) -> 'Collector':
+def get(name: str) -> Collector:
     return registry.get(name)
 
 
-def all() -> list['Collector']:  # noqa: A001 - mirrors the Registry API
+def all() -> list[Collector]:  # noqa: A001 - mirrors the Registry API
     return registry.all()
 
 

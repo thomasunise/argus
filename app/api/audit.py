@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from typing import Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -51,7 +52,7 @@ def list_audit(actor: str | None = None, action: str | None = None, subject: str
     stmt = _filtered(principal, actor, action, subject, since, until)
     if search:
         stmt = stmt.where(AuditEntry.detail.ilike(like(search.strip()), escape='\\'))
-    rows = db.execute(page.apply(stmt.order_by(AuditEntry.id.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(AuditEntry.id.desc()))).scalars().all()
     return page.wrap(rows, entry_to_dict)
 
 
@@ -82,7 +83,7 @@ def export_jsonl(actor: str | None = None, action: str | None = None, subject: s
                                                         'filters': {k: v for k, v in {'actor': actor, 'action': action, 'subject': subject,
                                                                                       'since': since, 'until': until}.items() if v}})
     db.commit()
-    rows = db.execute(stmt.order_by(AuditEntry.id.asc())).scalars().all()
+    rows: Any = db.execute(stmt.order_by(AuditEntry.id.asc())).scalars().all()
 
     def generate() -> Iterator[str]:
         for e in rows:

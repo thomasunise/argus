@@ -1,9 +1,7 @@
 """Attack-path evidence status should never imply exploit proof."""
-from sqlalchemy import select
 
 from app.graph import service
 from app.graph.validation import validate_path
-from app.models.graph import AttackPath
 from tests.test_graph import estate
 
 

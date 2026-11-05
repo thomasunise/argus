@@ -9,8 +9,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
-from ..core.db import session_scope, bind_public_token_tenant
-from ..core.errors import NotFound, RateLimited
+from ..core.db import bind_public_token_tenant, session_scope
+from ..core.errors import NotFound
 from ..models import utcnow
 from ..models.oob import OobToken
 

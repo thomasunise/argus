@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import sys
 import types
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-
 from app.core.errors import ScopeDenied, Unavailable
-from app.testing import harness, scope as scope_mod
-from app.testing.ratelimit import RateLimiter
 from app.models import Asset, AssetAuthorization, Finding, utcnow
 from app.models.testing import TestResult, TestRun, TestScope
+from app.testing import harness
+from app.testing import scope as scope_mod
+from app.testing.ratelimit import RateLimiter
+from sqlalchemy import select
 
-NOW = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
 class _DummyAdapter(harness.TestAdapter):
@@ -258,7 +258,6 @@ def test_adapter_cannot_run_below_its_nominal_tier(settings):
 async def test_execute_run_respects_scope_max_concurrency(app, settings, default_tenant_id):
     from datetime import timedelta
 
-    from app.models import utcnow
 
     harness.register(_FakeRepoAdapter())
     factory = app.state.db_factory

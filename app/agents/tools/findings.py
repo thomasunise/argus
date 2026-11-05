@@ -1,6 +1,8 @@
 """Read-only finding tools: lookup, listing, similarity and history."""
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import or_, select
 
 from ...core.db import scoped
@@ -34,7 +36,7 @@ def list_findings(args: dict, ctx: ToolContext) -> dict:
     if args.get('asset_id'):
         stmt = stmt.where(Finding.asset_id == args['asset_id'])
     limit = clamp_limit(args.get('limit'))
-    rows = ctx.db.execute(stmt.order_by(Finding.updated_at.desc()).limit(limit * 4)).scalars().all()
+    rows: Any = ctx.db.execute(stmt.order_by(Finding.updated_at.desc()).limit(limit * 4)).scalars().all()
     rows = severity_sorted(list(rows))[:limit]
     return {'count': len(rows), 'items': [compact_finding(f) for f in rows]}
 
@@ -47,11 +49,11 @@ def find_similar_findings(args: dict, ctx: ToolContext) -> dict:
         return {'found': False, 'finding_id': args['finding_id'], 'same_rule': [], 'same_asset': []}
     limit = clamp_limit(args.get('limit'), default=25, maximum=100)
     base = scoped(Finding, ctx.principal).where(Finding.id != finding.id)
-    same_rule = ctx.db.execute(base.where(Finding.rule == finding.rule, Finding.source == finding.source)
+    same_rule: Any = ctx.db.execute(base.where(Finding.rule == finding.rule, Finding.source == finding.source)
                                .order_by(Finding.updated_at.desc()).limit(limit)).scalars().all()
     same_asset: list[Finding] = []
     if finding.asset_id:
-        same_asset = ctx.db.execute(base.where(Finding.asset_id == finding.asset_id).order_by(Finding.updated_at.desc()).limit(limit)).scalars().all()
+        same_asset = list(ctx.db.execute(base.where(Finding.asset_id == finding.asset_id).order_by(Finding.updated_at.desc()).limit(limit)).scalars().all())
     same_rule_ids = {f.id for f in same_rule}
     return {'found': True, 'finding_id': finding.id, 'rule': finding.rule, 'asset_id': finding.asset_id,
             'same_rule': [compact_finding(f) for f in same_rule],
@@ -70,7 +72,7 @@ def get_finding_history(args: dict, ctx: ToolContext) -> dict:
                                             or_(AuditEntry.subject == finding.id, AuditEntry.detail.like(like(finding.id), escape='\\')))
                   .order_by(AuditEntry.id.asc()).limit(limit))
     audit = ctx.db.execute(audit_stmt).scalars().all()
-    runs = ctx.db.execute(scoped(AgentRun, ctx.principal).where(AgentRun.finding_id == finding.id, AgentRun.id != ctx.run_id)
+    runs: Any = ctx.db.execute(scoped(AgentRun, ctx.principal).where(AgentRun.finding_id == finding.id, AgentRun.id != ctx.run_id)
                           .order_by(AgentRun.created_at.desc()).limit(20)).scalars().all()
     return {'found': True, 'finding_id': finding.id, 'status': finding.status, 'created_at': finding.created_at, 'updated_at': finding.updated_at,
             'occurrences': finding.occurrences,

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, TypeVar
+from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.engine import Engine
@@ -14,10 +16,10 @@ from sqlalchemy.sql import Select
 from ..models import Base
 from .config import Settings
 
+log = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from .rbac import Principal
-
-M = TypeVar('M')
 
 # Request and queue-job boundaries supply this value; ordinary unscoped sessions do not.
 _active_tenant: ContextVar[str | None] = ContextVar('argus_active_tenant', default=None)
@@ -64,9 +66,9 @@ def assert_restricted_runtime_role(engine: Engine) -> None:
             SELECT tablename, policyname, qual, with_check
               FROM pg_policies WHERE schemaname = current_schema()
         """)).all()
-        policies = {}
+        policies: dict[str, list[tuple[str, str, str]]] = {}
         for table, policy, qual, check in policy_rows:
-            policies.setdefault(table, []).append((policy, qual or '', check or ''))
+            policies.setdefault(str(table), []).append((str(policy), str(qual or ''), str(check or '')))
         unsafe = []
         for name in sorted(tables):
             if name not in state or not state[name][0] or state[name][1]:
@@ -146,13 +148,13 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
         db.close()
 
 
-def scoped(model: type[M], principal: 'Principal | str') -> Select:
+def scoped[M](model: type[M], principal: Principal | str) -> Select:
     """Tenant-scoped select. Accepts a Principal or a tenant id."""
     tenant_id = principal if isinstance(principal, str) else principal.tenant_id
     return select(model).where(model.tenant_id == tenant_id)  # type: ignore[attr-defined]
 
 
-def get_scoped(db: Session, model: type[M], principal: 'Principal | str', object_id: str) -> M | None:
+def get_scoped[M](db: Session, model: type[M], principal: Principal | str, object_id: str) -> M | None:
     tenant_id = principal if isinstance(principal, str) else principal.tenant_id
     return db.execute(select(model).where(model.id == object_id, model.tenant_id == tenant_id)).scalar_one_or_none()  # type: ignore[attr-defined]
 
@@ -212,7 +214,7 @@ def pool_stats(engine: Engine) -> dict[str, int | str]:
             try:
                 stats[key] = int(fn())
             except Exception:
-                pass
+                log.debug("pool stat unavailable", exc_info=True)
     return stats
 
 

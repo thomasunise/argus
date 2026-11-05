@@ -9,9 +9,9 @@ tune their agents to slip under.
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Callable
 
 INTENSITY = {'low': 0.6, 'normal': 1.0, 'high': 2.0}
 AGENT_UA = 'python-httpx/0.27.0 agent-runtime/1.3'
@@ -56,7 +56,7 @@ class Scenario:
     description: str
     techniques: list[str]
     expected_rules: list[str]
-    build: Callable[['Build'], Plan]
+    build: Callable[[Build], Plan]
 
 
 @dataclass
@@ -74,7 +74,7 @@ class Build:
         return max(minimum, int(round(base * self.scale)))
 
     def rng(self) -> random.Random:
-        return random.Random(f'{self.seed}:{self.run_id}')
+        return random.Random(f'{self.seed}:{self.run_id}')  # noqa: S311 - seeded synthetic-data RNG, not cryptographic
 
     def ua(self) -> str:
         return BROWSER_UA if self.evasion else AGENT_UA
@@ -179,7 +179,7 @@ def _exposure_and_secret(b: Build) -> Plan:
     events = [SimEvent(offset_ms=0, title='Bucket policy changed', actor='arn:aws:iam::111122223333:user/ci-deployer', action='s3.put_bucket_policy',
                        entity='bucket:invoices', category='cloud_api', severity='medium', metadata=b.meta(src_ip=b.ip(31), policy=policy)),
               SimEvent(offset_ms=30_000, title='Secret committed', actor='coding-agent[bot]', action='secret.committed', entity='repo:payments-api',
-                       category='code', severity='high', metadata=b.meta(secret_type='aws_access_key', file='deploy/.env', commit='0' * 40))]
+                       category='code', severity='high', metadata=b.meta(secret_type='aws_access_key', file='deploy/.env', commit='0' * 40))]  # noqa: S106
     return Plan(events=events)
 
 

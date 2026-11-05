@@ -17,17 +17,31 @@ from .core import audit as audit_module
 from .core import crypto
 from .core.bootstrap import bootstrap
 from .core.config import Settings, assert_safe_config, get_settings
-from .core.db import CommitBeforeResponseMiddleware, assert_restricted_runtime_role, init_db, make_engine, make_session_factory, pool_stats, session_scope
+from .core.db import (
+    CommitBeforeResponseMiddleware,
+    assert_restricted_runtime_role,
+    init_db,
+    make_engine,
+    make_session_factory,
+    pool_stats,
+    session_scope,
+)
 from .core.errors import install_error_handlers
 from .core.queue import JobQueue
-from .core.telemetry import BodySizeLimitMiddleware, RequestContextMiddleware, configure_logging, configure_tracing, install_metrics_endpoint
+from .core.telemetry import (
+    BodySizeLimitMiddleware,
+    RequestContextMiddleware,
+    configure_logging,
+    configure_tracing,
+    install_metrics_endpoint,
+)
 
 log = logging.getLogger('argus')
 STATIC_DIR = Path(__file__).parent / 'static'
 VERSION = '1.0.0'
 
 # Packages that may expose setup(app). Order matters: tools before specialists, catalogs before brokers.
-PACKAGES = ['app.graph', 'app.detections', 'app.collectors', 'app.integrations', 'app.testing', 'app.discovery', 'app.actions', 'app.exploit', 'app.agents', 'app.reports', 'app.intel', 'app.simulator', 'app.ai', 'app.ops']
+PACKAGES = ['app.graph', 'app.detections', 'app.collectors', 'app.integrations', 'app.testing', 'app.pentest', 'app.discovery', 'app.actions', 'app.exploit', 'app.agents', 'app.reports', 'app.intel', 'app.simulator', 'app.ai', 'app.ops']
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -133,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 conn.exec_driver_sql('SELECT 1')
             checks['database'] = 'ok'
         except Exception as exc:
-            raise HTTPException(503, detail=f'database unavailable: {type(exc).__name__}')
+            raise HTTPException(503, detail=f'database unavailable: {type(exc).__name__}') from exc
         if settings.redis_url:
             try:
                 import redis as _redis
@@ -141,7 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 _redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2).ping()
                 checks['redis'] = 'ok'
             except Exception as exc:
-                raise HTTPException(503, detail=f'redis unavailable: {type(exc).__name__}')
+                raise HTTPException(503, detail=f'redis unavailable: {type(exc).__name__}') from exc
         return {'status': 'ready', 'queue': 'redis' if settings.redis_url else 'memory', 'provider': settings.ai_provider,
                 'encryption': crypto.configured(), 'checks': checks, 'pool': pool_stats(engine)}
 

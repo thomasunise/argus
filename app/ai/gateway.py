@@ -11,7 +11,7 @@ import fnmatch
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -99,6 +99,11 @@ def validate_policy(raw: dict) -> GatewayPolicy:
         if not isinstance(raw['block_prompt_injection'], bool):
             raise ValueError('block_prompt_injection must be a boolean')
         policy.block_prompt_injection = raw['block_prompt_injection']
+    _apply_numeric_fields(policy, raw)
+    return policy
+
+
+def _apply_numeric_fields(policy: GatewayPolicy, raw: dict) -> None:
     for name, low, high in (('max_request_bytes', 1024, 16 * 1024 * 1024), ('requests_per_minute', 1, 100_000)):
         if raw.get(name) is not None:
             value = raw[name]
@@ -110,7 +115,6 @@ def validate_policy(raw: dict) -> GatewayPolicy:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= float(value) <= 10_000_000:
             raise ValueError('monthly_budget_usd must be a number between 0 and 10000000')
         policy.monthly_budget_usd = float(value)
-    return policy
 
 
 def tenant_policy(tenant: Tenant | None) -> GatewayPolicy:
@@ -185,7 +189,7 @@ def cost(settings: Settings, model: str, input_tokens: int, output_tokens: int) 
 
 def month_spend(db: Session, tenant_id: str, now: datetime | None = None) -> float:
     now = now or utcnow()
-    start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    start = datetime(now.year, now.month, 1, tzinfo=UTC)
     total = db.scalar(select(func.coalesce(func.sum(AIGatewayRequest.cost_usd), 0.0))
                       .where(AIGatewayRequest.tenant_id == tenant_id, AIGatewayRequest.created_at >= start))
     return float(total or 0.0)

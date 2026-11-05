@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.agents import evals
 from app.agents.evals.graders import grade_hunt, grade_prompt_injection, grade_triage
 from app.agents.evals.harness import ScriptedProvider, honest_provider, tricked_provider

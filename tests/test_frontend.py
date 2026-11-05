@@ -10,7 +10,7 @@ import os
 import socket
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -75,16 +75,15 @@ def seed(app) -> dict:
 
     sys.path.insert(0, str(ROOT / 'scripts'))
     import seed_demo  # noqa: E402
-    from sqlalchemy import select
-
     from app.core.findings import refresh_open_metrics
     from app.core.security import hash_password
     from app.graph import service as graph
     from app.models import Finding, Membership, User
+    from sqlalchemy import select
 
     settings = app.state.settings
     tenant_id = app.state.default_tenant_id
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     out: dict = {'tenant_id': tenant_id}
     with app.state.db_factory() as db:
         owner = db.execute(select(User).where(User.email == ADMIN_EMAIL)).scalar_one()
@@ -124,7 +123,6 @@ def seed(app) -> dict:
 def boot_server(tmp_dir: Path) -> dict:
     """Start uvicorn on a free port in a daemon thread and seed the database. Returns a context dict."""
     import uvicorn
-
     from app.core.config import Settings
     from app.main import create_app
 

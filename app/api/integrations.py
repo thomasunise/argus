@@ -9,9 +9,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.errors import NotFound, ArgusError
-from ..core.rbac import Principal
 from ..core.config import Settings
+from ..core.errors import ArgusError, NotFound
+from ..core.rbac import Principal
 from ..core.security import mask_secret_refs, merge_secret_refs
 from ..integrations.delivery import TEST_TOPIC, delivery_to_dict, resolve_secrets, send_delivery
 from ..integrations.egress import check_url_config
@@ -133,7 +133,7 @@ def list_integrations(kind: str | None = None, enabled: bool | None = None, dire
     if direction in {'inbound', 'outbound'}:
         kinds = outbound_registry.kinds() if direction == 'outbound' else inbound_registry.names()
         stmt = stmt.where(IntegrationConfig.kind.in_(kinds))
-    rows = db.execute(page.apply(stmt.order_by(IntegrationConfig.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(IntegrationConfig.created_at.desc()))).scalars().all()
     return page.wrap(rows, _dict)
 
 
@@ -167,7 +167,7 @@ def list_deliveries(integration_id: str | None = None, status: str | None = None
     if topic:
         escaped = topic[:80].replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('*', '%')
         stmt = stmt.where(WebhookDelivery.topic.like(escaped, escape='\\') if '*' in topic else WebhookDelivery.topic == topic)
-    rows = db.execute(page.apply(stmt.order_by(WebhookDelivery.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(WebhookDelivery.created_at.desc()))).scalars().all()
     return page.wrap(rows, delivery_to_dict)
 
 
@@ -206,7 +206,7 @@ def list_batches(source: str | None = None, db: Session = Depends(get_db), page:
     stmt = select(IngestBatch).where(IngestBatch.tenant_id == principal.tenant_id)
     if source:
         stmt = stmt.where(IngestBatch.source == source)
-    rows = db.execute(page.apply(stmt.order_by(IngestBatch.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(IngestBatch.created_at.desc()))).scalars().all()
     return page.wrap(rows, batch_to_dict)
 
 

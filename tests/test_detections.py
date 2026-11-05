@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import json
 import statistics
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from app.core.findings import EventDraft, upsert_event
 from app.detections import canaries as canary_svc
-from app.detections.engine import (DetectionDraft, RuleContext, registry, run, update_baselines, validate_params, welford_update)
+from app.detections.engine import DetectionDraft, RuleContext, registry, run, update_baselines, validate_params, welford_update
 from app.models import Finding, dumps
 from app.models.detections import Baseline, CanaryHit, Detection, DetectionRuleState, DetectionRun
 
-NOW = datetime.now(timezone.utc).replace(microsecond=0)
+NOW = datetime.now(UTC).replace(microsecond=0)
 T0 = NOW - timedelta(minutes=20)  # inside the default 60-minute lookback
 
 

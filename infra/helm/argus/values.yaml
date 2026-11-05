@@ -82,6 +82,11 @@ worker:
   pdb:
     enabled: true
     minAvailable: 1
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
   # Optional read-only volume for repo-type assets (SCAN_ROOT=/app/targets).
   targets:
     enabled: false
@@ -211,7 +216,7 @@ config:
   AUDIT_AZURE_CONTAINER: ""
   # Backups (docs/BACKUP.md). /app/data is an emptyDir unless auditVolume.enabled, so in a cluster the copy that
   # matters is the one in BACKUP_S3_BUCKET or BACKUP_AZURE_CONTAINER (both need the -extras image).
-  BACKUP_ENABLED: "false"
+  BACKUP_ENABLED: "true"
   BACKUP_DIR: /app/data/backups
   BACKUP_INTERVAL_HOURS: "24"
   BACKUP_KEEP: "14"
@@ -246,7 +251,7 @@ config:
   RETIREJS_BIN: retire
   TRUFFLEHOG_BIN: trufflehog
   TRUFFLEHOG_VERIFY_LIVE: "false"
-  PENTEST_ENABLED: "true"
+  PENTEST_ENABLED: "false"
   PENTEST_KILL_SWITCH: "false"
   TEST_RATE_LIMIT_RPS: "5.0"
   TEST_TOOL_TIMEOUT_SECONDS: "900"

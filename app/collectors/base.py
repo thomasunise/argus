@@ -15,9 +15,10 @@ import ipaddress
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from ..core.config import Settings
 from ..core.findings import EventDraft
@@ -122,7 +123,7 @@ class CollectorResult:
     def has_node(self, kind: str, key: str) -> bool:
         return (kind, key) in self._node_index
 
-    def finalize(self) -> 'CollectorResult':
+    def finalize(self) -> CollectorResult:
         self.stats['nodes'] = len(self.nodes)
         self.stats['edges'] = len(self.edges)
         self.stats['events'] = len(self.events)
@@ -153,8 +154,8 @@ class CollectorContext:
 
     def since_or(self, hours: int) -> datetime:
         if self.since is not None:
-            return self.since if self.since.tzinfo else self.since.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) - timedelta(hours=hours)
+            return self.since if self.since.tzinfo else self.since.replace(tzinfo=UTC)
+        return datetime.now(UTC) - timedelta(hours=hours)
 
 
 # ---------------------------------------------------------------- collector base
@@ -302,12 +303,12 @@ def parse_time(value: Any) -> datetime | None:
     if value is None or value == '':
         return None
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if value > 1e12:
             value = value / 1000.0
         try:
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            return datetime.fromtimestamp(float(value), tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
     text = str(value).strip()
@@ -327,14 +328,14 @@ def parse_time(value: Any) -> datetime | None:
                 continue
         else:
             return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def age_days(value: Any, now: datetime | None = None) -> float | None:
     parsed = parse_time(value)
     if parsed is None:
         return None
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     return (now - parsed).total_seconds() / 86400.0
 
 

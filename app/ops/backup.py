@@ -29,11 +29,12 @@ import sqlite3
 import struct
 import tempfile
 import zlib
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from sqlalchemy import MetaData, create_engine, func, inspect, select, text
 from sqlalchemy.engine import Engine
@@ -170,6 +171,7 @@ def _frames(fh, header: dict, raw_header: bytes, key: bytes | None) -> Iterator[
             from cryptography.exceptions import InvalidTag
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+            assert key is not None
             plain = None
             for final in (False, True):
                 try:
@@ -215,7 +217,7 @@ def iter_records(path: Path, settings: Settings, key_override: str = '') -> Iter
 def _encode(value: Any) -> Any:
     if isinstance(value, datetime):
         if value.tzinfo is None:  # Argus stores UTC everywhere; SQLite hands values back naive
-            value = value.replace(tzinfo=timezone.utc)
+            value = value.replace(tzinfo=UTC)
         return {'$dt': value.isoformat()}
     if isinstance(value, date):
         return {'$d': value.isoformat()}
@@ -294,7 +296,7 @@ def dump(engine: Engine, settings: Settings, out_dir: Path, *, app_version: str 
     if free_mb < settings.backup_min_free_mb:
         raise BackupError(f'only {free_mb} MB free in {out_dir}; BACKUP_MIN_FREE_MB is {settings.backup_min_free_mb}')
     key_id, key = encryption_key(settings)
-    created = datetime.now(timezone.utc)
+    created = datetime.now(UTC)
     name = f"argus-{created.strftime('%Y%m%dT%H%M%S%f')}Z-{secrets.token_hex(3)}{SUFFIX}"
     final_path = out_dir / name
     partial = out_dir / (name + '.partial')
@@ -481,7 +483,7 @@ def restore(path: Path, target_url: str, settings: Settings, *, key_override: st
                         raise BackupError(f'columns {missing} of {name!r} do not exist in the target schema')
                     counts[name] = 0
                 elif 'v' in record:
-                    batch.append({c: _decode(v) for c, v in zip(columns, record['v'])})
+                    batch.append({c: _decode(v) for c, v in zip(columns, record['v'], strict=False)})
                     counts[table.name] += 1
                     if len(batch) >= INSERT_BATCH:
                         flush()
@@ -508,7 +510,7 @@ def _reset_sequences(conn, meta: MetaData) -> None:
         if seq:
             # Table and column names come from reflecting the target database, not from input.
             column, name = pk[0].name, table.name
-            query = f'SELECT setval(:seq, COALESCE((SELECT MAX("{column}") FROM "{name}"), 1), (SELECT MAX("{column}") FROM "{name}") IS NOT NULL)'  # nosec B608
+            query = f'SELECT setval(:seq, COALESCE((SELECT MAX("{column}") FROM "{name}"), 1), (SELECT MAX("{column}") FROM "{name}") IS NOT NULL)'  # nosec B608  # noqa: S608 - identifiers from reflected metadata, values bound
             conn.execute(text(query), {'seq': seq})
 
 

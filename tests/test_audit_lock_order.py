@@ -9,11 +9,10 @@ from __future__ import annotations
 import threading
 import time
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
-
 from app.core.audit import record_audit, verify_chain
 from app.models import Base
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
 
 TENANT = 'tenant-lock-order'
 

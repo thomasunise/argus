@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
-from ..core.errors import NotFound, ArgusError
+from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
 from ..detections import engine
 from ..detections.engine import detection_to_dict, effective_params, registry, rule_states, validate_params
@@ -62,7 +62,7 @@ def list_detections(status: str | None = None, severity: str | None = None, rule
         stmt = stmt.where(Detection.rule_id == rule_id)
     if entity:
         stmt = stmt.where(Detection.entity.ilike(like(entity[:200]), escape='\\'))
-    rows = db.execute(page.apply(stmt.order_by(Detection.last_seen_at.desc(), Detection.id.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(Detection.last_seen_at.desc(), Detection.id.desc()))).scalars().all()
     return page.wrap(rows, detection_to_dict)
 
 
@@ -90,7 +90,7 @@ def patch_rule(rule_id: str, body: PatchRuleBody, db: Session = Depends(get_db),
         try:
             cleaned = validate_params(rule, body.params)
         except ValueError as exc:
-            raise ArgusError(str(exc), code='invalid_params', status=400)
+            raise ArgusError(str(exc), code='invalid_params', status=400) from exc
         state.params_json = dumps(cleaned, limit=8000)
         changes['params'] = cleaned
     state.updated_at = utcnow()

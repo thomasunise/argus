@@ -2,6 +2,8 @@
 executed. Executable, policy-checked requests live in the action broker at /api/v1/actions."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -44,7 +46,7 @@ def list_approvals(status: str | None = None, finding_id: str | None = None, pag
         stmt = stmt.where(Approval.status == status)
     if finding_id:
         stmt = stmt.where(Approval.finding_id == finding_id)
-    rows = db.execute(page.apply(stmt.order_by(Approval.created_at.desc(), Approval.id))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(Approval.created_at.desc(), Approval.id))).scalars().all()
     return page.wrap(rows, approval_to_dict)
 
 

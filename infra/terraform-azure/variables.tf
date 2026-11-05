@@ -46,6 +46,11 @@ variable "worker_replicas" {
   default = 2
 }
 
+variable "worker_max_replicas" {
+  type    = number
+  default = 6
+}
+
 variable "api_cpu" {
   type    = number
   default = 1.0

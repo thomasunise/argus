@@ -3,8 +3,10 @@ with one adapter, reusing a TestScope for authorization. Scope is checked at req
 (here) and again at execution time (the queue handler)."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ..core.db import get_scoped, scoped
@@ -54,7 +56,7 @@ def list_scans(page: Page = Depends(), asset_id: str | None = None, db: Session 
     if asset_id:
         stmt = stmt.where(TestRun.asset_id == asset_id)
     stmt = stmt.order_by(TestRun.created_at.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, service.run_to_dict)
 
 

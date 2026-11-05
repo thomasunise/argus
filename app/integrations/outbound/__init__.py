@@ -8,9 +8,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import httpx
 

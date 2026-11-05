@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, as_float, dig, event, first, geo, hash_item, snake
+from ._common import ParseContext, Parser, as_dict, as_float, dig, event, first, geo, hash_item, snake
 
 
 def _lower_first(node: Any, depth: int = 0) -> Any:
@@ -36,10 +36,10 @@ def _severity(value: Any) -> str:
 def _resource_entity(resource: dict) -> tuple[str, str]:
     kind = str(resource.get('resourceType') or '')
     if kind == 'AccessKey':
-        key = resource.get('accessKeyDetails') if isinstance(resource.get('accessKeyDetails'), dict) else {}
+        key = as_dict(resource.get('accessKeyDetails'))
         return str(key.get('userName') or key.get('principalId') or ''), 'identity'
     if kind == 'Instance':
-        inst = resource.get('instanceDetails') if isinstance(resource.get('instanceDetails'), dict) else {}
+        inst = as_dict(resource.get('instanceDetails'))
         return str(inst.get('instanceId') or ''), 'host'
     if kind == 'S3Bucket':
         buckets = resource.get('s3BucketDetails') if isinstance(resource.get('s3BucketDetails'), list) else []
@@ -89,7 +89,7 @@ class GuardDutyParser(Parser):
         geo_src = remote.get('GeoLocation') or remote.get('geoLocation') or {}
         country = dig(remote, 'country', 'countryCode') or dig(remote, 'Country', 'CountryCode') or dig(remote, 'country', 'countryName') or \
             dig(remote, 'Country', 'CountryName') or ''
-        key_details = resource.get('accessKeyDetails') if isinstance(resource.get('accessKeyDetails'), dict) else {}
+        key_details = as_dict(resource.get('accessKeyDetails'))
         actor = str(key_details.get('userName') or '')
         severity = _severity(item.get('Severity', item.get('severity')))
         api_name = aws_api.get('Api') or aws_api.get('api') or ''

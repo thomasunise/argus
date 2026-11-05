@@ -12,10 +12,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import respx
-
 from app.actions import catalog, load_executors
 from app.actions.catalog import ActionError, ExecContext
-from app.actions.executors import aws, azure, cloudflare, crowdstrike, entra, gcp, github, kubernetes, okta, sentinelone, argus
+from app.actions.executors import argus, aws, azure, cloudflare, entra, gcp, github, kubernetes, okta
 from app.models import Asset, AssetAuthorization, Finding
 
 FIX = Path(__file__).parent / 'fixtures' / 'actions'

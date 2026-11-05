@@ -8,8 +8,9 @@ broker.py. Nothing in this module talks to the network.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from ..core.config import Settings
 from ..core.security import redact, resolve_secret
@@ -76,7 +77,7 @@ class ExecContext:
     heartbeat: Callable[[], Awaitable[None]]
     platform: str = ''
     tenant_settings: dict = field(default_factory=dict)
-    db: 'Session | None' = None
+    db: Session | None = None
     actor: str = ''
     dry_run: bool = False
 

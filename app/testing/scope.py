@@ -7,11 +7,12 @@ all re-evaluated against the live scope and authorization records.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import overload
 
+from ..core import policy
 from ..core.config import Settings
 from ..core.errors import ScopeDenied
-from ..core import policy
 from ..models import loads
 
 TIER_RANK = {'passive': 0, 'active': 1, 'intrusive': 2, 'exploit': 3}
@@ -32,13 +33,21 @@ def _scope_list(scope, attr: str, json_attr: str) -> list:
 
 
 def _hhmm(now: datetime) -> str:
-    return now.astimezone(timezone.utc).strftime('%H:%M')
+    return now.astimezone(UTC).strftime('%H:%M')
+
+
+@overload
+def _aware(value: datetime) -> datetime: ...
+
+
+@overload
+def _aware(value: None) -> None: ...
 
 
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _within_window(start: str, end: str, now: datetime) -> bool:
@@ -60,7 +69,7 @@ def check(adapter, asset, scope, authorization, now: datetime, settings: Setting
     effective_tier = tier or adapter.tier
     if TIER_RANK.get(effective_tier, 0) < TIER_RANK.get(adapter.tier, 0):
         raise ScopeDenied(f'adapter {adapter.name} runs at tier {adapter.tier}; it cannot be run as {effective_tier}')
-    now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    now = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
 
     if scope is None:
         raise ScopeDenied('no test scope is associated with this run')
@@ -137,7 +146,7 @@ def check_exploit(asset, scope, authorization, now: datetime, settings: Settings
     the authorization must carry allow_exploit, and production additionally requires a signed
     scope document reference. Re-evaluated at execution time, never trusted from the queue.
     """
-    now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    now = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
 
     if scope is None:
         raise ScopeDenied('no test scope is associated with this exploit run')

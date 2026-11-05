@@ -35,7 +35,7 @@ class CanaryTripwire(DetectionRule):
                 continue
             grouped[canary.id].append((hit, canary))
         drafts: list[DetectionDraft] = []
-        for canary_id, items in grouped.items():
+        for _canary_id, items in grouped.items():
             canary = items[0][1]
             hits = [h for h, _ in items]
             first, last = aware(hits[0].received_at), aware(hits[-1].received_at)

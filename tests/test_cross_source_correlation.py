@@ -1,5 +1,5 @@
 """Cross-provider ordered incident correlation."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.core.findings import EventDraft, upsert_event
 from app.detections.engine import run
@@ -13,7 +13,7 @@ def _seed(db, tenant, suffix, actor, source, category, action, at):
 
 
 def test_cross_source_attack_chain_positive_and_negative(db, default_tenant_id):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tenant = default_tenant_id
     _seed(db, tenant, '1', 'attacker', 'okta', 'identity', 'user.login', now - timedelta(minutes=8))
     _seed(db, tenant, '2', 'attacker', 'aws', 'cloud_api', 'iam.attach_role', now - timedelta(minutes=7))

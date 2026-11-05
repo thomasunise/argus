@@ -34,12 +34,15 @@ def _state(request: Request, db: Session, tenant: Tenant) -> dict:
 
 @router.get('')
 def get_retention(request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:settings'))):
-    return _state(request, db, db.get(Tenant, principal.tenant_id))
+    tenant = db.get(Tenant, principal.tenant_id)
+    assert tenant is not None
+    return _state(request, db, tenant)
 
 
 @router.put('')
 def put_retention(body: RetentionBody, request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:settings'))):
     tenant = db.get(Tenant, principal.tenant_id)
+    assert tenant is not None
     try:
         current = retention.set_overrides(db, tenant, body.overrides)
     except ValueError as exc:

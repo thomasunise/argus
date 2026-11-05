@@ -42,6 +42,7 @@ def put_policy(body: PolicyBody, db: Session = Depends(get_db), principal: Princ
     except ValueError as exc:
         raise ArgusError(str(exc), status=400, code='invalid_tool_guard_policy') from exc
     tenant = db.get(Tenant, principal.tenant_id)
+    assert tenant is not None
     settings = loads(tenant.settings_json, {})
     settings = settings if isinstance(settings, dict) else {}
     settings['tool_guard'] = new_policy

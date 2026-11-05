@@ -4,7 +4,6 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-
 from app.testing.adapters import payload_fuzz, sqli_blind
 from tests.test_testing_adapters import _asset, _ctx, _scope
 

@@ -5,7 +5,7 @@ import time
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,8 +14,17 @@ from ..core.config import Settings
 from ..core.db import set_tenant_context
 from ..core.errors import Conflict, Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
-from ..core.security import (generate_api_key, oidc_authorize_url, oidc_discover, oidc_exchange_code, pkce_pair,
-                             totp_generate_secret, totp_match, totp_provisioning_uri, verify_password)
+from ..core.security import (
+    generate_api_key,
+    oidc_authorize_url,
+    oidc_discover,
+    oidc_exchange_code,
+    pkce_pair,
+    totp_generate_secret,
+    totp_match,
+    totp_provisioning_uri,
+    verify_password,
+)
 from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, utcnow
 from .deps import current_principal, get_db, get_settings, require
 
@@ -163,7 +172,7 @@ def logout(request: Request, db: Session = Depends(get_db), principal: Principal
 def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require())):
     if principal.auth != 'session':
         raise Forbidden('Only interactive sessions can switch tenants')
-    target = next((t for _, t in _memberships(db, principal.user_id) if t.slug == body.tenant or t.id == body.tenant), None)
+    target = next((t for _, t in _memberships(db, principal.user_id or '') if t.slug == body.tenant or t.id == body.tenant), None)
     if not target:
         raise NotFound('Tenant not found')
     request.session['tenant_id'] = target.id

@@ -7,8 +7,9 @@ targeted templates against what actually answers.
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit
+
+import defusedxml.ElementTree as ET
 
 from ...core.config import Settings
 from ...core.errors import ScopeDenied, Unavailable
@@ -87,8 +88,8 @@ def parse_xml(xml_text: str) -> list[NormalizedFinding]:
     # Strip any standard DOCTYPE line nmap emits before parsing with ElementTree.
     cleaned = re.sub(r'<!DOCTYPE[^>]*>', '', text, count=1)
     try:
-        root = ET.fromstring(cleaned)  # nosec B314 - DOCTYPE/ENTITY declarations stripped above
-    except ET.ParseError:
+        root = ET.fromstring(cleaned)
+    except Exception:  # defusedxml raises DefusedXmlException on hostile input
         return []
 
     findings: list[NormalizedFinding] = []

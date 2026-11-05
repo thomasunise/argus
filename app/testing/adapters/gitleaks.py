@@ -9,9 +9,9 @@ import json
 import os
 import tempfile
 
+from ...core import policy
 from ...core.config import Settings
 from ...core.errors import Unavailable
-from ...core import policy
 from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register, run_tool
 
 

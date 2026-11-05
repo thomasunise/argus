@@ -4,13 +4,10 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-
-from app.models import Asset, AssetCredential, dumps
-from app.models.testing import TestScope
-from app.testing import harness
+from app.models import Asset, AssetCredential
 from app.testing.adapters import param_probe
 from app.testing.auth import load_auth_headers
+from fastapi.testclient import TestClient
 from tests.conftest import login
 from tests.test_testing_adapters import _asset, _ctx, _scope
 

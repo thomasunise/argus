@@ -3,10 +3,13 @@ when that package is missing."""
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from ._common import clamp_limit, like, optional_attr, optional_module, serialize, unavailable
 from .registry import ToolContext, registry
+
+log = logging.getLogger(__name__)
 
 NODE_KINDS = 'asset, identity, role, permission, network, exposure, vuln, secret, data_store, finding, event, canary'
 
@@ -37,7 +40,7 @@ def _node_dict(node: Any) -> dict:
         try:
             return to_dict(node)
         except Exception:
-            pass
+            log.debug("graph tool: optional lookup failed", exc_info=True)
     return serialize(node)
 
 
@@ -69,7 +72,7 @@ def _query_nodes(ctx: ToolContext, kind: str | None, key: str | None, search: st
     if search:
         pattern = like(search)
         stmt = stmt.where(or_(GraphNode.key.ilike(pattern, escape='\\'), GraphNode.label.ilike(pattern, escape='\\'), GraphNode.props_json.ilike(pattern, escape='\\')))
-    rows = ctx.db.execute(stmt.limit(limit)).scalars().all()
+    rows: Any = ctx.db.execute(stmt.limit(limit)).scalars().all()
     return [_node_dict(n) for n in rows], None
 
 
@@ -81,6 +84,7 @@ def graph_query(args: dict, ctx: ToolContext) -> dict:
     items, problem = _query_nodes(ctx, args.get('kind') or None, args.get('key') or None, (args.get('search') or '').lower(), limit)
     if problem:
         return problem
+    items = items or []
     return {'available': True, 'count': len(items[:limit]), 'items': items[:limit]}
 
 

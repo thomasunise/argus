@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, geo, hash_item, listify
+from ._common import ParseContext, Parser, as_dict, dig, event, first, geo, hash_item, listify
 
 _AUTH_FAIL = {'authentication_failed', 'authentication_failures', 'invalid_login', 'login_denied'}
 _AUTH_OK = {'authentication_success', 'login_success'}
@@ -93,9 +93,9 @@ class WazuhParser(Parser):
         return item
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
-        rule = item.get('rule') if isinstance(item.get('rule'), dict) else {}
-        agent = item.get('agent') if isinstance(item.get('agent'), dict) else {}
-        data = item.get('data') if isinstance(item.get('data'), dict) else {}
+        rule = as_dict(item.get('rule'))
+        agent = as_dict(item.get('agent'))
+        data = as_dict(item.get('data'))
         groups = [str(g) for g in listify(rule.get('groups'))][:12]
         level = rule.get('level')
         try:
@@ -106,7 +106,7 @@ class WazuhParser(Parser):
         win = dig(data, 'win', 'eventdata') if isinstance(dig(data, 'win', 'eventdata'), dict) else {}
         actor = first(data, 'srcuser', 'dstuser', 'user') or first(win, 'targetUserName', 'subjectUserName') or ''
         host = agent.get('name') or dig(item, 'manager', 'name') or ''
-        mitre = rule.get('mitre') if isinstance(rule.get('mitre'), dict) else {}
+        mitre = as_dict(rule.get('mitre'))
         full_log = item.get('full_log')
         meta: dict[str, Any] = {
             'rule_id': str(rule.get('id') or ''), 'rule_level': level, 'groups': groups, 'agent_id': str(agent.get('id') or ''),
@@ -118,7 +118,7 @@ class WazuhParser(Parser):
         }
         if item.get('GeoLocation') and isinstance(item['GeoLocation'], dict):
             geo_src = item['GeoLocation']
-            loc = geo_src.get('location') if isinstance(geo_src.get('location'), dict) else {}
+            loc = as_dict(geo_src.get('location'))
             meta['geo'] = geo(loc.get('lat'), loc.get('lon'), geo_src.get('country_code2') or geo_src.get('country_name'), geo_src.get('city_name'))
         external_id = item.get('id') or hash_item(item)
         title = str(rule.get('description') or 'Wazuh alert')

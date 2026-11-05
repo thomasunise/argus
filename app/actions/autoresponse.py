@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -45,7 +45,6 @@ from ..models import Tenant, dumps, loads
 from ..models.actions import ActionRun
 from ..models.autoresponse import AutoresponseExecution, ResponsePlaybook
 from . import broker, catalog
-from .catalog import RISK_RANK
 
 log = logging.getLogger('argus.actions.autoresponse')
 
@@ -60,13 +59,13 @@ class MissingValue(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def autoresponse_principal(tenant_id: str) -> Principal:
@@ -98,7 +97,8 @@ def tenant_hourly_cap(tenant: Tenant | None, settings: Settings) -> int:
 
 def set_tenant_config(db: Session, principal: Principal, *, enabled: bool | None = None, max_per_hour: int | None = None) -> dict:
     tenant = db.get(Tenant, principal.tenant_id)
-    data = loads(tenant.settings_json, {}) if tenant else {}
+    assert tenant is not None
+    data = loads(tenant.settings_json, {})
     data = data if isinstance(data, dict) else {}
     config = dict(data.get('autoresponse') or {})
     if enabled is not None:
@@ -123,7 +123,8 @@ def detection_context(detection) -> dict:
 
 def is_simulation(context: dict) -> bool:
     tags = context.get('tags') or []
-    evidence = context.get('evidence') if isinstance(context.get('evidence'), dict) else {}
+    raw_evidence = context.get('evidence')
+    evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
     return SIMULATION_TAG in tags or evidence.get('simulation') is True or str(evidence.get('source') or '') == 'simulator'
 
 
@@ -236,12 +237,13 @@ async def evaluate_detection(app, db: Session, tenant_id: str, detection_id: str
     tenant = db.get(Tenant, tenant_id)
     if not tenant_enabled(tenant):
         return []
+    assert tenant is not None
     detection = get_scoped(db, Detection, tenant_id, detection_id)
     if detection is None:
         return []
     context = detection_context(detection)
-    playbooks = db.execute(scoped(ResponsePlaybook, tenant_id).where(ResponsePlaybook.enabled.is_(True))
-                           .order_by(ResponsePlaybook.created_at.asc())).scalars().all()
+    playbooks: list = list(db.execute(scoped(ResponsePlaybook, tenant_id).where(ResponsePlaybook.enabled.is_(True))
+                           .order_by(ResponsePlaybook.created_at.asc())).scalars().all())
     principal = autoresponse_principal(tenant_id)
     results: list[AutoresponseExecution] = []
     for playbook in playbooks:
@@ -284,6 +286,7 @@ async def _decide(app, db: Session, settings: Settings, tenant: Tenant, playbook
         _record(db, execution, 'skipped', problem)
         return
     action = catalog.get(playbook.action_type)
+    assert action is not None  # check_playbook_action above already rejected unknown types
     try:
         params = render(loads(playbook.params_template_json, {}), context)
     except MissingValue as exc:
@@ -304,7 +307,7 @@ async def _decide(app, db: Session, settings: Settings, tenant: Tenant, playbook
 
     if playbook.mode != 'enforce':
         stand_in = SimpleNamespace(id='', tenant_id=tenant.id)
-        ctx = broker.build_context(settings, tenant, stand_in, action, db=db, actor='system', dry_run=True)
+        ctx = broker.build_context(settings, tenant, stand_in, action, db=db, actor='system', dry_run=True)  # type: ignore[arg-type]
         dry = await broker.safe_dry_run(action, params, ctx)
         from . import policy
 

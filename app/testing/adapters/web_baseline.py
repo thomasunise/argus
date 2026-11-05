@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import ssl
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -42,8 +42,8 @@ def _tls_inspect(hostname: str, port: int) -> dict:
             expiry_str = cert.get('notAfter')
             days = None
             if expiry_str:
-                expiry = datetime.fromtimestamp(ssl.cert_time_to_seconds(expiry_str), tz=timezone.utc)
-                days = (expiry - datetime.now(timezone.utc)).days
+                expiry = datetime.fromtimestamp(ssl.cert_time_to_seconds(expiry_str), tz=UTC)
+                days = (expiry - datetime.now(UTC)).days
             return {'version': wrapped.version(), 'days_left': days}
 
 

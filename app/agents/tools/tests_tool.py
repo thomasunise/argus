@@ -26,7 +26,7 @@ def list_test_runs(args: dict, ctx: ToolContext) -> dict:
         if column is not None:
             stmt = stmt.order_by(column.desc())
             break
-    rows = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=25, maximum=200))).scalars().all()
+    rows: Any = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=25, maximum=200))).scalars().all()
     return {'available': True, 'count': len(rows), 'items': [serialize(r) for r in rows]}
 
 
@@ -45,7 +45,7 @@ def test_results(args: dict, ctx: ToolContext) -> dict:
 
         stmt = select(TestResult)
     stmt = stmt.where(TestResult.run_id == run.id) if hasattr(TestResult, 'run_id') else stmt.where(TestResult.test_run_id == run.id)
-    rows = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=100, maximum=500))).scalars().all()
+    rows: Any = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=100, maximum=500))).scalars().all()
     return {'available': True, 'found': True, 'run': serialize(run), 'count': len(rows), 'items': [serialize(r) for r in rows]}
 
 

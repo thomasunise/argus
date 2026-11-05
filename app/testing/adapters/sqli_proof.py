@@ -11,7 +11,6 @@ Confirmed findings set `verified=True`, wiring directly into `Finding.validation
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import tempfile

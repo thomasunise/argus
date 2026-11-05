@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
+
 import httpx
 import pytest
 import respx
-
 from app.core.errors import ScopeDenied
 from app.pentest.orchestrator import derive_followups
 from app.testing.adapters import ffuf_dir, nmap_sv, param_mine, retire_js, trufflehog_verify

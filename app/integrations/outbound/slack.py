@@ -3,7 +3,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, egress_error, excerpt, registry, request_with_retry, result_from_response, severity_label
+from . import (
+    Channel,
+    DeliveryResult,
+    OutboundEvent,
+    egress_error,
+    excerpt,
+    registry,
+    request_with_retry,
+    result_from_response,
+    severity_label,
+)
 
 POST_MESSAGE_URL = 'https://slack.com/api/chat.postMessage'
 

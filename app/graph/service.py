@@ -8,8 +8,9 @@ nodes from the same source that were not re-asserted as stale.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -167,14 +168,14 @@ def apply(db: Session, tenant_id: str, result: GraphResult, source: str) -> dict
         return found
 
     asserted: set[tuple[str, str, str]] = set()
-    for draft in result.edges:
-        src_id, dst_id = resolve(tuple(draft.src)), resolve(tuple(draft.dst))
+    for edraft in result.edges:
+        src_id, dst_id = resolve(tuple(edraft.src)), resolve(tuple(edraft.dst))
         if not src_id or not dst_id:
             stats['edges_skipped'] += 1
             continue
         existed = db.execute(select(func.count()).select_from(GraphEdge).where(GraphEdge.tenant_id == tenant_id, GraphEdge.src_id == src_id,
-                                                                              GraphEdge.dst_id == dst_id, GraphEdge.rel == draft.rel[:24])).scalar_one() > 0
-        edge = upsert_edge(db, tenant_id, src_id, dst_id, draft.rel, draft.props, source)
+                                                                              GraphEdge.dst_id == dst_id, GraphEdge.rel == edraft.rel[:24])).scalar_one() > 0
+        edge = upsert_edge(db, tenant_id, src_id, dst_id, edraft.rel, edraft.props, source)
         asserted.add((edge.src_id, edge.dst_id, edge.rel))
         stats['edges_updated' if existed else 'edges_created'] += 1
 

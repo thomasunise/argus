@@ -12,8 +12,8 @@ Replaces raw substring reflection checks with HTML DOM parser sink confirmation:
 """
 from __future__ import annotations
 
-from html.parser import HTMLParser
 import secrets
+from html.parser import HTMLParser
 
 import httpx
 

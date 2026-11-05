@@ -9,14 +9,14 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from ..models import loads
-from ..models.graph import GraphNode, GraphEdge
+from ..models.graph import GraphEdge, GraphNode
 from ..models.testing import TestResult, TestRun
 
 
 def validate_path(db, tenant_id: str, path) -> dict:
     hops = loads(path.hops_json, [])
     edges = []
-    for src, dst in zip(hops, hops[1:]):
+    for src, dst in zip(hops, hops[1:], strict=False):
         src_id, dst_id, rel = src.get('node_id'), dst.get('node_id'), dst.get('rel')
         edge = db.execute(select(GraphEdge).where(GraphEdge.tenant_id == tenant_id,
                          GraphEdge.src_id == src_id, GraphEdge.dst_id == dst_id,
@@ -31,6 +31,7 @@ def validate_path(db, tenant_id: str, path) -> dict:
             result = db.get(TestResult, reference) if reference else None
             run = db.get(TestRun, result.run_id) if result is not None and result.tenant_id == tenant_id else None
             if run is not None and run.tenant_id == tenant_id and run.status == 'completed' and run.asset_id:
+                assert result is not None
                 evidence_id = result.id
                 status = 'evidence_linked'
         edges.append({'from_node_id': src_id, 'to_node_id': dst_id, 'relation': rel,

@@ -10,8 +10,8 @@ import importlib
 import logging
 import pkgutil
 
-from .harness import ADAPTERS, HarnessContext, NormalizedFinding, TestAdapter, execute_run, run_tool  # noqa: F401
 from . import scope  # noqa: F401
+from .harness import ADAPTERS, HarnessContext, NormalizedFinding, TestAdapter, execute_run, run_tool  # noqa: F401
 
 log = logging.getLogger('argus.testing')
 
@@ -36,8 +36,9 @@ def setup(app) -> None:
         result = await execute_run(job.payload['run_id'], ctx.db_factory, ctx.settings, ctx.app, heartbeat=ctx.heartbeat, job_tenant_id=job.tenant_id,
                                    deferrals=int(job.payload.get('deferrals', 0) or 0))
         if result.get('status') == 'completed':
-            from .auto_verification import report_retest
             import asyncio
+
+            from .auto_verification import report_retest
 
             verification = await asyncio.to_thread(report_retest, ctx.db_factory, job.tenant_id, job.payload['run_id'])
             if verification is not None:
@@ -48,9 +49,8 @@ def setup(app) -> None:
 
     auto_verification.install(app)
 
-    from . import autopilot
-
     from ..pentest import orchestrator as pentest_orchestrator
+    from . import autopilot
 
     @queue.handler('testing.pentest')
     async def _pentest(job, ctx):
@@ -62,8 +62,8 @@ def setup(app) -> None:
 
     if settings.autoscan_enabled:
         async def _start_scheduler(app) -> None:
-            from .scheduler import scheduler_loop
             from ..main import spawn
+            from .scheduler import scheduler_loop
 
             spawn(app, scheduler_loop(app))
 

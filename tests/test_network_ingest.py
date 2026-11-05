@@ -1,5 +1,5 @@
 """New network inputs preserve scoped bounded metadata."""
-from app.integrations.inbound import registry, ParseContext
+from app.integrations.inbound import ParseContext, registry
 
 
 def test_suricata_eve_alert():

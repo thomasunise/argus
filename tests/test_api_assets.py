@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 from app.core.findings import upsert_finding
 from app.models import Finding, ScanRun
+from fastapi.testclient import TestClient
 from tests.conftest import login
 
 ATTESTATION = 'I confirm that this organization owns and controls this asset and authorizes testing.'

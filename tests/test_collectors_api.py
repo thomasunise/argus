@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-
 from app.collectors import Collector, CollectorContext, CollectorResult, registry
 from app.collectors.runner import execute_run, is_due, scheduler_tick
 from app.models import AuditEntry, SecurityEvent
 from app.models.collectors import CollectorConfig, CollectorRun
 from fastapi.testclient import TestClient
-
+from sqlalchemy import select
 from tests.conftest import login, wait_for, wait_job
 
 BASE = '/api/v1/collectors'
@@ -282,7 +280,7 @@ def test_run_rejects_unavailable_collector(owner, monkeypatch):
 
 
 def test_is_due_logic():
-    now = datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 23, 12, tzinfo=UTC)
     cfg = CollectorConfig(tenant_id='t', name='n', collector='fake', enabled=True, schedule_minutes=60)
     assert is_due(cfg, now) is True  # never ran
     cfg.last_run_at = now - timedelta(minutes=59)
@@ -336,7 +334,7 @@ def test_scheduler_tick_enqueues_due_configs_across_tenants(owner, fake, app, se
     with app.state.db_factory() as db:
         refreshed = db.get(CollectorConfig, due['id'])
         assert refreshed.last_success_at is not None
-        refreshed.last_run_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+        refreshed.last_run_at = datetime.now(UTC) - timedelta(minutes=16)
         db.commit()
     assert client.portal.call(lambda: scheduler_tick(app)) == 1
 

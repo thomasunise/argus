@@ -7,12 +7,11 @@ import json
 import httpx
 import pytest
 import respx
-from sqlalchemy import select
-
 from app.ai import dlp
 from app.ai import gateway as gw
 from app.models import AuditEntry
 from app.models.ai import AIGatewayRequest, AIService
+from sqlalchemy import select
 
 OPENAI_CHAT = 'https://api.openai.com/v1/chat/completions'
 ANTHROPIC_MESSAGES = 'https://api.anthropic.com/v1/messages'

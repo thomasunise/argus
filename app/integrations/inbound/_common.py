@@ -10,9 +10,10 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from ...core.findings import EventDraft
 from ...core.findings import severity as normalize_severity
@@ -63,7 +64,7 @@ class ParseContext:
     source: str
     asset_id: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
-    now: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    now: datetime = field(default_factory=lambda: datetime.now(UTC))
     errors: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -172,13 +173,13 @@ def parse_time(value: Any) -> datetime | None:
     if value in (None, ''):
         return None
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
         ts = float(value)
         if ts > 1e12:
             ts /= 1000.0
         try:
-            return datetime.fromtimestamp(ts, tz=timezone.utc)
+            return datetime.fromtimestamp(ts, tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
     text = str(value).strip()
@@ -197,7 +198,7 @@ def parse_time(value: Any) -> datetime | None:
         parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 _CAMEL_1 = re.compile(r'(.)([A-Z][a-z]+)')
@@ -233,6 +234,11 @@ def dig(data: Any, *path: str, default: Any = None) -> Any:
         else:
             return default
     return default if node in (None, '') else node
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    """The value when it is a mapping, else an empty dict (webhook payloads are untrusted)."""
+    return value if isinstance(value, dict) else {}
 
 
 def as_float(value: Any) -> float | None:

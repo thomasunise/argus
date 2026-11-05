@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import secrets
 import shutil
 import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -101,20 +101,28 @@ def parse_arjun_report(report: dict | str) -> list[NormalizedFinding]:
     return findings
 
 
-async def mine_endpoint(client: httpx.AsyncClient, endpoint: str, candidates: list[str],
-                        ctx: HarnessContext, *, chunk_size: int = CHUNK_SIZE) -> list[NormalizedFinding]:
-    """Arjun-style chunked differential parameter discovery against one endpoint."""
-    nonce = secrets.token_hex(3)
+async def _baseline(client: httpx.AsyncClient, endpoint: str, nonce: str, ctx: HarnessContext):
+    """Two nonce-baseline responses, or None when the endpoint errors out."""
     await ctx.rate_limiter.acquire()
     try:
         r1 = await client.get(endpoint, params={f'_argus_b1_{nonce}': f'v1{nonce}'})
         await ctx.rate_limiter.acquire()
         r2 = await client.get(endpoint, params={f'_argus_b2_{nonce}': f'v2{nonce}'})
     except httpx.HTTPError:
-        return []
-
+        return None
     if r1.status_code >= 500 or r2.status_code >= 500:
+        return None
+    return r1, r2
+
+
+async def mine_endpoint(client: httpx.AsyncClient, endpoint: str, candidates: list[str],
+                        ctx: HarnessContext, *, chunk_size: int = CHUNK_SIZE) -> list[NormalizedFinding]:
+    """Arjun-style chunked differential parameter discovery against one endpoint."""
+    nonce = secrets.token_hex(3)
+    baseline = await _baseline(client, endpoint, nonce, ctx)
+    if baseline is None:
         return []
+    r1, r2 = baseline
 
     b1_len, b1_words, b1_lines = _metrics(r1.text)
     b2_len, b2_words, b2_lines = _metrics(r2.text)

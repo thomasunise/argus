@@ -10,7 +10,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import FindingDraft, ParseContext, Parser, dig, event, first, hash_item, snake
+from ._common import FindingDraft, ParseContext, Parser, as_dict, dig, event, first, hash_item, snake
 
 _ADMIN_ROLES = {'admin', 'maintain', 'owner'}
 _FINDING_ACTIONS = {'created', 'reopened', 'reintroduced', 'appeared_in_branch'}
@@ -52,13 +52,13 @@ class GitHubWebhookParser(Parser):
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
         kind = _event_kind(item, ctx.header('X-GitHub-Event'))
         action_name = str(item.get('action') or '')
-        repo = item.get('repository') if isinstance(item.get('repository'), dict) else {}
-        org = item.get('organization') if isinstance(item.get('organization'), dict) else {}
-        sender = item.get('sender') if isinstance(item.get('sender'), dict) else {}
+        repo = as_dict(item.get('repository'))
+        org = as_dict(item.get('organization'))
+        sender = as_dict(item.get('sender'))
         repo_name = str(repo.get('full_name') or org.get('login') or '')
         actor = str(sender.get('login') or '')
         delivery = ctx.header('X-GitHub-Delivery')
-        alert = item.get('alert') if isinstance(item.get('alert'), dict) else {}
+        alert = as_dict(item.get('alert'))
         number = alert.get('number')
         base: dict[str, Any] = {'repo': repo_name, 'repository': repo_name, 'github_event': kind, 'github_action': action_name, 'service': 'github',
                                 'private': repo.get('private'), 'default_branch': repo.get('default_branch') or '', 'org': org.get('login') or dig(repo, 'owner', 'login') or '',
@@ -78,9 +78,9 @@ class GitHubWebhookParser(Parser):
             return [event(self.source, ext, f'Secret scanning alert #{number} {action_name} in {repo_name}', severity='low', category='code', actor=actor,
                           entity=repo_name, action=f'github.secret_scanning_alert.{snake(action_name)}', occurred_at=first(alert, 'resolved_at', 'updated_at'), metadata=meta)]
         if kind == 'code_scanning_alert':
-            rule = alert.get('rule') if isinstance(alert.get('rule'), dict) else {}
-            tool = alert.get('tool') if isinstance(alert.get('tool'), dict) else {}
-            loc = dig(alert, 'most_recent_instance', 'location') or {}
+            rule = as_dict(alert.get('rule'))
+            tool = as_dict(alert.get('tool'))
+            loc: dict[str, Any] = dig(alert, 'most_recent_instance', 'location') or {}
             sev = str(rule.get('security_severity_level') or rule.get('severity') or 'medium')
             meta = {**base, 'rule_id': rule.get('id') or '', 'rule_name': rule.get('name') or '', 'tool': tool.get('name') or '', 'alert_number': number,
                     'url': alert.get('html_url') or '', 'state': alert.get('state') or '', 'file': loc.get('path') or '', 'line': loc.get('start_line'),
@@ -89,9 +89,9 @@ class GitHubWebhookParser(Parser):
             return [event(self.source, ext, f'Code scanning: {rule.get("description") or rule.get("id") or "alert"} ({action_name})', severity=severity, category='code',
                           actor=actor, entity=repo_name, action=f'github.code_scanning_alert.{snake(action_name)}', occurred_at=first(alert, 'created_at', 'updated_at'), metadata=meta)]
         if kind == 'dependabot_alert':
-            adv = alert.get('security_advisory') if isinstance(alert.get('security_advisory'), dict) else {}
-            dep = alert.get('dependency') if isinstance(alert.get('dependency'), dict) else {}
-            pkg = dep.get('package') if isinstance(dep.get('package'), dict) else {}
+            adv = as_dict(alert.get('security_advisory'))
+            dep = as_dict(alert.get('dependency'))
+            pkg = as_dict(dep.get('package'))
             sev = str(adv.get('severity') or dig(alert, 'security_vulnerability', 'severity') or 'medium')
             meta = {**base, 'ghsa_id': adv.get('ghsa_id') or '', 'cve_id': adv.get('cve_id') or '', 'package': pkg.get('name') or '', 'ecosystem': pkg.get('ecosystem') or '',
                     'manifest': dep.get('manifest_path') or '', 'scope': dep.get('scope') or '', 'alert_number': number, 'url': alert.get('html_url') or '',
@@ -108,7 +108,7 @@ class GitHubWebhookParser(Parser):
             return [event(self.source, ext, f'Repository {repo_name} {action_name}', severity=severity, category='code', actor=actor, entity=repo_name,
                           action=f'github.repository.{snake(action_name)}', occurred_at=repo.get('updated_at') or item.get('updated_at'), metadata=meta)]
         if kind == 'member':
-            member = item.get('member') if isinstance(item.get('member'), dict) else {}
+            member = as_dict(item.get('member'))
             permission = str(dig(item, 'changes', 'permission', 'to') or dig(item, 'changes', 'role_name', 'to') or item.get('permission') or '').lower()
             target = str(member.get('login') or '')
             if action_name in {'added', 'edited'} and permission in _ADMIN_ROLES:
@@ -119,7 +119,7 @@ class GitHubWebhookParser(Parser):
             return [event(self.source, ext, f'Member {target} {action_name} on {repo_name}', severity='low', category='identity', actor=actor,
                           entity=f'{repo_name}:{target}', action=f'github.member.{snake(action_name)}', metadata=meta)]
         if kind == 'organization':
-            membership = item.get('membership') if isinstance(item.get('membership'), dict) else {}
+            membership = as_dict(item.get('membership'))
             target = str(dig(membership, 'user', 'login') or '')
             role = str(membership.get('role') or dig(item, 'changes', 'role', 'to') or '').lower()
             if action_name in {'member_added', 'member_edited'} and role in _ADMIN_ROLES:
@@ -129,7 +129,7 @@ class GitHubWebhookParser(Parser):
             return [event(self.source, ext, f'Organization {repo_name}: {action_name} {target}'.strip(), severity='low', category='identity', actor=actor,
                           entity=f'{repo_name}:{target}', action=f'github.organization.{snake(action_name)}', metadata={**base, 'member': target, 'role': role})]
         if kind == 'branch_protection_rule':
-            rule = item.get('rule') if isinstance(item.get('rule'), dict) else {}
+            rule = as_dict(item.get('rule'))
             severity = 'high' if action_name == 'deleted' else 'low'
             return [event(self.source, ext, f'Branch protection {action_name} on {repo_name}:{rule.get("name") or ""}', severity=severity, category='code', actor=actor,
                           entity=repo_name, action=f'github.branch_protection_rule.{snake(action_name)}', metadata={**base, 'branch_pattern': rule.get('name') or ''})]
@@ -143,11 +143,11 @@ class GitHubWebhookParser(Parser):
         action_name = str(item.get('action') or '')
         if kind not in {'dependabot_alert', 'code_scanning_alert'} or action_name not in _FINDING_ACTIONS:
             return []
-        alert = item.get('alert') if isinstance(item.get('alert'), dict) else {}
+        alert = as_dict(item.get('alert'))
         repo = dig(item, 'repository', 'full_name') or ''
         if kind == 'dependabot_alert':
-            adv = alert.get('security_advisory') if isinstance(alert.get('security_advisory'), dict) else {}
-            dep = alert.get('dependency') if isinstance(alert.get('dependency'), dict) else {}
+            adv = as_dict(alert.get('security_advisory'))
+            dep = as_dict(alert.get('dependency'))
             pkg = dig(dep, 'package', 'name') or 'dependency'
             ident = adv.get('ghsa_id') or adv.get('cve_id') or f'alert-{alert.get("number")}'
             cve = adv.get('cve_id')
@@ -159,8 +159,8 @@ class GitHubWebhookParser(Parser):
                                  evidence={'repository': repo, 'package': pkg, 'manifest': dep.get('manifest_path'), 'ghsa_id': adv.get('ghsa_id'), 'url': alert.get('html_url'),
                                            'vulnerable_range': dig(alert, 'security_vulnerability', 'vulnerable_version_range')},
                                  tags=['github', 'dependabot'])]
-        rule = alert.get('rule') if isinstance(alert.get('rule'), dict) else {}
-        loc = dig(alert, 'most_recent_instance', 'location') or {}
+        rule = as_dict(alert.get('rule'))
+        loc: dict[str, Any] = dig(alert, 'most_recent_instance', 'location') or {}
         rule_id = str(rule.get('id') or 'rule')
         return [FindingDraft(source=self.source, rule=f'code_scanning:{repo}:{loc.get("path") or ""}:{rule_id}', title=f'{rule.get("description") or rule_id} in {repo}',
                              description=f'Code scanning alert #{alert.get("number")} ({dig(alert, "tool", "name") or "scanner"}) at {loc.get("path") or "unknown path"}'

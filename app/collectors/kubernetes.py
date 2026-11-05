@@ -211,7 +211,7 @@ class KubernetesCollector(Collector):
                               label=f'{stype} {ns}/{name} {" ".join(ports)}', criticality='medium' if internal else 'high')
             selector = spec.get('selector') or {}
             matched = False
-            for (wkind, wns, wname), wnode in workload_nodes.items():
+            for (_wkind, wns, _wname), wnode in workload_nodes.items():
                 if wns != ns or not selector:
                     continue
                 labels = wnode.props.get('pod_labels') or {}
@@ -271,7 +271,8 @@ def _pod_flags(spec: dict[str, Any]) -> dict[str, Any]:
 
 def _api_clients(config: dict[str, Any]) -> dict[str, Any]:
     """Return {'core','apps','rbac','version','cluster'} clients; tests monkeypatch this."""
-    from kubernetes import client, config as kube_config  # lazy
+    from kubernetes import client  # lazy
+    from kubernetes import config as kube_config
 
     mode = config.get('mode') or 'kubeconfig'
     api_client = None

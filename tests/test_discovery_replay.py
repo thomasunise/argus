@@ -12,7 +12,6 @@ import json
 import httpx
 import pytest
 import respx
-
 from app.core import policy
 from app.core.errors import NotFound, ScopeDenied
 from app.core.rbac import Principal, Role, system_principal

@@ -7,14 +7,13 @@ launch and at execution. There are no direct remediation/rollback actions here.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 from sqlalchemy import select
 
 from ..core.db import session_scope
 from ..core.events import subscribe
 from ..core.rbac import system_principal
-from ..models import Tenant, dumps, loads, utcnow
+from ..models import Tenant, dumps, loads
 from ..models.actions import ActionRequest, ActionRun
 from ..models.testing import TestResult, TestRun, TestScope
 

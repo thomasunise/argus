@@ -7,7 +7,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, hash_item, scan_markers, snake
+from ._common import ParseContext, Parser, as_dict, dig, event, first, hash_item, scan_markers, snake
 
 # eventNames whose dotted form the identity rules treat as data access.
 _DATA_ACCESS = {'s3.get_object', 's3.list_bucket', 's3.list_objects', 's3.list_objects_v2', 'dynamodb.scan', 'dynamodb.query', 'dynamodb.get_item',
@@ -86,8 +86,8 @@ class CloudTrailParser(Parser):
         service = str(item.get('eventSource') or 'aws').split('.')[0].lower()
         name = str(item.get('eventName') or 'unknown')
         action = f'{service}.{snake(name)}'
-        identity = item.get('userIdentity') if isinstance(item.get('userIdentity'), dict) else {}
-        params = item.get('requestParameters') if isinstance(item.get('requestParameters'), dict) else {}
+        identity = as_dict(item.get('userIdentity'))
+        params = as_dict(item.get('requestParameters'))
         resources = item.get('resources') if isinstance(item.get('resources'), list) else []
         actor = _actor(identity)
         entity = _entity(params, resources, item)
@@ -108,7 +108,7 @@ class CloudTrailParser(Parser):
             severity = 'low' if severity == 'informational' else severity
         if action in {'sts.assume_role', 'sts.assume_role_with_web_identity', 'sts.assume_role_with_saml'}:
             entity = str(params.get('roleArn') or entity)
-        session_ctx = identity.get('sessionContext') if isinstance(identity.get('sessionContext'), dict) else {}
+        session_ctx = as_dict(identity.get('sessionContext'))
         meta: dict[str, Any] = {
             'ip': item.get('sourceIPAddress') or '', 'user_agent': item.get('userAgent') or '', 'region': item.get('awsRegion') or '',
             'account': item.get('recipientAccountId') or identity.get('accountId') or '', 'service': service, 'event_source': item.get('eventSource') or '',

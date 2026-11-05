@@ -3,7 +3,7 @@ activity and proposes reversible containment."""
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import or_
@@ -49,11 +49,11 @@ def _pick(record: dict | None, *names: str, default: Any = None) -> Any:
 
 def _parse_time(value: Any) -> datetime | None:
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, str) and value:
         try:
             parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
         except ValueError:
             return None
     return None
@@ -88,7 +88,7 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
     action = str(_pick(anchor, 'action', default='') or '')
     category = str(_pick(anchor, 'category', default='') or '')
     at = _parse_time(_pick(anchor, 'occurred_at', 'last_seen_at', 'first_seen_at', 'created_at'))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_hours = 6
     if at:
         minutes = int(max(window_hours * 60, (now - at).total_seconds() / 60 + window_hours * 60))

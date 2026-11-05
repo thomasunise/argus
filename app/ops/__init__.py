@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -65,6 +65,7 @@ def run_backup(db_factory, engine, settings, *, trigger: str = 'manual', request
     except Exception as exc:
         with session_scope(db_factory) as db:
             record = db.get(BackupRecord, record_id)
+            assert record is not None
             record.status, record.error, record.finished_at = 'failed', f'{type(exc).__name__}: {exc}'[:2000], utcnow()
             record.stores_json = dumps(landed)
             if result is not None:
@@ -74,6 +75,7 @@ def run_backup(db_factory, engine, settings, *, trigger: str = 'manual', request
         raise
     with session_scope(db_factory) as db:
         record = db.get(BackupRecord, record_id)
+        assert record is not None
         record.status, record.finished_at = 'completed', utcnow()
         record.name, record.size_bytes, record.sha256 = result.name, result.size_bytes, result.sha256
         record.tables, record.rows, record.encrypted, record.key_id = len(result.counts), result.rows, result.encrypted, result.key_id
@@ -90,6 +92,7 @@ def run_retention(db_factory, settings, tenant_id: str, *, actor=None, record_em
     deleted = retention.prune(db_factory, settings, tenant_id)
     with session_scope(db_factory) as db:
         tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
         data = loads(tenant.settings_json, {})
         data['retention_state'] = {'last_run_at': utcnow().isoformat(), 'rows': sum(deleted.values())}
         tenant.settings_json = dumps(data)
@@ -113,7 +116,7 @@ def backup_due(db, settings, now: datetime) -> bool:
     recent = db.execute(select(BackupRecord).where(BackupRecord.status.in_(('completed', 'running')))
                         .order_by(BackupRecord.started_at.desc()).limit(5)).scalars().all()
     for record in recent:
-        started = record.started_at if record.started_at.tzinfo else record.started_at.replace(tzinfo=timezone.utc)
+        started = record.started_at if record.started_at.tzinfo else record.started_at.replace(tzinfo=UTC)
         if record.status == 'completed' and started > now - timedelta(hours=settings.backup_interval_hours) + timedelta(minutes=15):
             return False
         if record.status == 'running' and started > now - timedelta(seconds=BACKUP_LEASE_SECONDS):
@@ -137,7 +140,7 @@ async def schedule_tick(app, now: float | None = None) -> list[str]:
     now = time.time() if now is None else now
     enqueued: list[str] = []
 
-    moment = datetime.fromtimestamp(now, timezone.utc)
+    moment = datetime.fromtimestamp(now, UTC)
 
     def _state() -> tuple[str | None, bool, list[str]]:
         with session_scope(app.state.db_factory) as db:

@@ -11,7 +11,7 @@ import base64
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import AssetCredential, utcnow
+from ..models import AssetCredential
 
 KINDS = ('header', 'bearer', 'basic', 'cookie')
 
@@ -25,7 +25,7 @@ def _apply_credential_header(headers: dict[str, str], row: AssetCredential) -> N
     elif row.kind == 'bearer':
         headers['Authorization'] = f'Bearer {secret}'
     elif row.kind == 'basic':
-        token = base64.b64encode(f'{row.name}:{secret}'.encode('utf-8')).decode('ascii')
+        token = base64.b64encode(f'{row.name}:{secret}'.encode()).decode('ascii')
         headers['Authorization'] = f'Basic {token}'
     elif row.kind == 'cookie':
         headers['Cookie'] = secret

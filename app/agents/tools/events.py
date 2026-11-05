@@ -1,6 +1,8 @@
 """Read-only security event tools: recent activity, per-actor timelines and aggregate stats."""
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import func, select
 
 from ...core.db import scoped
@@ -28,7 +30,7 @@ def recent_events(args: dict, ctx: ToolContext) -> dict:
         if args.get(field):
             stmt = stmt.where(getattr(SecurityEvent, field).ilike(like(str(args[field])), escape='\\'))
     limit = clamp_limit(args.get('limit'), default=100, maximum=500)
-    rows = ctx.db.execute(stmt.order_by(event_time().desc()).limit(limit)).scalars().all()
+    rows: Any = ctx.db.execute(stmt.order_by(event_time().desc()).limit(limit)).scalars().all()
     return {'window_minutes': minutes, 'count': len(rows), 'items': [full_event(e) for e in rows]}
 
 
@@ -40,7 +42,7 @@ def actor_timeline(args: dict, ctx: ToolContext) -> dict:
     actor = str(args['actor'])
     stmt = (scoped(SecurityEvent, ctx.principal).where(SecurityEvent.actor.ilike(like(actor), escape='\\'), event_time() >= since(hours=hours))
             .order_by(event_time().asc()).limit(clamp_limit(args.get('limit'), default=200, maximum=500)))
-    rows = ctx.db.execute(stmt).scalars().all()
+    rows: Any = ctx.db.execute(stmt).scalars().all()
     actions: dict[str, int] = {}
     entities: dict[str, int] = {}
     sources: dict[str, int] = {}

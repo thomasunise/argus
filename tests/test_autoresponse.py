@@ -7,8 +7,6 @@ from functools import partial
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
-
 from app.actions import autoresponse, broker, catalog, policy
 from app.actions.catalog import ActionType, DryRunResult, ExecResult, entities
 from app.core import events
@@ -18,6 +16,7 @@ from app.models import AuditEntry, dumps, uid, utcnow
 from app.models.actions import ActionRequest, ActionRun
 from app.models.autoresponse import AutoresponseExecution
 from app.models.detections import Detection
+from sqlalchemy import select
 from tests.conftest import login, wait_for, wait_job
 
 PW = 'operator-password-long-123456'

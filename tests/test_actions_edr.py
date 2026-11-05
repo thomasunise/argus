@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import respx
-
 from app.actions import catalog, load_executors
 from app.actions.catalog import ActionError, ExecContext
 from app.actions.executors import crowdstrike, sentinelone

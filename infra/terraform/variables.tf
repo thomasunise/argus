@@ -56,6 +56,18 @@ variable "api_desired_count" {
   default     = 2
 }
 
+variable "alarm_email" {
+  description = "Email subscribed to the CloudWatch alarm SNS topic. Empty = topic only (subscribe your pager in the console)."
+  type        = string
+  default     = ""
+}
+
+variable "worker_max_count" {
+  description = "Maximum ECS tasks for the worker service under CPU autoscaling."
+  type        = number
+  default     = 6
+}
+
 variable "worker_desired_count" {
   description = "ECS tasks for the worker service."
   type        = number

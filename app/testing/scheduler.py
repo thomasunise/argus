@@ -36,8 +36,8 @@ async def scheduler_loop(app) -> None:
 def _collect_due(factory) -> list[tuple[str, str]]:
     from sqlalchemy import select
 
-    from ..models.testing import TestPlan
     from ..models import Tenant
+    from ..models.testing import TestPlan
 
     now = utcnow()
     due: list[tuple[str, str]] = []

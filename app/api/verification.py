@@ -6,17 +6,18 @@ Both runs must be completed, same asset and same adapter to be comparable.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.db import get_scoped, scoped
+from ..core.audit import record_audit
+from ..core.db import get_scoped
 from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
 from ..models import Tenant, dumps, loads
-from ..core.audit import record_audit
-from ..testing.auto_verification import config as auto_config
-from ..models.testing import TestRun, TestResult
 from ..models.actions import ActionRequest, ActionRun
+from ..models.testing import TestResult, TestRun
+from ..testing.auto_verification import config as auto_config
 from ..testing.service import launch_scan
 from .deps import get_db, require
 
@@ -102,9 +103,6 @@ async def retest_remediation(action_run_id: str, request: Request,
                                params=loads(baseline.params_json, {}))
     return {'action_run_id': action_run_id, 'baseline_run_id': baseline.id,
             'followup': queued, 'remediation_confirmed': False}
-
-
-from pydantic import BaseModel
 
 
 class AutoVerifySettings(BaseModel):

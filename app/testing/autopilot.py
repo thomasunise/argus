@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -70,7 +70,7 @@ def run_to_dict(r: AutopilotRun) -> dict:
 
 def _gate(settings, tenant: Tenant | None, scope: TestScope | None, *, now: datetime | None = None) -> None:
     """Raise AutopilotDenied unless every precondition holds. Called at start and before each launch."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if not getattr(settings, 'autopentest_enabled', False):
         raise AutopilotDenied('autonomous pentesting is disabled (AUTOPENTEST_ENABLED=false)')
     if getattr(settings, 'autopentest_kill_switch', False):
@@ -85,7 +85,7 @@ def _gate(settings, tenant: Tenant | None, scope: TestScope | None, *, now: date
         raise AutopilotDenied('this test scope is not marked autonomous; a human must authorize unattended runs on it')
     if scope.revoked_at is not None:
         raise AutopilotDenied('test scope has been revoked')
-    if scope.expires_at is not None and (scope.expires_at if scope.expires_at.tzinfo else scope.expires_at.replace(tzinfo=timezone.utc)) <= now:
+    if scope.expires_at is not None and (scope.expires_at if scope.expires_at.tzinfo else scope.expires_at.replace(tzinfo=UTC)) <= now:
         raise AutopilotDenied('test scope has expired')
 
 
@@ -166,6 +166,7 @@ async def execute(app, db_factory, settings, tenant_id: str, run_id: str, heartb
             run.status, run.error, run.finished_at = 'failed', str(exc), utcnow()
             record_audit(db, principal, 'testing.autopilot.denied', run_id, {'reason': str(exc)}, tenant_id=tenant_id)
             return {'status': 'failed', 'reason': str(exc)}
+        assert scope is not None and tenant is not None
         run.status, run.started_at = 'running', utcnow()
         cap_tier = min(run.max_tier, tenant_max_tier(tenant), key=lambda t: TIER_RANK.get(t, 99))
         max_rounds = min(run.max_rounds, tenant_cap(tenant, 'max_rounds', DEFAULT_MAX_ROUNDS, MAX_ROUNDS_CAP))
@@ -272,6 +273,7 @@ async def execute(app, db_factory, settings, tenant_id: str, run_id: str, heartb
         with session_scope(db_factory) as db:
             produced = _record_results(db, tenant_id, launched_run_ids, steps, round_index + 1)
             run = db.get(AutopilotRun, run_id)
+            assert run is not None
             run.rounds_completed = round_index + 1
             run.test_runs = launched_total
             run.steps_json = dumps(steps, limit=200_000)
@@ -282,6 +284,7 @@ async def execute(app, db_factory, settings, tenant_id: str, run_id: str, heartb
     summary = _summarize(steps, launched_total, stopped_reason)
     with session_scope(db_factory) as db:
         run = db.get(AutopilotRun, run_id)
+        assert run is not None
         run.status = 'stopped' if stopped_reason == 'stop requested' else 'completed'
         run.finished_at = utcnow()
         run.steps_json = dumps(steps, limit=200_000)

@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, hash_item, snake
+from ._common import ParseContext, Parser, as_dict, dig, event, first, hash_item, snake
 
 
 def _severity(confidence: Any, mitigation: Any, verdict: Any) -> str:
@@ -41,9 +41,10 @@ class SentinelOneParser(Parser):
         return super().items(payload)
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
-        info = item.get('threatInfo') if isinstance(item.get('threatInfo'), dict) else item
-        agent_rt = item.get('agentRealtimeInfo') if isinstance(item.get('agentRealtimeInfo'), dict) else {}
-        agent_det = item.get('agentDetectionInfo') if isinstance(item.get('agentDetectionInfo'), dict) else {}
+        raw_info = item.get('threatInfo')
+        info: dict[str, Any] = raw_info if isinstance(raw_info, dict) else item
+        agent_rt = as_dict(item.get('agentRealtimeInfo'))
+        agent_det = as_dict(item.get('agentDetectionInfo'))
         indicators = [i for i in (item.get('indicators') or []) if isinstance(i, dict)]
         classification = str(info.get('classification') or 'Threat')
         hostname = str(agent_rt.get('agentComputerName') or agent_det.get('agentComputerName') or item.get('computerName') or '')

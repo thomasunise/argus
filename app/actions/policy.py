@@ -14,7 +14,7 @@ from __future__ import annotations
 import fnmatch
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 
 from ..core.config import Settings
 from ..core.rbac import Principal, has
@@ -69,7 +69,7 @@ def in_window(spec: str, now: datetime | None = None) -> bool | None:
     if parsed is None:
         return None
     start, end = parsed
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).time().replace(second=0, microsecond=0)
+    current = (now or datetime.now(UTC)).astimezone(UTC).time().replace(second=0, microsecond=0)
     if start <= end:
         return start <= current < end
     return current >= start or current < end
@@ -94,7 +94,7 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
     every hard denial above still applies."""
     decision = PolicyDecision()
     overrides = tenant_policy(tenant)
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     # -- hard denials
     if settings.actions_kill_switch:

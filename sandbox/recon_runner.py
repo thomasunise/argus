@@ -10,7 +10,6 @@ Emits `ARGUS_DISCOVERY {json}` per fact and an `ARGUS_ENGINE {json}` trailer.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from urllib.parse import urljoin, urlsplit

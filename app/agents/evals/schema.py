@@ -30,26 +30,38 @@ def validate(schema: dict, value: Any, path: str = '$') -> list[str]:
         if 'maximum' in schema and value > schema['maximum']:
             problems.append(f'{path}: {value} > maximum {schema["maximum"]}')
     if isinstance(value, dict) and (schema.get('type') == 'object' or 'properties' in schema or (isinstance(expected, list) and 'object' in expected)):
-        props = schema.get('properties', {})
-        for key in schema.get('required', []):
-            if key not in value:
-                problems.append(f'{path}: missing required {key!r}')
-        if schema.get('additionalProperties') is False:
-            for key in value:
-                if key not in props:
-                    problems.append(f'{path}: unexpected property {key!r}')
-        for key, sub in props.items():
-            if key in value:
-                problems.extend(validate(sub, value[key], f'{path}.{key}'))
+        problems.extend(_validate_object(schema, value, path))
     if isinstance(value, list):
-        if 'minItems' in schema and len(value) < schema['minItems']:
-            problems.append(f'{path}: fewer than {schema["minItems"]} items')
-        if 'maxItems' in schema and len(value) > schema['maxItems']:
-            problems.append(f'{path}: more than {schema["maxItems"]} items')
-        items = schema.get('items')
-        if isinstance(items, dict):
-            for index, item in enumerate(value):
-                problems.extend(validate(items, item, f'{path}[{index}]'))
+        problems.extend(_validate_array(schema, value, path))
+    return problems
+
+
+def _validate_object(schema: dict, value: dict, path: str) -> list[str]:
+    problems: list[str] = []
+    props = schema.get('properties', {})
+    for key in schema.get('required', []):
+        if key not in value:
+            problems.append(f'{path}: missing required {key!r}')
+    if schema.get('additionalProperties') is False:
+        for key in value:
+            if key not in props:
+                problems.append(f'{path}: unexpected property {key!r}')
+    for key, sub in props.items():
+        if key in value:
+            problems.extend(validate(sub, value[key], f'{path}.{key}'))
+    return problems
+
+
+def _validate_array(schema: dict, value: list, path: str) -> list[str]:
+    problems: list[str] = []
+    if 'minItems' in schema and len(value) < schema['minItems']:
+        problems.append(f'{path}: fewer than {schema["minItems"]} items')
+    if 'maxItems' in schema and len(value) > schema['maxItems']:
+        problems.append(f'{path}: more than {schema["maxItems"]} items')
+    items = schema.get('items')
+    if isinstance(items, dict):
+        for index, item in enumerate(value):
+            problems.extend(validate(items, item, f'{path}[{index}]'))
     return problems
 
 

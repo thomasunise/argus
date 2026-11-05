@@ -2,6 +2,9 @@
 single-shot model summaries) and `AgentRun` rows produced by the investigate/triage specialists."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,13 +55,15 @@ def list_investigations(finding_id: str | None = None, kind: str | None = None, 
         stmt = scoped(Investigation, principal)
         if finding_id:
             stmt = stmt.where(Investigation.finding_id == finding_id)
-        items.extend(legacy_to_dict(r) for r in db.execute(stmt.order_by(Investigation.created_at.desc()).limit(window)).scalars())
+        found_inv: Any = db.execute(stmt.order_by(Investigation.created_at.desc()).limit(window)).scalars().all()
+        items.extend(legacy_to_dict(r) for r in found_inv)
     if kind in (None, 'agent_run'):
         stmt = scoped(AgentRun, principal).where(AgentRun.spec.in_(AGENT_SPECS))
         if finding_id:
             stmt = stmt.where(AgentRun.finding_id == finding_id)
-        items.extend(run_to_investigation(r) for r in db.execute(stmt.order_by(AgentRun.created_at.desc()).limit(window)).scalars())
-    items.sort(key=lambda d: aware(d['created_at']) or aware(d.get('finished_at')), reverse=True)
+        found_runs: Any = db.execute(stmt.order_by(AgentRun.created_at.desc()).limit(window)).scalars().all()
+        items.extend(run_to_investigation(r) for r in found_runs)
+    items.sort(key=lambda d: aware(d['created_at']) or aware(d.get('finished_at')) or datetime.min.replace(tzinfo=UTC), reverse=True)
     rows = items[offset: offset + page.limit + 1]
     return page.wrap(rows, lambda d: d)
 
@@ -72,4 +77,4 @@ def get_investigation(investigation_id: str, db: Session = Depends(get_db), prin
     if run is None or run.spec not in AGENT_SPECS:
         raise NotFound('Investigation not found')
     steps = db.execute(select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.index.asc(), AgentStep.created_at.asc())).scalars().all()
-    return run_to_investigation(run, steps)
+    return run_to_investigation(run, list(steps))

@@ -6,13 +6,12 @@ import hashlib
 import hmac
 import json
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import respx
-from sqlalchemy import select
-
 from app.models import Asset, AuditEntry, Finding, SecurityEvent, loads
+from sqlalchemy import select
 from tests.conftest import wait_job
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'integrations'
@@ -186,7 +185,7 @@ def test_wazuh_sync_job_pulls_since_last_run(owner, db, default_tenant_id, monke
     # Keep the fixture inside the seven-day safety bound enforced by Wazuh sync.
     # A fixed 2026 timestamp made CI fail once that date became stale.
     fixture = load('wazuh', 'indexer_hits.json')
-    latest = (datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0)
+    latest = (datetime.now(UTC) - timedelta(minutes=2)).replace(microsecond=0)
     earlier = latest - timedelta(minutes=1)
     hits = fixture['hits']['hits']
     hits[0]['_source']['timestamp'] = earlier.strftime('%Y-%m-%dT%H:%M:%S.000+0000')

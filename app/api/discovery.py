@@ -6,6 +6,8 @@ the normal testing harness, which re-checks the scope.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -14,7 +16,6 @@ from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
 from ..core.errors import NotFound
 from ..core.rbac import Principal
-from ..models import utcnow
 from ..models.discovery import Discovery, DiscoveryRun, RequestCapture
 from .deps import Page, get_db, require
 
@@ -34,16 +35,16 @@ def list_runs(page: Page = Depends(), asset_id: str | None = None, db: Session =
     stmt = scoped(DiscoveryRun, principal)
     if asset_id:
         stmt = stmt.where(DiscoveryRun.asset_id == asset_id)
-    rows = db.execute(page.apply(stmt.order_by(DiscoveryRun.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(DiscoveryRun.created_at.desc()))).scalars().all()
     return page.wrap(rows, service.run_to_dict)
 
 
 @router.post('/runs', status_code=202)
 async def start_run(body: RunBody, request: Request, db: Session = Depends(get_db),
                     principal: Principal = Depends(require('tests:run'))):
+    from ..discovery import service
     from ..models import Asset
     from ..models.testing import TestScope
-    from ..discovery import service
 
     asset = get_scoped(db, Asset, principal, body.asset_id)
     if asset is None:
@@ -70,7 +71,7 @@ def get_run(run_id: str, db: Session = Depends(get_db), principal: Principal = D
     run = get_scoped(db, DiscoveryRun, principal, run_id)
     if run is None:
         raise NotFound('discovery run not found')
-    facts = db.execute(scoped(Discovery, principal).where(Discovery.run_id == run_id)
+    facts: Any = db.execute(scoped(Discovery, principal).where(Discovery.run_id == run_id)
                        .order_by(Discovery.kind.asc(), Discovery.value.asc())).scalars().all()
     return {**service.run_to_dict(run), 'discoveries': [service.fact_to_dict(f) for f in facts]}
 
@@ -85,7 +86,7 @@ def list_facts(page: Page = Depends(), asset_id: str | None = None, kind: str | 
         stmt = stmt.where(Discovery.asset_id == asset_id)
     if kind:
         stmt = stmt.where(Discovery.kind == kind)
-    rows = db.execute(page.apply(stmt.order_by(Discovery.last_seen.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(Discovery.last_seen.desc()))).scalars().all()
     return page.wrap(rows, service.fact_to_dict)
 
 
@@ -98,7 +99,7 @@ def list_requests(page: Page = Depends(), asset_id: str | None = None, db: Sessi
     stmt = scoped(RequestCapture, principal)
     if asset_id:
         stmt = stmt.where(RequestCapture.asset_id == asset_id)
-    rows = db.execute(page.apply(stmt.order_by(RequestCapture.last_seen.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(RequestCapture.last_seen.desc()))).scalars().all()
     return page.wrap(rows, service.capture_to_dict)
 
 

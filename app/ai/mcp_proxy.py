@@ -74,6 +74,7 @@ def make_policy_check(base_url: str, api_key: str):
         if len(data) > MAX_MESSAGE_BYTES:
             raise ValueError('Tool call exceeds policy request limit')
         parsed = urlsplit(endpoint)
+        assert parsed.hostname is not None  # _validate_argus_url requires a host
         conn = (HTTPSConnection if parsed.scheme == 'https' else HTTPConnection)(
             parsed.hostname, parsed.port, timeout=5)
         try:
@@ -105,7 +106,7 @@ def run_proxy(server_command: list[str], check, *, risk: str = 'unknown') -> int
     child_env = dict(os.environ)
     child_env.pop('ARGUS_API_KEY', None)
     # The child is explicitly configured by the operator. No shell or command interpolation.
-    proc = subprocess.Popen(server_command, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    proc = subprocess.Popen(server_command, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE,  # noqa: S603
                             stderr=sys.stderr, env=child_env, bufsize=0)
 
     def read_server():

@@ -6,15 +6,12 @@ import json
 import shutil
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 import pytest
 import respx
-
 from app.collectors import CollectorContext, load_builtin, registry
-from app.collectors import aws as aws_mod
 from app.collectors import azure as azure_mod
 from app.collectors import base as base_mod
 from app.collectors import gcp as gcp_mod
@@ -130,7 +127,7 @@ def build_fake_boto3(raw: dict) -> tuple[types.ModuleType, dict]:
                      pages={'list_clusters': lambda **kw: one('clusters', [c['name'] for c in raw['eks']['us-east-1']])})
     buckets = {b['Name']: b for b in raw['s3']['buckets']}
     s3 = FakeClient(ops={
-        'list_buckets': lambda: {'Buckets': [{'Name': b['Name'], 'CreationDate': datetime(2022, 1, 1, tzinfo=timezone.utc)} for b in buckets.values()]},
+        'list_buckets': lambda: {'Buckets': [{'Name': b['Name'], 'CreationDate': datetime(2022, 1, 1, tzinfo=UTC)} for b in buckets.values()]},
         'get_bucket_location': lambda Bucket: {'LocationConstraint': None},
         'get_public_access_block': lambda Bucket: {'PublicAccessBlockConfiguration': buckets[Bucket]['public_access_block']} if buckets[Bucket]['public_access_block'] else _raise('NoSuchPublicAccessBlockConfiguration'),
         'get_bucket_policy_status': lambda Bucket: {'PolicyStatus': {'IsPublic': True}} if buckets[Bucket]['policy_public'] else _raise('NoSuchBucketPolicy'),
@@ -345,7 +342,7 @@ async def test_okta_collect(settings):
     raw = fixture('okta')
     base = 'https://acme.okta.com'
     users = [{k: v for k, v in u.items() if k != 'factors'} for u in raw['users']]
-    since = datetime(2026, 10, 23, 5, tzinfo=timezone.utc)
+    since = datetime(2026, 10, 23, 5, tzinfo=UTC)
     with respx.mock(assert_all_called=True) as mock:
         mock.get(f'{base}/api/v1/users', params={'after': 'cursor2'}).respond(200, json=users[2:])
         mock.get(f'{base}/api/v1/users').respond(200, json=users[:2], headers={'link': f'<{base}/api/v1/users?after=cursor2&limit=200>; rel="next"'})
@@ -387,7 +384,7 @@ async def test_entra_collect(settings):
         mock.get(f'{graph}/identity/conditionalAccess/policies').respond(403, json={'error': {'code': 'Authorization_RequestDenied'}})
         signins = mock.get(f'{graph}/auditLogs/signIns').respond(200, json={'value': raw['risky_sign_ins']})
         mock.get(f'{graph}/auditLogs/directoryAudits').respond(200, json={'value': raw['audit_logs']})
-        ctx = make_ctx(settings, {'tenant_id': raw['tenant_id'], 'client_id': 'app-id', 'client_secret': 'cs'}, since=datetime(2026, 10, 23, tzinfo=timezone.utc))
+        ctx = make_ctx(settings, {'tenant_id': raw['tenant_id'], 'client_id': 'app-id', 'client_secret': 'cs'}, since=datetime(2026, 10, 23, tzinfo=UTC))
         result = await registry.get('entra').collect(ctx)
         body = token.calls[0].request.content.decode()
         assert 'grant_type=client_credentials' in body and 'scope=https%3A%2F%2Fgraph.microsoft.com%2F.default' in body

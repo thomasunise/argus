@@ -51,7 +51,25 @@ resource "aws_kms_key_policy" "data" {
 
 # ---------------------------------------------------------------- alarms
 
+resource "aws_sns_topic" "alarms" {
+  name              = "${local.prefix}-alarms"
+  kms_master_key_id = aws_kms_key.data.id
+}
+
+resource "aws_sns_topic_subscription" "alarms_email" {
+  count     = var.alarm_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.alarms.arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
+locals {
+  alarm_actions = [aws_sns_topic.alarms.arn]
+}
+
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.prefix}-alb-5xx"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -67,6 +85,8 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_unhealthy" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.prefix}-api-unhealthy-hosts"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 2
@@ -82,6 +102,8 @@ resource "aws_cloudwatch_metric_alarm" "api_unhealthy" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "worker_running" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.prefix}-worker-tasks-low"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
@@ -97,6 +119,8 @@ resource "aws_cloudwatch_metric_alarm" "worker_running" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "db_cpu" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.prefix}-rds-cpu"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3

@@ -11,7 +11,7 @@ Door origin wiring, Key Vault network rules) are deliberately left for you to de
 | Component | Resource | Notes |
 |---|---|---|
 | Network | VNet with delegated subnets for Container Apps and Postgres, a private-endpoint subnet, private DNS zones | Postgres, Redis and Storage have no public endpoints |
-| Compute | Container Apps environment (internal, zone redundant), `api` app with HTTP scaling, `worker` app with fixed replicas | Same image; `args` selects the role; user-assigned identity reads Key Vault |
+| Compute | Container Apps environment (internal, zone redundant), `api` app with HTTP scaling, `worker` app between `worker_replicas` and `worker_max_replicas` | Same image; `args` selects the role; user-assigned identity reads Key Vault. The azurerm 4.x provider has no CPU scale rule for Container Apps, so the worker scales within its replica range via Container Apps defaults or an external scaler (KEDA Redis scaler on `argus:q:*` depth); AWS (ECS CPU target tracking) and Helm (worker HPA) scale on CPU directly. |
 | Database | PostgreSQL Flexible Server 16, zone-redundant HA, `require_secure_transport=on`, `prevent_destroy` | `DATABASE_URL` assembled into Key Vault with `sslmode=require` |
 | Queue | Azure Cache for Redis, TLS only, `noeviction`, private endpoint | `REDIS_URL` uses `rediss://` |
 | Audit WORM | GZRS storage account, versioning, container with a time-based immutability policy | `lock_audit_policy=true` makes it irreversible, which is the point of WORM |

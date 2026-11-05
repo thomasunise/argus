@@ -225,7 +225,7 @@ def classify(text: str) -> str:
         return 'secret'
     if any(w in lower for w in ('login', 'brute', 'mfa', 'authentication', 'auth ', 'failed sign', 'password spray', 'impossible travel', 'session')):
         return 'identity'
-    if any(w in lower for w in ('public', 'exposed', 'open to', '0.0.0.0', 'anonymous', 'world-readable', 'misconfig', 'permissive', 'wildcard', 'security group', 'bucket')):  # nosec B104
+    if any(w in lower for w in ('public', 'exposed', 'open to', '0.0.0.0', 'anonymous', 'world-readable', 'misconfig', 'permissive', 'wildcard', 'security group', 'bucket')):  # nosec B104  # noqa: S104 - detection keyword, not a bind
         return 'exposure'
     if any(w in lower for w in ('privilege', 'escalat', 'iam', 'role assumption', 'assume', 'admin')):
         return 'privilege'

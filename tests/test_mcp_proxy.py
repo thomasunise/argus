@@ -1,6 +1,6 @@
 """Enforcing proxy must never forward rejected or unverified tool calls."""
-from app.ai.mcp_proxy import _validate_argus_url, gate_message, make_policy_check
 import pytest
+from app.ai.mcp_proxy import _validate_argus_url, gate_message, make_policy_check
 
 
 def call(name='fs.read_file', id=7):

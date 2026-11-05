@@ -197,6 +197,31 @@ resource "aws_ecs_service" "worker" {
   }
 }
 
+# Worker autoscaling on CPU.
+resource "aws_appautoscaling_target" "worker" {
+  max_capacity       = var.worker_max_count
+  min_capacity       = var.worker_desired_count
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.worker.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "worker_cpu" {
+  name               = "${local.prefix}-worker-cpu"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker.service_namespace
+  target_tracking_scaling_policy_configuration {
+    target_value       = 65
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
 # API autoscaling on CPU.
 resource "aws_appautoscaling_target" "api" {
   max_capacity       = var.api_desired_count * 3

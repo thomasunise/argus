@@ -4,7 +4,6 @@ from __future__ import annotations
 import types
 
 import pytest
-
 from app.agents.evals.schema import validate
 from app.agents.runtime import SPECS, AgentRuntime
 from app.agents.specialists import SPECIALISTS, load_all

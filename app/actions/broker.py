@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import update
@@ -20,23 +20,21 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings, get_settings
 from ..core.db import get_scoped, scoped, session_scope
-from ..core.errors import Conflict, Forbidden, NotFound, PolicyDenied, ArgusError
+from ..core.errors import ArgusError, Conflict, Forbidden, NotFound, PolicyDenied
 from ..core.events import publish, publish_soon
 from ..core.rbac import Principal, Role, has
 from ..core.security import redact
 from ..core.telemetry import ACTIONS
-from ..models import ApiKey, Finding, Tenant, dumps, loads
+from ..models import Finding, Tenant, dumps, loads
 from ..models.actions import EXECUTABLE_STATUSES, ActionApproval, ActionRequest, ActionRun
 from . import catalog, policy
 from .catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecResult
 from .identity import (
     _approvals,
     _redacted,
-    _runs,
     actor_id,
     approval_to_dict,
     approvals_satisfied,
-    identity_of,
     request_detail,
     request_to_dict,
     run_to_dict,
@@ -71,13 +69,13 @@ class InvalidParams(ArgusError):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _tenant(db: Session, tenant_id: str) -> Tenant | None:
@@ -105,7 +103,7 @@ async def safe_dry_run(action: ActionType, params: dict, ctx: ExecContext) -> Dr
         result = await asyncio.wait_for(action.dry_run(params, ctx), timeout=DRY_RUN_TIMEOUT)
     except ActionError as exc:
         return DryRunResult(ok=False, summary=f'dry run failed: {exc.message}', details=_redacted(exc.details))
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return DryRunResult(ok=False, summary=f'dry run timed out after {DRY_RUN_TIMEOUT}s')
     except Exception as exc:  # executors are third-party-shaped code; isolate their failures
         log.warning('dry run of %s raised %s', action.name, type(exc).__name__)
@@ -514,7 +512,7 @@ async def handle_execute(job, ctx) -> dict:
         except ActionError as exc:
             _finish(run, req, run_status='failed', request_status='failed', error=exc.message, result={'dry_run': dry.as_dict(), 'details': exc.details})
             return _audit_failure(db, principal, req, run)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _finish(run, req, run_status='failed', request_status='failed', error=f'execution timed out after {EXECUTE_TIMEOUT}s', result={'dry_run': dry.as_dict()})
             return _audit_failure(db, principal, req, run)
         except Exception as exc:
@@ -570,7 +568,7 @@ async def handle_rollback(job, ctx) -> dict:
             result = await asyncio.wait_for(action.rollback(rollback_payload, exec_ctx), timeout=EXECUTE_TIMEOUT)
         except ActionError as exc:
             result = ExecResult(ok=False, summary=exc.message, details=exc.details)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             result = ExecResult(ok=False, summary=f'rollback timed out after {EXECUTE_TIMEOUT}s')
         except Exception as exc:
             log.exception('action %s raised during rollback', req.action_type)

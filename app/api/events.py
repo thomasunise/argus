@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_, select
@@ -45,7 +46,7 @@ def list_events(source: str | None = None, category: str | None = None, severity
         pattern = like(search.strip())
         stmt = stmt.where(or_(SecurityEvent.title.ilike(pattern, escape='\\'), SecurityEvent.actor.ilike(pattern, escape='\\'),
                               SecurityEvent.entity.ilike(pattern, escape='\\'), SecurityEvent.action.ilike(pattern, escape='\\')))
-    rows = db.execute(page.apply(stmt.order_by(SecurityEvent.received_at.desc(), SecurityEvent.id))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(SecurityEvent.received_at.desc(), SecurityEvent.id))).scalars().all()
     return page.wrap(rows, event_to_dict)
 
 
@@ -56,12 +57,12 @@ def event_stats(db: Session = Depends(get_db), principal: Principal = Depends(re
     windows = {'24h': now - timedelta(hours=24), '7d': now - timedelta(days=7)}
 
     def group(column, since) -> dict[str, int]:
-        rows = db.execute(select(column, func.count()).where(SecurityEvent.tenant_id == tenant_id, SecurityEvent.received_at >= since)
+        rows: Any = db.execute(select(column, func.count()).where(SecurityEvent.tenant_id == tenant_id, SecurityEvent.received_at >= since)
                           .group_by(column)).all()
         return {str(key or ''): int(n) for key, n in rows}
 
     def top(column, since) -> list[dict]:
-        rows = db.execute(select(column, func.count().label('n')).where(SecurityEvent.tenant_id == tenant_id, SecurityEvent.received_at >= since,
+        rows: Any = db.execute(select(column, func.count().label('n')).where(SecurityEvent.tenant_id == tenant_id, SecurityEvent.received_at >= since,
                                                                            column != '').group_by(column).order_by(func.count().desc(), column)
                           .limit(TOP_N)).all()
         return [{'value': key, 'count': int(n)} for key, n in rows]
@@ -83,7 +84,7 @@ def get_event(event_id: str, db: Session = Depends(get_db), principal: Principal
     if event is None:
         raise NotFound('Event not found')
     data = event_to_dict(event)
-    related = db.execute(scoped(SecurityEvent, principal).where(SecurityEvent.id != event.id, SecurityEvent.actor == event.actor,
+    related: Any = db.execute(scoped(SecurityEvent, principal).where(SecurityEvent.id != event.id, SecurityEvent.actor == event.actor,
                                                                 SecurityEvent.actor != '').order_by(SecurityEvent.received_at.desc()).limit(10)).scalars().all()
     data['related_by_actor'] = [{'id': e.id, 'title': e.title, 'severity': e.severity, 'source': e.source, 'received_at': e.received_at} for e in related]
     return data

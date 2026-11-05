@@ -5,14 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
 from app.ai import catalog
 from app.ai.discovery import classify, discover, upsert_service
 from app.core.findings import EventDraft, upsert_event
 from app.models import SecurityEvent, utcnow
 from app.models.ai import AIService
 from app.models.detections import Detection
+from sqlalchemy import select
 from tests.conftest import wait_job
 
 RULE = 'agentic.unsanctioned_ai_service'
@@ -142,7 +141,7 @@ def test_rule_skips_sanctioned_and_gateway_and_flags_blocked(db, default_tenant_
 @pytest.mark.asyncio
 async def test_agent_tool_lists_inventory(app, client, db, default_tenant_id):
     from app.agents.tools.registry import ToolContext, registry
-    from app.core.rbac import Role, Principal
+    from app.core.rbac import Principal, Role
 
     upsert_service(db, default_tenant_id, catalog.BY_KEY['perplexity'], 'network', '10.0.0.3', seen_at=utcnow())
     db.commit()

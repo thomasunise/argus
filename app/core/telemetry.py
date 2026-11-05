@@ -5,7 +5,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -75,8 +75,8 @@ class _Noop:
 
 
 if not METRICS_AVAILABLE:  # pragma: no cover
-    HTTP_REQUESTS = HTTP_LATENCY = JOBS = AGENT_TOKENS = AGENT_RUNS = FINDINGS_OPEN = ACTIONS = DETECTIONS = _Noop()
-    INGEST_EVENTS = QUEUE_DELAY = COLLECTOR_RUNS = _Noop()
+    HTTP_REQUESTS = HTTP_LATENCY = JOBS = AGENT_TOKENS = AGENT_RUNS = FINDINGS_OPEN = ACTIONS = DETECTIONS = _Noop()  # type: ignore[assignment]
+    INGEST_EVENTS = QUEUE_DELAY = COLLECTOR_RUNS = _Noop()  # type: ignore[assignment]
 
 
 class BodySizeLimitMiddleware:

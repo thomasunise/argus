@@ -42,7 +42,7 @@ def main(argv: list[str]) -> int:
     command = [sys.executable, CODE_PATH] if language == 'python' else ['/bin/bash', CODE_PATH]
     timed_out = False
     try:
-        completed = subprocess.run(command, capture_output=True, timeout=wall, cwd=tempfile.gettempdir(), check=False)
+        completed = subprocess.run(command, capture_output=True, timeout=wall, cwd=tempfile.gettempdir(), check=False)  # noqa: S603 - fixed argv inside the sandbox runner; the code file is the sandboxed payload
         stdout, stderr, exit_code = completed.stdout, completed.stderr, completed.returncode
     except subprocess.TimeoutExpired as exc:
         timed_out = True

@@ -8,28 +8,22 @@ references, and request-size bounds.
 from __future__ import annotations
 
 import logging
-import os
 import types
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
-import httpx
 import pytest
 import respx
-from sqlalchemy import select
-
 from app.actions import broker, catalog, credentials
 from app.core.errors import ScopeDenied, Unavailable
 from app.integrations.egress import EgressDenied, validate_outbound_url
 from app.integrations.outbound import registry as outbound_registry
 from app.integrations.wazuh_sync import WazuhSyncError, fetch_alerts
-from app.models import Asset, AssetAuthorization, dumps, loads
+from app.models import Asset, AssetAuthorization, dumps
 from app.models.actions import ActionRequest
 from app.models.testing import TestRun, TestScope
 from app.testing import harness
 from app.testing.adapters import nuclei, semgrep, zap
 from app.testing.ratelimit import RateLimiter
-from tests.conftest import login
 from tests.test_actions import PW, FakeAction, FakeMedium, as_user, enable_actions, make_request
 from tests.test_api_findings import make_finding
 from tests.test_detections_api import seed_detection
@@ -117,7 +111,7 @@ def test_sec_scope_requires_tenant_owned_assets(app, owner, second_tenant):
     assert client.post('/api/v1/tests/scopes', json={'name': 's', 'asset_ids': [foreign_id]}, headers=headers).status_code == 404
     assert client.post('/api/v1/tests/scopes', json={'name': 's', 'asset_ids': [mine_id, foreign_id]}, headers=headers).status_code == 404
     assert client.post('/api/v1/tests/scopes', json={'name': 's', 'asset_ids': [mine_id], 'max_concurrency': 0}, headers=headers).status_code == 422
-    past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     assert client.post('/api/v1/tests/scopes', json={'name': 's', 'asset_ids': [mine_id], 'expires_at': past}, headers=headers).status_code == 400
     assert client.post('/api/v1/tests/scopes', json={'name': 's', 'asset_ids': [mine_id]}, headers=headers).status_code == 201
 
@@ -246,9 +240,9 @@ async def test_sec_channels_refuse_internal_destinations_at_send_time(settings):
         snow = await outbound_registry.get('servicenow').send(make_event(), {'instance_url': 'https://localhost'}, {'bearer_token': 't'})
         assert not snow.ok and 'refused' in snow.error
     with pytest.raises(WazuhSyncError):
-        await fetch_alerts('https://169.254.169.254:9200', 'wazuh-alerts-*', None, '', datetime.now(timezone.utc), 10, settings)
+        await fetch_alerts('https://169.254.169.254:9200', 'wazuh-alerts-*', None, '', datetime.now(UTC), 10, settings)
     with pytest.raises(WazuhSyncError):
-        await fetch_alerts('https://indexer.test:9200', '../_cluster/settings', None, '', datetime.now(timezone.utc), 10, settings)
+        await fetch_alerts('https://indexer.test:9200', '../_cluster/settings', None, '', datetime.now(UTC), 10, settings)
 
 
 # ---------------------------------------------------------------- literal secret references

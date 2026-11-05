@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..actions import broker
 from ..core.audit import record_audit
-from ..core.db import get_scoped, bind_public_token_tenant
+from ..core.db import bind_public_token_tenant, get_scoped
 from ..core.errors import ArgusError, Unauthorized
 from ..core.rbac import Principal, Role
 from ..core.security import redact

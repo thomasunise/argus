@@ -1,7 +1,5 @@
-from app.testing.auto_verification import enabled, _baseline, report_retest
 from app.models import Tenant, dumps, loads
-from app.models.actions import ActionRequest, ActionRun
-from app.models.testing import TestRun, TestResult, TestScope
+from app.testing.auto_verification import _baseline, enabled
 
 
 def test_auto_verification_default_off_and_eligibility(db, default_tenant_id):

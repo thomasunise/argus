@@ -13,10 +13,10 @@ from ..collectors.base import literal_refs_allowed
 from ..collectors.runner import enqueue_run
 from ..core.audit import record_audit
 from ..core.config import Settings
-from ..core.errors import NotFound, ArgusError
-from ..integrations.egress import check_url_config
+from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
 from ..core.security import mask_secret_refs, merge_secret_refs, redact
+from ..integrations.egress import check_url_config
 from ..models import dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
 from .deps import Page, get_db, get_settings, require
@@ -124,7 +124,7 @@ def list_configs(collector: str | None = None, enabled: bool | None = None, db: 
         stmt = stmt.where(CollectorConfig.collector == collector)
     if enabled is not None:
         stmt = stmt.where(CollectorConfig.enabled.is_(enabled))
-    rows = db.execute(page.apply(stmt.order_by(CollectorConfig.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(CollectorConfig.created_at.desc()))).scalars().all()
     return page.wrap(rows, _config_dict)
 
 
@@ -213,5 +213,5 @@ async def run_config(config_id: str, request: Request, db: Session = Depends(get
 def list_runs(config_id: str, db: Session = Depends(get_db), page: Page = Depends(_page), principal: Principal = Depends(require('collectors:read'))):
     config = _get_config(db, principal, config_id)
     stmt = select(CollectorRun).where(CollectorRun.config_id == config.id, CollectorRun.tenant_id == principal.tenant_id).order_by(CollectorRun.created_at.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, _run_dict)

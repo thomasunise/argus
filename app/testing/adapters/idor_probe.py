@@ -10,8 +10,8 @@ requester):
 """
 from __future__ import annotations
 
-from difflib import SequenceMatcher
 import json
+from difflib import SequenceMatcher
 
 import httpx
 

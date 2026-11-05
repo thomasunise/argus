@@ -5,7 +5,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, event, first, hash_item, listify, snake
+from ._common import ParseContext, Parser, as_dict, event, first, hash_item, listify, snake
 
 _K8S_FLAG_RULES = {'privileged': 'privileged', 'host network': 'hostNetwork', 'hostnetwork': 'hostNetwork', 'host pid': 'hostPID',
                    'hostpid': 'hostPID', 'host ipc': 'hostIPC', 'hostipc': 'hostIPC'}
@@ -25,7 +25,7 @@ class FalcoParser(Parser):
         return super().items(payload)
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
-        fields = item.get('output_fields') if isinstance(item.get('output_fields'), dict) else {}
+        fields = as_dict(item.get('output_fields'))
         rule = str(item.get('rule') or 'Falco runtime alert')
         namespace = first(fields, 'k8s.ns.name', 'ka.target.namespace') or ''
         pod = first(fields, 'k8s.pod.name', 'ka.target.name') or ''

@@ -1,6 +1,8 @@
 """RLS regression under an actual unprivileged PostgreSQL role."""
 import uuid
+
 import pytest
+
 
 def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
     """Direct SQL without tenant context must see no assets and cannot insert.
@@ -12,8 +14,8 @@ def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
     engine_db = app.state.engine
     if engine_db.dialect.name != 'postgresql':
         pytest.skip('requires PostgreSQL RLS')
-    from sqlalchemy import text
     from app.models import Asset
+    from sqlalchemy import text
     # The shared PostgreSQL pytest fixture creates tables directly from ORM
     # metadata (not Alembic); install the same RLS policy explicitly here.
     with engine_db.begin() as c:
@@ -55,8 +57,8 @@ def test_postgres_rls_is_deny_by_default_for_nonowner(app, client):
             conn.execute(text(f'SET ROLE "{role}"'))
             conn.commit()
             try:
-                from sqlalchemy.orm import Session
                 from app.core.db import set_tenant_context
+                from sqlalchemy.orm import Session
                 with Session(bind=conn) as scoped_session:
                     assert scoped_session.execute(text('SELECT COUNT(*) FROM public.assets')).scalar_one() == 0
                     scoped_session.commit()

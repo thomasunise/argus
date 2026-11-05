@@ -7,9 +7,9 @@ No raw arguments, secrets, or payloads are returned in decisions.
 """
 from __future__ import annotations
 
+import fnmatch
 from dataclasses import dataclass
 from urllib.parse import urlsplit
-import fnmatch
 
 from ..models import Tenant, loads
 

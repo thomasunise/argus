@@ -8,12 +8,11 @@ from functools import partial
 import httpx
 import pytest
 import respx
-from sqlalchemy import select
-
 from app.actions import autoresponse
 from app.detections import canaries, run
 from app.models.actions import ActionRun
 from app.models.detections import Detection
+from sqlalchemy import select
 from tests.conftest import wait_for, wait_job
 
 ZONE = 'c' * 32

@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from ..core.security import redact
 

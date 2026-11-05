@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -72,7 +72,7 @@ def matching_integrations(db: Session, tenant_id: str, topic: str, severity: str
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def build_event(db: Session, tenant_id: str, topic: str, payload: dict, delivery_id: str, settings: Settings) -> OutboundEvent:

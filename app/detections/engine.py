@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.events import publish_soon
-from ..core.findings import SEVERITIES, severity as normalize_severity, upsert_finding
+from ..core.findings import SEVERITIES, upsert_finding
+from ..core.findings import severity as normalize_severity
 from ..core.security import redact
 from ..core.telemetry import DETECTIONS
 from ..models import SecurityEvent, dumps, loads, utcnow
@@ -72,7 +73,7 @@ class RuleContext:
     """Everything a rule may touch. Rules read events through `events()` so windows stay bounded."""
 
     def __init__(self, db: Session, tenant_id: str, since: datetime, now: datetime, params: dict, settings: Any,
-                 rule: 'DetectionRule | None' = None, max_events: int = DEFAULT_MAX_EVENTS):
+                 rule: DetectionRule | None = None, max_events: int = DEFAULT_MAX_EVENTS):
         self.db = db
         self.tenant_id = tenant_id
         self.since = aware(since)  # type: ignore[assignment]

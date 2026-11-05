@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.db import get_scoped, scoped, bind_public_token_tenant
-from ..core.errors import NotFound, ArgusError
+from ..core.db import bind_public_token_tenant, get_scoped, scoped
+from ..core.errors import ArgusError, NotFound
 from ..core.rbac import Principal
 from ..detections import canaries as svc
 from ..models import loads, utcnow
@@ -68,7 +68,7 @@ def list_canaries(kind: str | None = None, include_revoked: bool = False, page: 
         stmt = stmt.where(Canary.kind == kind)
     if not include_revoked:
         stmt = stmt.where(Canary.revoked_at.is_(None))
-    rows = db.execute(page.apply(stmt.order_by(Canary.created_at.desc(), Canary.id.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(Canary.created_at.desc(), Canary.id.desc()))).scalars().all()
     return page.wrap(rows, svc.canary_to_dict)
 
 
@@ -97,7 +97,7 @@ def list_hits(canary_id: str, page: Page = Depends(_page), db: Session = Depends
     if canary is None:
         raise NotFound('Canary not found')
     stmt = scoped(CanaryHit, principal).where(CanaryHit.canary_id == canary.id).order_by(CanaryHit.received_at.desc(), CanaryHit.id.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, svc.hit_to_dict)
 
 
@@ -136,7 +136,7 @@ async def _hit(token: str, request: Request, db: Session) -> None:
     raw = b''
     if request.method == 'POST':
         raw = await _bounded_body(request)
-    payload = {'query': dict(request.query_params)} if request.query_params else {}
+    payload: dict[str, Any] = {'query': dict(request.query_params)} if request.query_params else {}
     if raw:
         try:
             parsed = json.loads(raw)
@@ -272,7 +272,7 @@ async def mcp_canary(token: str, request: Request, db: Session = Depends(get_db)
         return JSONResponse(_rpc(None, error={'code': -32700, 'message': 'Parse error'}), status_code=400, headers=_NO_STORE)
     if 'id' not in message:  # notification (e.g. notifications/initialized)
         return Response(status_code=202, headers=_NO_STORE)
-    meta = loads(canary.metadata_json) if canary is not None else {}
+    meta: dict[str, Any] = loads(canary.metadata_json) if canary is not None else {}
     tool = meta.get('tool') or svc.MCP_BAIT_TOOL
     if method == 'initialize':
         result = {'protocolVersion': str(params.get('protocolVersion') or MCP_PROTOCOL)[:20], 'capabilities': {'tools': {'listChanged': False}},

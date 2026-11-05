@@ -3,13 +3,12 @@ isolated from the real tenant, and runs are tenant scoped."""
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import func, select
-
 from app.core.config import Settings
 from app.models import Finding, SecurityEvent, Tenant
 from app.models.detections import Detection, DetectionRuleState
 from app.simulator import SCENARIOS, execute, runner
 from app.simulator.scenarios import Build
+from sqlalchemy import func, select
 from tests.conftest import wait_job
 
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import func, select
-
 from app.models import AuditEntry, Base, Tenant, uid, utcnow
 from app.ops import retention
+from sqlalchemy import func, select
+
 from conftest import wait_job
 
 OLD = utcnow() - timedelta(days=400)

@@ -7,8 +7,9 @@ tests only through testing.service.launch_scan (scope is re-checked at execution
 from __future__ import annotations
 
 import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy.orm import Session
 

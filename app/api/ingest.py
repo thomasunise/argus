@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings
 from ..core.db import bind_public_token_tenant
-from ..core.errors import NotFound, ArgusError, Unauthorized
+from ..core.errors import ArgusError, NotFound, Unauthorized
 from ..core.rbac import Principal
 from ..integrations.delivery import resolve_secrets
 from ..integrations.inbound import ParseContext, registry
+from ..integrations.inbound._common import Parser
 from ..integrations.ingest import MAX_BODY_BYTES, BatchTooLarge, InvalidPayload, ingest_async
 from ..models import Asset, loads
 from ..models.integrations import IntegrationConfig
@@ -68,7 +69,7 @@ async def ingest_source(source: str, request: Request, db: Session = Depends(get
     return result.as_dict()
 
 
-def _webhook_integration(db: Session, source: str, integration_id: str, *, production: bool = False) -> tuple[IntegrationConfig, object]:
+def _webhook_integration(db: Session, source: str, integration_id: str, *, production: bool = False) -> tuple[IntegrationConfig, Parser]:
     if not registry.has(source):
         raise NotFound(f'Unknown ingest source {source!r}')
     parser = registry.get(source)

@@ -37,7 +37,7 @@ def list_detections(args: dict, ctx: ToolContext) -> dict:
     order = _column(Detection, 'created_at', 'last_seen_at', 'id')
     if order is not None:
         stmt = stmt.order_by(order.desc())
-    rows = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=50, maximum=200))).scalars().all()
+    rows: Any = ctx.db.execute(stmt.limit(clamp_limit(args.get('limit'), default=50, maximum=200))).scalars().all()
     return {'available': True, 'count': len(rows), 'items': [serialize(r) for r in rows]}
 
 

@@ -8,9 +8,10 @@ payload, only the matched domain, API action or application name.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,9 +43,8 @@ class Match:
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    from datetime import timezone
 
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _strings(value: Any, depth: int = 0) -> Iterable[str]:

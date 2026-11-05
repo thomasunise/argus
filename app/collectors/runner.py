@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -56,7 +56,7 @@ def is_due(config: CollectorConfig, now: datetime | None = None) -> bool:
     now = now or utcnow()
     if config.last_run_at is None:
         return True
-    last = config.last_run_at if config.last_run_at.tzinfo else config.last_run_at.replace(tzinfo=timezone.utc)
+    last = config.last_run_at if config.last_run_at.tzinfo else config.last_run_at.replace(tzinfo=UTC)
     return now - last >= timedelta(minutes=config.schedule_minutes)
 
 
@@ -166,7 +166,7 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
     started = utcnow()
     try:
         result = await asyncio.wait_for(_with_heartbeat(collector.collect(ctx), heartbeat), timeout=settings.test_tool_timeout_seconds)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         error = f'collector timed out after {settings.test_tool_timeout_seconds}s'
     except asyncio.CancelledError:
         with session_scope(db_factory) as db:
@@ -181,7 +181,9 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
     stats: dict[str, Any] = {'collector': collector_name, 'duration_seconds': round((utcnow() - started).total_seconds(), 2)}
     with session_scope(db_factory) as db:
         config = db.get(CollectorConfig, config_id)
+        assert config is not None
         run = db.get(CollectorRun, run_id)
+        assert run is not None
         if result is not None:
             result.finalize()
             warnings.extend(result.warnings)

@@ -26,7 +26,7 @@ from .base import Collector, CollectorContext, CollectorResult, jsonable, module
 log = logging.getLogger('argus.collectors.azure')
 
 PRIVILEGED_ROLES = {'Owner', 'Contributor', 'User Access Administrator', 'Role Based Access Control Administrator'}
-INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}  # nosec B104
+INTERNET_SOURCES = {'*', 'Internet', '0.0.0.0/0', '0.0.0.0', '::/0', 'any'}  # nosec B104  # noqa: S104 - NSG source values, not a bind
 SENSITIVE_PORTS = {22, 3389, 1433, 3306, 5432, 6379, 27017, 445, 5985, 5986, 23, 21}
 
 
@@ -292,29 +292,29 @@ def _fetch(config: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
             continue
         clients = _clients(credential, sub_id)
         entry: dict[str, Any] = {'subscription_id': sub_id, 'display_name': sub.get('display_name'), 'state': sub.get('state')}
-        entry['resource_groups'] = guarded(f'resource_groups.list[{sub_id}]', lambda: [_dump(x) for x in clients['resource'].resource_groups.list()], [])
-        entry['vms'] = guarded(f'virtual_machines.list_all[{sub_id}]', lambda: [_dump(x) for x in clients['compute'].virtual_machines.list_all()], [])
-        nics = {n['id'].lower(): n for n in guarded(f'network_interfaces.list_all[{sub_id}]', lambda: [_dump(x) for x in clients['network'].network_interfaces.list_all()], [])}
+        entry['resource_groups'] = guarded(f'resource_groups.list[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['resource'].resource_groups.list()], [])
+        entry['vms'] = guarded(f'virtual_machines.list_all[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['compute'].virtual_machines.list_all()], [])
+        nics = {n['id'].lower(): n for n in guarded(f'network_interfaces.list_all[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['network'].network_interfaces.list_all()], [])}
         for vm in entry['vms']:
             for ref in (vm.get('network_profile') or {}).get('network_interfaces', []) or []:
                 ref['detail'] = nics.get((ref.get('id') or '').lower(), {})
-        entry['nsgs'] = guarded(f'network_security_groups.list_all[{sub_id}]', lambda: [_dump(x) for x in clients['network'].network_security_groups.list_all()], [])
-        entry['public_ips'] = guarded(f'public_ip_addresses.list_all[{sub_id}]', lambda: [_dump(x) for x in clients['network'].public_ip_addresses.list_all()], [])
+        entry['nsgs'] = guarded(f'network_security_groups.list_all[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['network'].network_security_groups.list_all()], [])
+        entry['public_ips'] = guarded(f'public_ip_addresses.list_all[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['network'].public_ip_addresses.list_all()], [])
         if 'storage' in clients:
-            entry['storage_accounts'] = guarded(f'storage_accounts.list[{sub_id}]', lambda: [_dump(x) for x in clients['storage'].storage_accounts.list()], [])
+            entry['storage_accounts'] = guarded(f'storage_accounts.list[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['storage'].storage_accounts.list()], [])
         else:
             warnings.append('azure-mgmt-storage not installed: storage accounts skipped')
         assignments = guarded(f'role_assignments.list_for_subscription[{sub_id}]',
-                              lambda: [_dump(x) for x in clients['authorization'].role_assignments.list_for_subscription()], [])
+                              lambda clients=clients: [_dump(x) for x in clients['authorization'].role_assignments.list_for_subscription()], [])
         role_names: dict[str, str] = {}
         for ra in assignments:
             rd_id = ra.get('role_definition_id') or ''
             if rd_id and rd_id not in role_names:
-                role_names[rd_id] = guarded(f'role_definitions.get_by_id', lambda: _dump(clients['authorization'].role_definitions.get_by_id(rd_id)).get('role_name', ''), '')
+                role_names[rd_id] = guarded('role_definitions.get_by_id', lambda clients=clients, rd_id=rd_id: _dump(clients['authorization'].role_definitions.get_by_id(rd_id)).get('role_name', ''), '')
             ra['role_name'] = role_names.get(rd_id, '')
         entry['role_assignments'] = assignments
         if 'containerservice' in clients:
-            entry['aks'] = guarded(f'managed_clusters.list[{sub_id}]', lambda: [_dump(x) for x in clients['containerservice'].managed_clusters.list()], [])
+            entry['aks'] = guarded(f'managed_clusters.list[{sub_id}]', lambda clients=clients: [_dump(x) for x in clients['containerservice'].managed_clusters.list()], [])
         else:
             warnings.append('azure-mgmt-containerservice not installed: AKS skipped')
         raw['subscriptions'].append(entry)

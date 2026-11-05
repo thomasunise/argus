@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
 from app.integrations.inbound import ParseContext, clean_metadata, parse_time, registry
 from app.integrations.inbound._common import scan_markers, snake
-from app.integrations.schema import (is_secret_ref, severity_at_least, topic_matches, validate_no_inline_secrets, validate_schema, validate_secret_refs,
-                                     validate_topics)
+from app.integrations.schema import (
+    is_secret_ref,
+    severity_at_least,
+    topic_matches,
+    validate_no_inline_secrets,
+    validate_schema,
+    validate_secret_refs,
+    validate_topics,
+)
 from app.models import dumps
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'integrations'
-UTC = timezone.utc
+UTC = UTC
 
 
 def load(source: str, name: str):

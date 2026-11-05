@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -14,10 +15,9 @@ from ..core.db import get_scoped, scoped
 from ..core.errors import NotFound
 from ..core.rbac import Principal
 from ..models import Asset, dumps, utcnow
-from ._common import BadRequest
 from ..models.testing import TestPlan, TestResult, TestRun, TestScope
-from ..testing import harness
-from ..testing import service
+from ..testing import harness, service
+from ._common import BadRequest
 from .deps import Page, get_db, require
 
 router = APIRouter(prefix='/api/v1/tests', tags=['tests'])
@@ -127,7 +127,7 @@ def list_adapters(request: Request, principal: Principal = Depends(require('test
 @router.get('/scopes')
 def list_scopes(page: Page = Depends(), db: Session = Depends(get_db), principal: Principal = Depends(require('tests:read'))):
     stmt = scoped(TestScope, principal).order_by(TestScope.created_at.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, service.scope_to_dict)
 
 
@@ -140,7 +140,7 @@ def create_scope(body: ScopeBody, db: Session = Depends(get_db), principal: Prin
         if unknown:
             raise NotFound(f'assets not found in this tenant: {", ".join(unknown[:5])}')
     if body.expires_at is not None:
-        expires = body.expires_at if body.expires_at.tzinfo else body.expires_at.replace(tzinfo=timezone.utc)
+        expires = body.expires_at if body.expires_at.tzinfo else body.expires_at.replace(tzinfo=UTC)
         if expires <= utcnow():
             raise BadRequest('expires_at must be in the future', code='invalid_expiry')
     scope = TestScope(tenant_id=principal.tenant_id, name=body.name, asset_ids_json=dumps(body.asset_ids),
@@ -194,7 +194,7 @@ def revoke_scope(scope_id: str, db: Session = Depends(get_db), principal: Princi
 @router.get('/plans')
 def list_plans(page: Page = Depends(), db: Session = Depends(get_db), principal: Principal = Depends(require('tests:read'))):
     stmt = scoped(TestPlan, principal).order_by(TestPlan.created_at.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, service.plan_to_dict)
 
 
@@ -238,7 +238,7 @@ def list_runs(page: Page = Depends(), status: str | None = None, asset_id: str |
     if asset_id:
         stmt = stmt.where(TestRun.asset_id == asset_id)
     stmt = stmt.order_by(TestRun.created_at.desc())
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, service.run_to_dict)
 
 
@@ -247,6 +247,6 @@ def get_run(run_id: str, db: Session = Depends(get_db), principal: Principal = D
     run = get_scoped(db, TestRun, principal, run_id)
     if run is None:
         raise NotFound('test run not found')
-    results = db.execute(scoped(TestResult, principal).where(TestResult.run_id == run_id)
+    results: Any = db.execute(scoped(TestResult, principal).where(TestResult.run_id == run_id)
                          .order_by(TestResult.created_at.asc())).scalars().all()
     return {**service.run_to_dict(run), 'results': [service.result_to_dict(r) for r in results]}

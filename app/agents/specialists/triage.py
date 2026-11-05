@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..tools.registry import ToolContext
-from ._base import (SEV_BASE_SCORE, SEVERITY, arr, b, call, clamp, bump, i, injection_signals, n, obj, s, spec)
+from ._base import SEV_BASE_SCORE, SEVERITY, arr, b, bump, call, clamp, i, injection_signals, n, obj, s, spec
 
 OUTPUT_SCHEMA = obj({
     'severity_recommendation': SEVERITY,

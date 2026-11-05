@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.ai.tool_guard import evaluate, policy_for, validate_policy
 from app.models import Tenant, dumps, loads
 

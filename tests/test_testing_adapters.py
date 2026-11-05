@@ -9,10 +9,9 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-
 from app.testing import harness
-from app.testing.ratelimit import RateLimiter
 from app.testing.adapters import caldera, gitleaks, nuclei, prowler, semgrep, trivy, web_baseline, zap
+from app.testing.ratelimit import RateLimiter
 
 FIX = Path(__file__).parent / 'fixtures' / 'testing'
 

@@ -52,13 +52,13 @@ async def connect(host: str, port: int) -> tuple[bool, str]:
     """(open, banner). The banner is whatever the service volunteers; nothing is sent."""
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=CONNECT_TIMEOUT)
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         return False, ''
     banner = ''
     try:
         raw = await asyncio.wait_for(reader.read(BANNER_BYTES), timeout=1.0)
         banner = raw.decode('utf-8', 'replace').strip()[:120]
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         banner = ''
     writer.close()
     try:

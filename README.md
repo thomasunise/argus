@@ -23,7 +23,7 @@ stay within hourly and blast-radius caps, and roll themselves back unless you ke
 **Approve from Slack in one click.** Approve, deny or roll back actions straight from the
 alert. No console, no context switch.
 
-**AI that investigates without taking the wheel.** Eight specialist agents triage, investigate
+**AI that investigates without taking the wheel.** Nine specialist agents triage, investigate
 and hunt using read-only tools. They can propose a fix but never execute one. Everything they
 read is treated as untrusted data, so a prompt injection hidden in a log becomes a signal
 instead of a hijack.
@@ -63,7 +63,7 @@ autonomy as you trust.
 
 ## Tested on every push
 
-More than 600 automated tests run on every commit against both SQLite and PostgreSQL,
+692 automated tests run on every commit against both SQLite and PostgreSQL,
 alongside Bandit and pip-audit security scans, a container build and smoke test, a full
 Compose stack smoke test, and Terraform and Helm validation. `docs/GO-LIVE.md` walks you
 through a production rollout: start in monitoring mode, tune detections to your estate, then
@@ -118,27 +118,27 @@ Trust boundaries, in one sentence each (details in `docs/THREAT-MODEL.md`):
 | Job queue (in-memory and Redis, leases, retries, cancellation, reaper) and standalone worker | implemented | `app/core/queue.py`, `app/worker.py` |
 | Prometheus metrics, JSON logging, optional OpenTelemetry tracing | implemented | `app/core/telemetry.py` |
 | Evidence graph: nodes, edges, attack paths, exposure scoring | implemented | `app/graph/`, `app/api/graph.py` |
-| Detections: 13 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic, unsanctioned AI service), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
+| Detections: 15 rules (swarm x4, identity x2, cloud, k8s, code, canary, anomaly, agentic x3 including unsanctioned AI service and cross-source attack chain, industrial), baselines, canaries (12 kinds, 4 aimed at AI agents: planted prompt injection, agent rules file, fake MCP server, fake LLM key) | implemented | `app/detections/`, `app/api/detections.py`, `app/api/canaries.py` |
 | Collectors: AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, osquery, netflow | implemented; cloud SDKs optional | `app/collectors/`, `app/api/collectors.py` |
-| Test harness: scope policy (passive, active, intrusive, exploit), rate limits, 22 adapters (web baseline, tls, js_analyze, retirejs, trivy, semgrep, gitleaks, trufflehog, prowler, nmap, ffuf, arjun, cors, graphql, jwt_audit, open_redirect, nuclei, zap, auth_diff, ssrf_probe, oob_probe, caldera, strix) | implemented; runs the tools installed on your workers or sandbox | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
-| Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 8 specialists (including offensive pentest), eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
+| Test harness: scope policy (passive, active, intrusive, exploit), rate limits, 28 adapters (web_baseline, browser_xss, caldera, dir_probe, ffuf_dir, gitleaks, idor_probe, js_analyze, js_libs, jwt_analyze, jwt_attack, nmap_sv, nuclei, oob_probe, param_mine, param_probe, payload_fuzz, port_probe, prowler, retire_js, semgrep, sqli_proof, strix, subdomain_enum, trivy, trufflehog_verify, waf_detect, zap) | implemented; runs the tools installed on your workers or sandbox | `app/testing/`, `app/api/tests.py`, `app/api/scans.py` |
+| Agent runtime, providers (Anthropic, OpenAI, Ollama, none), read-only tools, 9 specialists (including offensive pentest and PoC author), eval suites | implemented | `app/agents/`, `app/api/agents.py`, `app/api/evals.py` |
 | Action broker: catalog of 27 typed actions (AWS, Azure, GCP, Kubernetes, GitHub, Okta, Entra, Cloudflare, CrowdStrike, SentinelOne, Argus-internal), policy, approvals, dry run, execute, rollback, kill switch | implemented | `app/actions/`, `app/api/actions.py` |
 | Autonomous response: playbooks that act on detections without a human (shadow mode first, reversible actions only, caps, automatic rollback); Slack approve / deny / roll back buttons | implemented; off by default | `app/actions/autoresponse.py`, `app/api/autoresponse.py`, `app/api/slack.py`, `docs/AUTONOMOUS-RESPONSE.md` |
 | AI gateway (governed OpenAI / Anthropic proxy: org-held keys, model allowlists, DLP, prompt-injection flags, budgets, usage log) and shadow-AI discovery from network, cloud and SSO telemetry | implemented; gateway off by default | `app/ai/`, `app/api/ai_gateway.py`, `app/api/ai_inventory.py`, `docs/AI-GATEWAY.md` |
 | Autonomous pentesting, native pentest orchestrator, recon/browser discovery, and gVisor PoC exploit sandbox | implemented; gated by scope, asset authorization and kill switches | `app/testing/autopilot.py`, `app/pentest/`, `app/discovery/`, `app/exploit/`, `docs/AUTOPENTEST.md`, `docs/NATIVE-PENTEST.md`, `docs/DISCOVERY.md`, `docs/EXPLOIT-SANDBOX.md` |
 | Threat intel: automatic CISA KEV and EPSS enrichment of findings, offline cache | implemented | `app/intel/`, `app/api/intel.py`, `docs/INTEL.md` |
 | Agentic attack simulator: 8 agent-driven attack scenarios replayed in an isolated sandbox tenant, coverage report, evasion variants | implemented | `app/simulator/`, `app/api/simulations.py`, `docs/SIMULATOR.md` |
-| Integrations: 13 inbound parsers behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
+| Integrations: 15 inbound sources (14 parser modules; network covers Suricata and Zeek) behind `POST /api/v1/ingest/{source}`, 6 outbound channels (webhook, Slack, Jira, ServiceNow, PagerDuty, email) with deliveries and retries, Wazuh indexer pull | implemented | `app/integrations/`, `app/api/ingest.py`, `app/api/integrations.py` |
 | Backups and retention: scheduled encrypted backups to disk, S3 and Azure, verified one-command restore, per-tenant retention policies | implemented | `app/ops/`, `app/api/backups.py`, `app/api/retention.py`, `docs/BACKUP.md` |
 | Admin, assets, findings, events, investigations, approvals, audit, reports routers | implemented | `app/api/` |
-| Alembic migrations (12 revisions, through native pentest) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
+| Alembic migrations (15 revisions, through fail-closed tenant RLS) and `scripts/migrate.py` | implemented | `alembic/`, `docs/MIGRATIONS.md` |
 | Containers, compose, Helm, Terraform (AWS, Azure), CI, observability, docs | implemented | `Dockerfile`, `compose*.yaml`, `infra/`, `.github/`, `docs/` |
 
 Routers are discovered automatically. The full v1 surface is in `docs/API.md`.
 
 ## Quick start (development, SQLite, no Docker)
 
-Requirements: Python 3.11 or 3.12.
+Requirements: Python 3.12 or 3.13.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate

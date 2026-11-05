@@ -6,8 +6,9 @@ from __future__ import annotations
 import csv
 import io
 import logging
+from collections.abc import Iterator
 from datetime import timedelta
-from typing import Any, Iterator
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -23,7 +24,7 @@ from ..core.findings import SEVERITIES, finding_to_dict
 from ..core.rbac import Principal, has
 from ..models import AgentRun, Asset, Finding, Investigation, Membership, dumps, loads, utcnow
 from ..models.findings import FINDING_STATUSES
-from ._common import BadRequest, aware, asset_to_dict, like
+from ._common import BadRequest, asset_to_dict, aware, like
 from .deps import Page, get_db, require
 
 log = logging.getLogger('argus.api.findings')
@@ -153,7 +154,7 @@ def list_findings(status: str | None = None, severity: str | None = None, source
                   rule: str | None = None, search: str | None = None, assignee: str | None = None, sort: str = 'updated',
                   page: Page = Depends(Page), db: Session = Depends(get_db), principal: Principal = Depends(require('findings:read'))):
     stmt = _filtered(principal, status=status, severity=severity, source=source, asset_id=asset_id, rule=rule, search=search, assignee=assignee)
-    rows = db.execute(page.apply(_ordered(stmt, sort))).scalars().all()
+    rows: Any = db.execute(page.apply(_ordered(stmt, sort))).scalars().all()
     return page.wrap(rows, finding_to_dict)
 
 
@@ -169,7 +170,7 @@ def export_csv(status: str | None = None, severity: str | None = None, source: s
                                                                                          'assignee': assignee}.items() if v}})
     db.commit()
     asset_names = {a.id: a.name for a in db.execute(select(Asset.id, Asset.name).where(Asset.tenant_id == principal.tenant_id)).all()}
-    rows = db.execute(_ordered(stmt, sort).limit(MAX_EXPORT_ROWS)).scalars().all()
+    rows: Any = db.execute(_ordered(stmt, sort).limit(MAX_EXPORT_ROWS)).scalars().all()
 
     def generate() -> Iterator[str]:
         buffer = io.StringIO()

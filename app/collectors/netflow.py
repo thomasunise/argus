@@ -16,8 +16,6 @@ import asyncio
 import json
 import logging
 import statistics
-from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -175,7 +173,7 @@ def _beacon_score(timestamps: list[float], min_conns: int, max_jitter: float) ->
     if len(timestamps) < min_conns:
         return None
     ordered = sorted(timestamps)
-    intervals = [b - a for a, b in zip(ordered, ordered[1:]) if b - a > 0]
+    intervals = [b - a for a, b in zip(ordered, ordered[1:], strict=False) if b - a > 0]
     if len(intervals) < min_conns - 1:
         return None
     mean = statistics.fmean(intervals)

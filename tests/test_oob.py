@@ -6,14 +6,13 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
 from app.models import Asset
 from app.models.oob import OobToken
 from app.testing import harness
 from app.testing.adapters import oob_probe
 from app.testing.ratelimit import RateLimiter
+from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 TARGET = 'https://app.example.test'
 ANY = r'^https://app\.example\.test/.*$'

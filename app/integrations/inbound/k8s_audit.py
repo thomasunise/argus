@@ -7,7 +7,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, hash_item, listify
+from ._common import ParseContext, Parser, as_dict, dig, event, first, hash_item, listify
 
 _FLAGS = ('privileged', 'hostPID', 'hostNetwork', 'hostIPC')
 # Rules expect singular names for bindings but plural for most other resources.
@@ -36,7 +36,7 @@ def _find_flags(spec: Any, depth: int = 0, budget: list[int] | None = None) -> s
 
 def _images(spec: Any) -> list[str]:
     out: list[str] = []
-    pod_spec = dig(spec, 'spec', 'template', 'spec') or dig(spec, 'spec') or {}
+    pod_spec: dict[str, Any] = dig(spec, 'spec', 'template', 'spec') or dig(spec, 'spec') or {}
     for group in ('initContainers', 'containers', 'ephemeralContainers'):
         for container in listify(pod_spec.get(group) if isinstance(pod_spec, dict) else None):
             if isinstance(container, dict) and container.get('image'):
@@ -65,8 +65,8 @@ class K8sAuditParser(Parser):
         stage = str(item.get('stage') or 'ResponseComplete')
         if stage not in {'ResponseComplete', 'Panic'}:
             return []  # RequestReceived / ResponseStarted duplicate the completed record
-        ref = item.get('objectRef') if isinstance(item.get('objectRef'), dict) else {}
-        user = item.get('user') if isinstance(item.get('user'), dict) else {}
+        ref = as_dict(item.get('objectRef'))
+        user = as_dict(item.get('user'))
         verb = str(item.get('verb') or 'unknown').lower()
         resource_raw = str(ref.get('resource') or '').lower()
         subresource = str(ref.get('subresource') or '').lower()
@@ -76,8 +76,8 @@ class K8sAuditParser(Parser):
         namespace = str(ref.get('namespace') or '')
         name = str(ref.get('name') or '')
         entity = f'{namespace}/{name}' if namespace and name else name or f'{resource}' + (f'/{namespace}' if namespace else '')
-        request_obj = item.get('requestObject') if isinstance(item.get('requestObject'), dict) else {}
-        response_obj = item.get('responseObject') if isinstance(item.get('responseObject'), dict) else {}
+        request_obj = as_dict(item.get('requestObject'))
+        response_obj = as_dict(item.get('responseObject'))
         flags = _find_flags(request_obj or response_obj) if resource in {'pods', 'deployments', 'daemonsets', 'statefulsets', 'jobs', 'cronjobs', 'replicasets'} and verb in {'create', 'update', 'patch'} else set()
         code = dig(item, 'responseStatus', 'code')
         impersonated = dig(item, 'impersonatedUser', 'username') or ''  # the identity acted as; `user` is the real caller

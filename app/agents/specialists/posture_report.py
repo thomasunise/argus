@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -64,7 +65,7 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
     severe_created_previous = count(base.where(Finding.created_at >= previous_start, Finding.created_at < start, Finding.severity.in_(('critical', 'high'))))
     direction = 'worsening' if severe_created > severe_created_previous + max(1, severe_created_previous // 5) else 'improving' if severe_created < severe_created_previous and resolved >= created else 'stable'
 
-    top = db.execute(scoped(Finding, ctx.principal).where(Finding.status.in_(('open', 'investigating'))).order_by(Finding.kev.desc(), Finding.updated_at.desc()).limit(200)).scalars().all()
+    top: Any = db.execute(scoped(Finding, ctx.principal).where(Finding.status.in_(('open', 'investigating'))).order_by(Finding.kev.desc(), Finding.updated_at.desc()).limit(200)).scalars().all()
     rank = {level: index for index, level in enumerate(SEVERITIES)}
     top.sort(key=lambda f: (rank.get(f.severity, 9), -int(f.kev or 0), -(f.epss or 0), -f.occurrences))
     headline = []
@@ -79,8 +80,8 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
         headline.append({'title': f.title, 'severity': f.severity, 'finding_id': f.id, 'why': why})
     signals = injection_signals([f.title for f in top[:50]])
 
-    assets = db.execute(scoped(Asset, ctx.principal)).scalars().all()
-    authorizations = db.execute(scoped(AssetAuthorization, ctx.principal)).scalars().all()
+    assets: Any = db.execute(scoped(Asset, ctx.principal)).scalars().all()
+    authorizations: Any = db.execute(scoped(AssetAuthorization, ctx.principal)).scalars().all()
     authorized_assets = {a.asset_id for a in authorizations if authorization_valid(a, now)}
     event_assets = {row[0] for row in db.execute(select(SecurityEvent.asset_id).where(SecurityEvent.tenant_id == tenant, event_time() >= start).distinct()).all() if row[0]}
     finding_assets = {row[0] for row in db.execute(select(Finding.asset_id).where(Finding.tenant_id == tenant).distinct()).all() if row[0]}

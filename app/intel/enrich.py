@@ -8,7 +8,7 @@ severity is kept in the evidence. Severity is never lowered.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -68,7 +68,7 @@ def apply(finding: Finding, kev: dict[str, dict], epss: dict[str, dict], setting
     evidence = evidence if isinstance(evidence, dict) else {'value': evidence}
     previous = evidence.get('intel') if isinstance(evidence.get('intel'), dict) else {}
     intel: dict[str, Any] = {
-        'checked_at': (now or datetime.now(timezone.utc)).isoformat(),
+        'checked_at': (now or datetime.now(UTC)).isoformat(),
         'kev': {c: {'date_added': v.get('dateAdded'), 'due_date': v.get('dueDate'), 'ransomware': v.get('knownRansomwareCampaignUse'),
                     'vendor': v.get('vendorProject'), 'product': v.get('product')} for c, v in listed.items()},
         'epss': {c: {'score': v.get('epss'), 'percentile': v.get('percentile'), 'date': v.get('date')} for c, v in scored.items()},
@@ -92,6 +92,6 @@ def apply(finding: Finding, kev: dict[str, dict], epss: dict[str, dict], setting
     evidence['intel'] = intel
     finding.evidence = dumps(evidence, limit=12000)
     if changed:
-        finding.updated_at = now or datetime.now(timezone.utc)
+        finding.updated_at = now or datetime.now(UTC)
     return changed
 

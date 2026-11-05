@@ -9,7 +9,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, geo, hash_item
+from ._common import ParseContext, Parser, as_dict, dig, event, geo, hash_item
 
 # Okta eventType -> (dotted action, category, base severity). Unlisted types become okta.<eventType>.
 _EVENT_TYPES: dict[str, tuple[str, str, str]] = {
@@ -65,15 +65,15 @@ class OktaParser(Parser):
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
         event_type = str(item.get('eventType') or 'unknown')
         action, category, base_severity = _EVENT_TYPES.get(event_type, (f'okta.{event_type}'[:120], 'saas', 'informational'))
-        actor_obj = item.get('actor') if isinstance(item.get('actor'), dict) else {}
-        client = item.get('client') if isinstance(item.get('client'), dict) else {}
-        geo_ctx = client.get('geographicalContext') if isinstance(client.get('geographicalContext'), dict) else {}
-        geo_pt = geo_ctx.get('geolocation') if isinstance(geo_ctx.get('geolocation'), dict) else {}
-        outcome = item.get('outcome') if isinstance(item.get('outcome'), dict) else {}
+        actor_obj = as_dict(item.get('actor'))
+        client = as_dict(item.get('client'))
+        geo_ctx = as_dict(client.get('geographicalContext'))
+        geo_pt = as_dict(geo_ctx.get('geolocation'))
+        outcome = as_dict(item.get('outcome'))
         targets = [t for t in (item.get('target') or []) if isinstance(t, dict)]
         debug = dig(item, 'debugContext', 'debugData') if isinstance(dig(item, 'debugContext', 'debugData'), dict) else {}
-        auth_ctx = item.get('authenticationContext') if isinstance(item.get('authenticationContext'), dict) else {}
-        security = item.get('securityContext') if isinstance(item.get('securityContext'), dict) else {}
+        auth_ctx = as_dict(item.get('authenticationContext'))
+        security = as_dict(item.get('securityContext'))
         actor = str(actor_obj.get('alternateId') or actor_obj.get('displayName') or actor_obj.get('id') or '')
         primary_target = targets[0] if targets else {}
         entity = str(primary_target.get('alternateId') or primary_target.get('displayName') or primary_target.get('id') or '')

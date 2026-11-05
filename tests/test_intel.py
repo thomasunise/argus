@@ -8,12 +8,11 @@ import time
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-
 from app.core.findings import upsert_finding
 from app.intel import enrich, feeds
 from app.models import Finding, loads
-from tests.conftest import wait_job, wait_for
+from fastapi.testclient import TestClient
+from tests.conftest import wait_for, wait_job
 
 KEV = {'catalogVersion': '2026.10.20', 'count': 2, 'vulnerabilities': [
     {'cveID': 'CVE-2024-3094', 'vendorProject': 'XZ', 'product': 'xz-utils', 'dateAdded': '2024-03-29', 'dueDate': '2024-04-19',

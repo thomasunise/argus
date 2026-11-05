@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -38,7 +38,7 @@ class WazuhSyncError(ArgusError):
 
 def build_query(since: datetime, size: int) -> dict[str, Any]:
     return {'size': size, 'sort': [{'timestamp': {'order': 'asc'}}],
-            'query': {'range': {'timestamp': {'gt': since.astimezone(timezone.utc).isoformat()}}},
+            'query': {'range': {'timestamp': {'gt': since.astimezone(UTC).isoformat()}}},
             '_source': ['id', 'rule', 'agent', 'timestamp', 'data', 'syscheck', 'location', 'decoder', 'GeoLocation', 'full_log']}
 
 
@@ -115,7 +115,7 @@ async def run_sync(db_factory, settings: Settings, tenant_id: str, integration_i
         else:
             since = max(utcnow() - timedelta(minutes=lookback), utcnow() - timedelta(days=7))
         if since.tzinfo is None:
-            since = since.replace(tzinfo=timezone.utc)
+            since = since.replace(tzinfo=UTC)
         url, index, ca_bundle, size = str(config.get('indexer_url') or ''), str(config.get('index_pattern') or DEFAULT_INDEX), str(config.get('ca_bundle') or ''), \
             int(config.get('page_size') or DEFAULT_PAGE_SIZE)
     started = utcnow()
@@ -189,7 +189,7 @@ def due_integrations(db, now: datetime) -> list[tuple[str, str]]:
         last = (loads(row.state_json, {}) or {}).get('last_run_at')
         last_dt = datetime.fromisoformat(last) if isinstance(last, str) and last else None
         if last_dt is not None and last_dt.tzinfo is None:
-            last_dt = last_dt.replace(tzinfo=timezone.utc)
+            last_dt = last_dt.replace(tzinfo=UTC)
         if last_dt is None or now - last_dt >= timedelta(minutes=minutes):
             out.append((row.tenant_id, row.id))
     return out

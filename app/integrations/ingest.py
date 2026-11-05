@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
-from ..core.errors import NotFound, ArgusError
+from ..core.errors import ArgusError, NotFound
 from ..core.findings import upsert_event, upsert_finding
 from ..core.rbac import Principal
 from ..models import dumps
@@ -112,14 +112,14 @@ def ingest(db: Session, tenant_id: str, source: str, payload: dict | list, *, ac
             result.duplicates += 1
 
     if parser.kind in {'findings', 'both'}:
-        for draft in parser.findings(payload, ctx):
+        for fdraft in parser.findings(payload, ctx):
             try:
-                finding, created = upsert_finding(db, tenant_id, source=draft.source, rule=draft.rule, title=draft.title, description=draft.description,
-                                                  severity_name=draft.severity, asset_id=draft.asset_id, remediation=draft.remediation, evidence=draft.evidence,
-                                                  cve_ids=draft.cve_ids, cvss=draft.cvss, tags=draft.tags)
+                finding, created = upsert_finding(db, tenant_id, source=fdraft.source, rule=fdraft.rule, title=fdraft.title, description=fdraft.description,
+                                                  severity_name=fdraft.severity, asset_id=fdraft.asset_id, remediation=fdraft.remediation, evidence=fdraft.evidence,
+                                                  cve_ids=fdraft.cve_ids, cvss=fdraft.cvss, tags=fdraft.tags)
             except Exception as exc:  # pragma: no cover - defensive
                 log.debug('upsert_finding failed for %s', parser.name, exc_info=True)
-                ctx.errors.append(f'{draft.rule[:60]}: {type(exc).__name__}')
+                ctx.errors.append(f'{fdraft.rule[:60]}: {type(exc).__name__}')
                 continue
             result.findings += 1
             result.findings_created += 1 if created else 0

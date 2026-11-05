@@ -99,7 +99,7 @@ def main(argv: list[str]) -> int:
     env = {**os.environ, 'HOME': WORKSPACE}
 
     try:
-        completed = subprocess.run(command, cwd=WORKSPACE, env=env, capture_output=True, text=True, timeout=int(os.environ.get('ARGUS_WALL_SECONDS', '3600')) - 30)
+        completed = subprocess.run(command, cwd=WORKSPACE, env=env, capture_output=True, text=True, timeout=int(os.environ.get('ARGUS_WALL_SECONDS', '3600')) - 30)  # noqa: S603 - fixed argv inside the sandbox runner
         exit_code = completed.returncode
         if completed.stdout:
             print(completed.stdout[-20000:])

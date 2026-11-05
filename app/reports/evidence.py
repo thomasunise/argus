@@ -6,9 +6,10 @@ package that would produce the evidence is not installed or no data exists yet).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any, overload
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -30,14 +31,22 @@ ASSET_KIND_TO_COLLECTOR_KIND = {'cloud_account': 'cloud', 'identity_provider': '
                                 'k8s_cluster': 'k8s', 'network': 'network', 'saas': 'identity'}
 
 
+@overload
+def aware(value: datetime) -> datetime: ...
+
+
+@overload
+def aware(value: None) -> None: ...
+
+
 def aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -281,6 +290,7 @@ def coverage(db: Session, tenant_id: str, settings: Settings) -> Evidence:
         try:
             covered.add(registry.get(name).kind)
         except Exception:
+            log.debug("evidence collector lookup skipped", exc_info=True)
             continue
     ratio = len(needed & covered) / len(needed)
     return Evidence('coverage', ratio >= 1.0, f'{len(needed & covered)}/{len(needed)} required collector kinds configured',

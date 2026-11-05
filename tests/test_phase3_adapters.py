@@ -6,14 +6,13 @@ import json
 
 import httpx
 import pytest
-from sqlalchemy import select
-
 from app.models import Asset, AssetAuthorization, Finding, dumps
 from app.models.testing import TestResult, TestRun, TestScope
 from app.pentest.orchestrator import derive_followups
 from app.testing import harness
-from app.testing.adapters import browser_xss, idor_probe, jwt_attack, sqli_proof
+from app.testing.adapters import browser_xss, jwt_attack, sqli_proof
 from app.testing.auth import load_role_headers
+from sqlalchemy import select
 from tests.test_testing_adapters import _asset, _ctx, _scope
 
 

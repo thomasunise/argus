@@ -10,7 +10,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -184,7 +184,7 @@ def list_assets(kind: str | None = None, environment: str | None = None, search:
     if search:
         pattern = like(search.strip())
         stmt = stmt.where(or_(Asset.name.ilike(pattern, escape='\\'), Asset.target.ilike(pattern, escape='\\'), Asset.owner.ilike(pattern, escape='\\')))
-    rows = db.execute(page.apply(stmt.order_by(Asset.created_at.desc(), Asset.id))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(Asset.created_at.desc(), Asset.id))).scalars().all()
     return page.wrap(rows, asset_to_dict)
 
 

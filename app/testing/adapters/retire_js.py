@@ -6,13 +6,13 @@ against the Retire.js CVE repository (`app/testing/data/retirejs_db.json`, updat
 """
 from __future__ import annotations
 
-from functools import lru_cache
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import tempfile
+from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,7 +24,7 @@ from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register, 
 from .js_analyze import script_urls
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / 'data' / 'retirejs_db.json'
-VERSION_TOKEN = '§§version§§'
+VERSION_TOKEN = '§§version§§'  # noqa: S105 - bundle marker, not a credential
 VERSION_REGEX = r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?'
 MAX_BUNDLES = 15
 MAX_BYTES = 2 * 1024 * 1024

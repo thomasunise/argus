@@ -7,8 +7,6 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from sqlalchemy import text
-
 from app.actions import broker, catalog, credentials, policy
 from app.actions.catalog import ActionType, DryRunResult, ExecResult
 from app.agents.providers import Provider
@@ -21,6 +19,7 @@ from app.detections.benchmark import run_benchmark
 from app.models import Asset, Tenant
 from app.models.ai import AIGatewayRequest
 from app.ops import backup as bk
+from sqlalchemy import text
 
 
 def test_structured_health_and_ready_include_pool_and_checks(client):

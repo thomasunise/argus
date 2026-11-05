@@ -1,6 +1,8 @@
 """Evidence graph API: nodes, neighborhoods, attack paths, exposures and statistics."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -51,7 +53,7 @@ def list_exposures(limit: int = Query(default=20, ge=1, le=200), kind: str | Non
     stmt = scoped(GraphNode, principal).where(GraphNode.is_stale.is_(False))
     if kind:
         stmt = stmt.where(GraphNode.kind == kind)
-    rows = db.execute(stmt.order_by(GraphNode.exposure_score.desc(), GraphNode.last_seen_at.desc()).limit(limit)).scalars().all()
+    rows: Any = db.execute(stmt.order_by(GraphNode.exposure_score.desc(), GraphNode.last_seen_at.desc()).limit(limit)).scalars().all()
     return {'items': [service.node_to_dict(n) for n in rows]}
 
 
@@ -63,7 +65,7 @@ def list_attack_paths(status: str | None = None, min_score: float | None = None,
         stmt = stmt.where(AttackPath.status == status)
     if min_score is not None:
         stmt = stmt.where(AttackPath.score >= min_score)
-    rows = db.execute(page.apply(stmt.order_by(AttackPath.score.desc(), AttackPath.computed_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(AttackPath.score.desc(), AttackPath.computed_at.desc()))).scalars().all()
     return page.wrap(rows, service.path_to_dict)
 
 

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from app.models import Asset, AssetAuthorization
 from app.testing.adapters import trivy
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login, wait_job
+from tests.conftest import login, wait_job
 
 TRIVY_REPORT = (Path(__file__).parent / 'fixtures' / 'testing' / 'trivy' / 'report.json').read_text(encoding='utf-8')
 

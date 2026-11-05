@@ -1,6 +1,8 @@
 """Agent runs: specs, tool catalog, queued runs with traces, cancellation."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -92,7 +94,7 @@ def list_runs(spec: str | None = None, status: str | None = None, finding_id: st
         stmt = stmt.where(AgentRun.status == status)
     if finding_id:
         stmt = stmt.where(AgentRun.finding_id == finding_id)
-    rows = db.execute(page.apply(stmt.order_by(AgentRun.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(AgentRun.created_at.desc()))).scalars().all()
     return page.wrap(rows, lambda r: {**run_to_dict(r), 'job_id': r.job_id})
 
 

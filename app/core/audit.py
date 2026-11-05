@@ -11,7 +11,7 @@ import hmac
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +127,7 @@ def configure(settings: Settings) -> None:
 def _ts(value: datetime) -> str:
     """Canonical timestamp independent of whether the driver returned an aware or naive datetime."""
     if value.tzinfo is not None:
-        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        value = value.astimezone(UTC).replace(tzinfo=None)
     return value.isoformat(timespec='microseconds')
 
 
@@ -204,7 +204,7 @@ def _serialize_tenant(db: Session, tenant_id: str) -> None:
     if dialect == 'postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:tenant))'), {'tenant': tenant_id})
     elif dialect == 'sqlite':
-        db.execute(text(f'UPDATE {AuditEntry.__tablename__} SET id = id WHERE 0'))
+        db.execute(text(f'UPDATE {AuditEntry.__tablename__} SET id = id WHERE 0'))  # noqa: S608 - tablename from ORM metadata, no user input
 
 
 def _flush_outbox(session: Session) -> None:

@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from ...models import Asset, SecurityEvent
 from ..engine import DetectionDraft, DetectionRule, RuleContext, registry
-from ..util import (entity_class, epoch, event_ids, event_time, gaps_ms, iso, median, sample, scale_confidence, span, window_bucket)
+from ..util import entity_class, epoch, event_ids, event_time, gaps_ms, iso, median, sample, scale_confidence, span, window_bucket
 
 
 def _by_actor(events: list[SecurityEvent]) -> dict[str, list[SecurityEvent]]:
@@ -170,18 +170,18 @@ class SynchronizedMultiAssetAccess(DetectionRule):
             i = 0
             while i < len(items):
                 end = bisect_right(times, times[i] + window_s)
-                chunk = items[i:end]
-                if len(chunk) < min_assets:
+                window_chunk = items[i:end]
+                if len(window_chunk) < min_assets:
                     i += 1
                     continue
-                keyed = [key_and_kind(e) for e in chunk]
+                keyed = [key_and_kind(e) for e in window_chunk]
                 assets = {k for k, _ in keyed}
                 asset_kinds = {kind for _, kind in keyed}
                 med = median(gaps_ms(times[i:end]))
                 if len(assets) < min_assets or len(asset_kinds) < min_kinds or med >= max_gap:
                     i += 1
                     continue
-                first, last = span(chunk)
+                first, last = span(window_chunk)
                 drafts.append(DetectionDraft(
                     rule_id=self.id, title=f'{actor} accessed {len(assets)} assets across {len(asset_kinds)} kinds in {int(window_s)}s',
                     description=(f'`{actor}` touched {len(assets)} distinct assets spanning {", ".join(sorted(asset_kinds))} with a median gap of '
@@ -191,8 +191,8 @@ class SynchronizedMultiAssetAccess(DetectionRule):
                     fingerprint_parts=[actor], window_bucket=window_bucket(first, max(1, int(window_s // 60) or 1)), first_seen_at=first,
                     last_seen_at=last,
                     evidence={'actor': actor, 'distinct_assets': len(assets), 'asset_kinds': sorted(asset_kinds), 'median_gap_ms': round(med, 1),
-                              'events': len(chunk), 'window_seconds': window_s, 'window_start': iso(first), 'window_end': iso(last),
-                              'assets_sample': sample(k for k, _ in keyed), 'event_ids': event_ids(chunk)}))
+                              'events': len(window_chunk), 'window_seconds': window_s, 'window_start': iso(first), 'window_end': iso(last),
+                              'assets_sample': sample(k for k, _ in keyed), 'event_ids': event_ids(window_chunk)}))
                 i = end
         return drafts
 

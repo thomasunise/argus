@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 
-from .base import Collector, CollectorContext, CollectorResult, EdgeDraft, EventDraft, NodeDraft, is_secret_ref, validate_config  # noqa: F401
 from . import registry  # noqa: F401  (module: register/get/all/has delegate to the singleton)
+from .base import Collector, CollectorContext, CollectorResult, EdgeDraft, EventDraft, NodeDraft, is_secret_ref, validate_config  # noqa: F401
 from .registry import BUILTIN, Registry, load_builtin  # noqa: F401
 
 log = logging.getLogger('argus.collectors')

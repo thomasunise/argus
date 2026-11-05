@@ -5,7 +5,17 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from . import Channel, DeliveryResult, OutboundEvent, egress_error, excerpt, registry, request_with_retry, result_from_response, severity_label
+from . import (
+    Channel,
+    DeliveryResult,
+    OutboundEvent,
+    egress_error,
+    excerpt,
+    registry,
+    request_with_retry,
+    result_from_response,
+    severity_label,
+)
 
 _PRIORITY = {'critical': 'Highest', 'high': 'High', 'medium': 'Medium', 'low': 'Low', 'informational': 'Lowest'}
 _DONE_NAMES = ('done', 'resolved', 'closed', 'complete', 'completed', 'fixed')

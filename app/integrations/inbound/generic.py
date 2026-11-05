@@ -7,7 +7,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, geo, hash_item, snake
+from ._common import ParseContext, Parser, as_dict, dig, event, first, geo, hash_item, snake
 
 _OCSF_SEVERITY = {0: 'informational', 1: 'informational', 2: 'low', 3: 'medium', 4: 'high', 5: 'critical', 6: 'critical', 99: 'low'}
 _OCSF_CATEGORY = {1: 'host', 2: 'finding', 3: 'identity', 4: 'network', 5: 'discovery', 6: 'application', 7: 'remediation'}
@@ -31,7 +31,7 @@ class GenericParser(Parser):
         return super().items(payload)
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
-        meta_in = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
+        meta_in = as_dict(item.get('metadata'))
         product = dig(meta_in, 'product', 'name') or meta_in.get('product') or item.get('product') or item.get('vendor') or ''
         source_label = str(item.get('source') or product or '').strip()
         actor_in = item.get('actor')
@@ -69,8 +69,8 @@ class GenericParser(Parser):
                 category = 'generic'
         if not category:
             category = snake(first(item, 'category_name') or '')[:40]
-        src = item.get('src_endpoint') if isinstance(item.get('src_endpoint'), dict) else {}
-        http = item.get('http_request') if isinstance(item.get('http_request'), dict) else {}
+        src = as_dict(item.get('src_endpoint'))
+        http = as_dict(item.get('http_request'))
         location = src.get('location') if isinstance(src.get('location'), dict) else item.get('geo') if isinstance(item.get('geo'), dict) else {}
         meta: dict[str, Any] = {
             'ip': first(item, 'ip', 'src_ip', 'source_ip', 'client_ip', 'remote_addr') or src.get('ip') or '',

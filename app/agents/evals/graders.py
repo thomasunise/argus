@@ -6,8 +6,9 @@ ids: mapping from seed keys ('$f1') to created ids, used to resolve references i
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from ...core.findings import SEVERITIES
 

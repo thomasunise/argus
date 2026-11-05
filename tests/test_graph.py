@@ -3,12 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
-from sqlalchemy import select
-
 from app.graph import service
 from app.graph.service import EdgeDraft, NodeDraft
 from app.models import Asset, AuditEntry
 from app.models.graph import AttackPath, GraphEdge, GraphNode
+from sqlalchemy import select
 from tests.conftest import wait_job
 
 

@@ -3,7 +3,8 @@ with redacted detail, and a thread hop for blocking SDK clients."""
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 

@@ -9,12 +9,13 @@ import asyncio
 import contextlib
 import json
 import logging
-import random
+import secrets
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from .config import Settings
 from .db import enter_tenant, leave_tenant
@@ -49,7 +50,7 @@ class Job:
         return data
 
 
-def _count(job: 'Job', status: str) -> None:
+def _count(job: Job, status: str) -> None:
     """argus_jobs_total{kind,status}; the alert rules in infra/prometheus key on it."""
     from .telemetry import JOBS  # lazy: telemetry is optional at import time
 
@@ -57,7 +58,7 @@ def _count(job: 'Job', status: str) -> None:
 
 
 class JobContext:
-    def __init__(self, queue: 'JobQueue', job: Job):
+    def __init__(self, queue: JobQueue, job: Job):
         self.queue = queue
         self.job = job
         self.settings: Settings = queue.settings
@@ -216,7 +217,7 @@ class JobQueue:
                 try:
                     await task
                 except (asyncio.CancelledError, Exception):
-                    pass
+                    log.debug("queue worker cleanup failed", exc_info=True)
             self._workers = []
             await self._backend.close()
 
@@ -275,7 +276,7 @@ class JobQueue:
                 raise
             job.status, job.error, job.finished_at = 'cancelled', 'cancelled', time.time()
             _count(job, 'cancelled')
-        except asyncio.TimeoutError:
+        except TimeoutError:
             job.error = f'lease of {job.lease_seconds}s exceeded without a heartbeat'
             await self._fail_or_retry(job)
             return
@@ -300,7 +301,7 @@ class JobQueue:
                     task.cancel()
                     with contextlib.suppress(BaseException):
                         await task
-                    raise asyncio.TimeoutError
+                    raise TimeoutError
                 done, _ = await asyncio.wait({task}, timeout=remaining)
                 if done:
                     return task.result()
@@ -315,7 +316,7 @@ class JobQueue:
     async def _fail_or_retry(self, job: Job) -> None:
         _count(job, 'retried' if job.attempts < job.max_attempts else 'failed')
         if job.attempts < job.max_attempts:
-            backoff = min(300, (2 ** job.attempts) + random.uniform(0, 1))
+            backoff = min(300, (2 ** job.attempts) + secrets.SystemRandom().uniform(0, 1))
             job.status, job.not_before = 'queued', time.time() + backoff
             await self._backend.requeue(job)
         else:
@@ -392,7 +393,7 @@ class _MemoryBackend:
         assert self._queue is not None
         try:
             priority, not_before, seq, job_id = await asyncio.wait_for(self._queue.get(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         job = self.jobs.get(job_id)
         if job is None or job.status != 'queued':
@@ -427,7 +428,7 @@ class _RedisBackend:
 
     def __init__(self, url: str):
         self.url = url
-        self.redis = None
+        self.redis: Any = None
 
     async def connect(self):
         import redis.asyncio as redis  # lazy
@@ -583,4 +584,4 @@ class _RedisBackend:
 
 
 def iso(ts: float | None) -> str | None:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat() if ts else None

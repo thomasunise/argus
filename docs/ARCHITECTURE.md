@@ -144,7 +144,7 @@ package and say so in the pull request.
 
 ## 3. Conventions (all code)
 
-- Python 3.11+, `from __future__ import annotations`, type hints everywhere, no `print`.
+- Python 3.12+, `from __future__ import annotations`, type hints everywhere, no `print`.
 - SQLAlchemy 2.0 declarative. Every domain table includes `TenantMixin` (adds
   `tenant_id: str` indexed). Primary keys are `String(36)` UUID via `uid()`.
 - Timestamps are `DateTime(timezone=True)` with `utcnow()` defaults.

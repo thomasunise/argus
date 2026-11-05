@@ -11,11 +11,10 @@ import smtplib
 import httpx
 import pytest
 import respx
-from sqlalchemy import select
-
 from app.integrations.outbound import DeliveryResult, OutboundEvent, registry
 from app.integrations.outbound.webhook import SIGNATURE_HEADER
 from app.models import AuditEntry
+from sqlalchemy import select
 from tests.conftest import login, wait_for, wait_job
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'integrations'
@@ -344,7 +343,7 @@ def test_delivery_retry_path(owner, ingest_key, monkeypatch):
 @pytest.mark.asyncio
 async def test_deliver_handler_skips_disabled_and_enforces_tenant(app):
     from app.integrations.delivery import record_result, retry_delay
-    from app.models.integrations import WebhookDelivery, IntegrationConfig
+    from app.models.integrations import IntegrationConfig, WebhookDelivery
 
     assert [retry_delay(n) for n in (1, 2, 3, 4, 9)] == [15, 60, 300, 600, 600]
     delivery = WebhookDelivery(tenant_id='t', integration_id='i', topic='finding.created', max_attempts=2)

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 from urllib.parse import urlsplit
 
 from ..core.config import Settings

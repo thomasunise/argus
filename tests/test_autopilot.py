@@ -4,7 +4,6 @@ the names redteam_plan proposes per asset kind, and non-web assets so scope.chec
 from __future__ import annotations
 
 import pytest
-
 from app.models import Asset, AssetAuthorization, dumps, loads
 from app.testing import harness
 from tests.conftest import login, wait_job

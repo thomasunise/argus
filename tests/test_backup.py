@@ -8,14 +8,14 @@ import types
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, func, inspect, select, text
-
 from app.core.config import Settings
 from app.models import AuditEntry, Tenant, User
 from app.models.ops import BackupRecord
 from app.ops import backup as bk
 from app.ops import run_backup, schedule_tick
 from app.ops.stores import LocalStore
+from sqlalchemy import create_engine, func, inspect, select, text
+
 from conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login, wait_job
 
 
@@ -79,9 +79,8 @@ def test_api_backup_restores_into_a_fresh_database(owner, second_tenant, app, se
     assert {k: v for k, v in after.items() if k in before} == before
 
     # The restored database is a working Argus: the owner can sign in and sees the same assets.
-    from fastapi.testclient import TestClient
-
     from app.main import create_app
+    from fastapi.testclient import TestClient
 
     restored_app = create_app(settings.model_copy(update={'database_url': target}))
     with TestClient(restored_app) as other_client:
@@ -294,9 +293,8 @@ def test_postgres_backup_and_restore_drill(tmp_path):
     database with Alembic, and check counts, sequences and audit chains."""
     import secrets
 
-    from fastapi.testclient import TestClient
-
     from app.main import create_app
+    from fastapi.testclient import TestClient
 
     admin = create_engine(DRILL_URL, isolation_level='AUTOCOMMIT')
     suffix = secrets.token_hex(4)

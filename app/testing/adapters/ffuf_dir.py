@@ -6,11 +6,11 @@ Provides real wordlist-driven fuzzing, optional bounded recursion, and response 
 """
 from __future__ import annotations
 
-from collections import Counter
 import json
 import os
-from pathlib import Path
 import tempfile
+from collections import Counter
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from ...core.config import Settings

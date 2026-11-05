@@ -7,7 +7,9 @@ metadata:
     {{- include "argus.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
+  {{- if not .Values.worker.hpa.enabled }}
   replicas: {{ .Values.worker.replicas }}
+  {{- end }}
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate

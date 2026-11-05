@@ -16,14 +16,16 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from ..ai.tool_guard import evaluate as evaluate_tool_call
+from ..ai.tool_guard import policy_for as tool_guard_policy
 from ..core.config import Settings
 from ..core.rbac import Principal
 from ..core.security import redact
-from ..ai.tool_guard import evaluate as evaluate_tool_call, policy_for as tool_guard_policy
 from ..core.telemetry import AGENT_RUNS, AGENT_TOKENS
 from ..models import AgentRun, AgentStep, dumps, utcnow
 from .providers import ModelTurn, Provider, get_provider
-from .tools.registry import Tool, ToolContext, ToolRegistry, registry as default_registry
+from .tools.registry import Tool, ToolContext, ToolRegistry
+from .tools.registry import registry as default_registry
 
 log = logging.getLogger('argus.agents')
 
@@ -134,6 +136,7 @@ class AgentRuntime:
                 error = f'no price configured for {provider.name} model {provider.model!r}; set AGENT_MODEL_PRICES'
                 with session_scope(db_factory) as db:
                     run = db.get(AgentRun, run_id)
+                    assert run is not None
                     run.status, run.error, run.finished_at = status, error, utcnow()
                     run.provider, run.model = provider.name, provider.model
                 AGENT_RUNS.labels(spec.name, status).inc()
@@ -156,7 +159,7 @@ class AgentRuntime:
         output: dict | None = None
         status, error = 'completed', ''
         try:
-            for step in range(max_steps):
+            for _step in range(max_steps):
                 if heartbeat is not None:
                     await heartbeat()  # extends the queue lease and raises CancelledError when the run was cancelled
                 if time.monotonic() - started > max_seconds:
@@ -220,6 +223,7 @@ class AgentRuntime:
                 status, error = 'failed', error or 'no result submitted'
             with session_scope(db_factory) as db:
                 run = db.get(AgentRun, run_id)
+                assert run is not None
                 run.status, run.error, run.finished_at = status, error, utcnow()
                 run.provider, run.model = provider.name, provider.model
                 run.steps_count, run.input_tokens, run.output_tokens = steps, total_in, total_out
@@ -298,6 +302,7 @@ class AgentRuntime:
             status, error = 'failed', f'{type(exc).__name__}: {exc}'[:1000]
         with session_scope(db_factory) as db:
             run = db.get(AgentRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at, run.provider, run.model = status, error, utcnow(), 'none', 'rules-only'
             run.output_json = dumps(output or {}, limit=60000)
         AGENT_RUNS.labels(spec.name, status).inc()

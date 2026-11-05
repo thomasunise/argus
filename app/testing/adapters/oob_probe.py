@@ -15,7 +15,6 @@ import httpx
 from sqlalchemy import select
 
 from ...core.db import session_scope
-from ...models import utcnow
 from ...models.oob import OobToken
 from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register
 

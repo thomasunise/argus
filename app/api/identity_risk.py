@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.rbac import Principal
@@ -35,7 +36,7 @@ def identity_risk_summary(days: int = Query(default=7, ge=1, le=30),
     when = func.coalesce(SecurityEvent.occurred_at, SecurityEvent.received_at)
     events = db.execute(select(SecurityEvent).where(SecurityEvent.tenant_id == principal.tenant_id, when >= cutoff)
                        .order_by(when.desc()).limit(10000)).scalars().all()
-    actors = defaultdict(lambda: {'events': 0, 'failed_logins': 0, 'privilege_actions': 0, 'sources': set(), 'recent_event_ids': []})
+    actors: dict[str, dict[str, Any]] = defaultdict(lambda: {'events': 0, 'failed_logins': 0, 'privilege_actions': 0, 'sources': set(), 'recent_event_ids': []})
     for ev in events:
         if not ev.actor:
             continue

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .base import Collector, CollectorContext, CollectorResult, age_days, jsonable, parse_time, registry
@@ -103,7 +103,7 @@ class AwsCollector(Collector):
 
     def _normalize(self, raw: dict[str, Any]) -> CollectorResult:
         r = CollectorResult()
-        now = parse_time(raw.get('collected_at')) or datetime.now(timezone.utc)
+        now = parse_time(raw.get('collected_at')) or datetime.now(UTC)
         source = self.source
         account_id = str(raw.get('account_id') or 'unknown')
         account = r.node('asset', f'aws:account:{account_id}', {'provider': 'aws', 'type': 'account', 'account_id': account_id,
@@ -469,7 +469,7 @@ def _fetch(config: dict[str, Any], regions: list[str], logger: logging.Logger) -
     session = _boto_session(config, regions[0])
     sts = session.client('sts')
     account_id = sts.get_caller_identity().get('Account', '')
-    raw: dict[str, Any] = {'account_id': account_id, 'regions': regions, 'collected_at': datetime.now(timezone.utc), 'warnings': warnings,
+    raw: dict[str, Any] = {'account_id': account_id, 'regions': regions, 'collected_at': datetime.now(UTC), 'warnings': warnings,
                            'iam': {}, 'ec2': {}, 's3': {}, 'rds': {}, 'lambda': {}, 'eks': {}}
 
     def note(label: str, exc: Exception) -> None:
@@ -492,16 +492,16 @@ def _fetch(config: dict[str, Any], regions: list[str], logger: logging.Logger) -
     for region in regions:
         ec2 = session.client('ec2', region_name=region)
         raw['ec2'][region] = {
-            'reservations': guarded(f'ec2.describe_instances[{region}]', lambda: _paginate(ec2, 'describe_instances', 'Reservations'), []),
-            'security_groups': guarded(f'ec2.describe_security_groups[{region}]', lambda: _paginate(ec2, 'describe_security_groups', 'SecurityGroups'), []),
+            'reservations': guarded(f'ec2.describe_instances[{region}]', lambda ec2=ec2: _paginate(ec2, 'describe_instances', 'Reservations'), []),
+            'security_groups': guarded(f'ec2.describe_security_groups[{region}]', lambda ec2=ec2: _paginate(ec2, 'describe_security_groups', 'SecurityGroups'), []),
         }
         rds = session.client('rds', region_name=region)
-        raw['rds'][region] = guarded(f'rds.describe_db_instances[{region}]', lambda: _paginate(rds, 'describe_db_instances', 'DBInstances'), [])
+        raw['rds'][region] = guarded(f'rds.describe_db_instances[{region}]', lambda rds=rds: _paginate(rds, 'describe_db_instances', 'DBInstances'), [])
         lam = session.client('lambda', region_name=region)
-        raw['lambda'][region] = guarded(f'lambda.list_functions[{region}]', lambda: _paginate(lam, 'list_functions', 'Functions'), [])
+        raw['lambda'][region] = guarded(f'lambda.list_functions[{region}]', lambda lam=lam: _paginate(lam, 'list_functions', 'Functions'), [])
         eks = session.client('eks', region_name=region)
-        names = guarded(f'eks.list_clusters[{region}]', lambda: _paginate(eks, 'list_clusters', 'clusters'), [])
-        raw['eks'][region] = [c for c in (guarded(f'eks.describe_cluster[{n}]', lambda n=n: eks.describe_cluster(name=n).get('cluster'), None) for n in names) if c]
+        names = guarded(f'eks.list_clusters[{region}]', lambda eks=eks: _paginate(eks, 'list_clusters', 'clusters'), [])
+        raw['eks'][region] = [c for c in (guarded(f'eks.describe_cluster[{n}]', lambda n=n, eks=eks: eks.describe_cluster(name=n).get('cluster'), None) for n in names) if c]
     return jsonable(raw)
 
 
@@ -512,12 +512,12 @@ def _fetch_iam(iam: Any, guarded) -> dict[str, Any]:
         out['account_mfa_enabled'] = bool(summary['AccountMFAEnabled'])
     for user in guarded('iam.list_users', lambda: _paginate(iam, 'list_users', 'Users'), []):
         name = user['UserName']
-        user['mfa_devices'] = guarded(f'iam.list_mfa_devices[{name}]', lambda: iam.list_mfa_devices(UserName=name).get('MFADevices', []), [])
-        user['access_keys'] = guarded(f'iam.list_access_keys[{name}]', lambda: iam.list_access_keys(UserName=name).get('AccessKeyMetadata', []), [])
-        user['attached_policies'] = guarded(f'iam.list_attached_user_policies[{name}]', lambda: _paginate(iam, 'list_attached_user_policies', 'AttachedPolicies', UserName=name), [])
-        user['groups'] = guarded(f'iam.list_groups_for_user[{name}]', lambda: _paginate(iam, 'list_groups_for_user', 'Groups', UserName=name), [])
-        inline_names = guarded(f'iam.list_user_policies[{name}]', lambda: _paginate(iam, 'list_user_policies', 'PolicyNames', UserName=name), [])
-        user['inline_policies'] = [p for p in (guarded(f'iam.get_user_policy[{name}/{pn}]', lambda pn=pn: iam.get_user_policy(UserName=name, PolicyName=pn), None)
+        user['mfa_devices'] = guarded(f'iam.list_mfa_devices[{name}]', lambda name=name: iam.list_mfa_devices(UserName=name).get('MFADevices', []), [])
+        user['access_keys'] = guarded(f'iam.list_access_keys[{name}]', lambda name=name: iam.list_access_keys(UserName=name).get('AccessKeyMetadata', []), [])
+        user['attached_policies'] = guarded(f'iam.list_attached_user_policies[{name}]', lambda name=name: _paginate(iam, 'list_attached_user_policies', 'AttachedPolicies', UserName=name), [])
+        user['groups'] = guarded(f'iam.list_groups_for_user[{name}]', lambda name=name: _paginate(iam, 'list_groups_for_user', 'Groups', UserName=name), [])
+        inline_names = guarded(f'iam.list_user_policies[{name}]', lambda name=name: _paginate(iam, 'list_user_policies', 'PolicyNames', UserName=name), [])
+        user['inline_policies'] = [p for p in (guarded(f'iam.get_user_policy[{name}/{pn}]', lambda pn=pn, name=name: iam.get_user_policy(UserName=name, PolicyName=pn), None)
                                                for pn in inline_names) if p]
         try:
             iam.get_login_profile(UserName=name)
@@ -529,14 +529,14 @@ def _fetch_iam(iam: Any, guarded) -> dict[str, Any]:
         name = role['RoleName']
         if '/aws-service-role/' in role.get('Path', ''):
             continue  # AWS-managed service-linked roles are not actionable
-        role['attached_policies'] = guarded(f'iam.list_attached_role_policies[{name}]', lambda: _paginate(iam, 'list_attached_role_policies', 'AttachedPolicies', RoleName=name), [])
-        inline_names = guarded(f'iam.list_role_policies[{name}]', lambda: _paginate(iam, 'list_role_policies', 'PolicyNames', RoleName=name), [])
-        role['inline_policies'] = [p for p in (guarded(f'iam.get_role_policy[{name}/{pn}]', lambda pn=pn: iam.get_role_policy(RoleName=name, PolicyName=pn), None)
+        role['attached_policies'] = guarded(f'iam.list_attached_role_policies[{name}]', lambda name=name: _paginate(iam, 'list_attached_role_policies', 'AttachedPolicies', RoleName=name), [])
+        inline_names = guarded(f'iam.list_role_policies[{name}]', lambda name=name: _paginate(iam, 'list_role_policies', 'PolicyNames', RoleName=name), [])
+        role['inline_policies'] = [p for p in (guarded(f'iam.get_role_policy[{name}/{pn}]', lambda pn=pn, name=name: iam.get_role_policy(RoleName=name, PolicyName=pn), None)
                                                for pn in inline_names) if p]
         out['roles'].append(role)
     for policy in guarded('iam.list_policies', lambda: _paginate(iam, 'list_policies', 'Policies', Scope='Local', OnlyAttached=False), []):
         version = guarded(f"iam.get_policy_version[{policy['PolicyName']}]",
-                          lambda: iam.get_policy_version(PolicyArn=policy['Arn'], VersionId=policy['DefaultVersionId']).get('PolicyVersion', {}), {})
+                          lambda policy=policy: iam.get_policy_version(PolicyArn=policy['Arn'], VersionId=policy['DefaultVersionId']).get('PolicyVersion', {}), {})
         policy['Document'] = version.get('Document')
         out['policies'].append(policy)
     for profile in guarded('iam.list_instance_profiles', lambda: _paginate(iam, 'list_instance_profiles', 'InstanceProfiles'), []):
@@ -548,7 +548,7 @@ def _fetch_s3(s3: Any, guarded, note) -> list[dict[str, Any]]:
     buckets: list[dict[str, Any]] = []
     for bucket in guarded('s3.list_buckets', lambda: s3.list_buckets().get('Buckets', []), []):
         name = bucket['Name']
-        bucket['Region'] = guarded(f's3.get_bucket_location[{name}]', lambda: s3.get_bucket_location(Bucket=name).get('LocationConstraint') or 'us-east-1', None)
+        bucket['Region'] = guarded(f's3.get_bucket_location[{name}]', lambda name=name: s3.get_bucket_location(Bucket=name).get('LocationConstraint') or 'us-east-1', None)
         try:
             bucket['public_access_block'] = s3.get_public_access_block(Bucket=name).get('PublicAccessBlockConfiguration', {})
         except Exception as exc:

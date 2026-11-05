@@ -9,9 +9,10 @@ assets, authorizations and scopes, action requests and runs, and configuration.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Callable
+from typing import Any
 
 from sqlalchemy import Table, delete, func, select, update
 from sqlalchemy.orm import Session
@@ -145,7 +146,7 @@ def prune(db_factory, settings: Settings, tenant_id: str, *, batch: int = BATCH)
             total = 0
             while True:
                 with session_scope(db_factory) as db:
-                    ids = list(db.execute(select(table.c.id).where(*_filters(table, policy, tenant_id, cutoff)).limit(batch)).scalars())
+                    ids: Any = list(db.execute(select(table.c.id).where(*_filters(table, policy, tenant_id, cutoff)).limit(batch)).scalars())
                     if ids:
                         children = policy.children or _TABLE_CHILDREN.get(name, ())
                         for child_name, column in children:

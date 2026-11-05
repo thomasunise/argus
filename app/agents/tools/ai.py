@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -25,7 +26,7 @@ def ai_inventory(args: dict, ctx: ToolContext) -> dict:
     if args.get('channel'):
         stmt = stmt.where(AIService.channel == args['channel'])
     limit = clamp_limit(args.get('limit'), 50, 200)
-    rows = ctx.db.execute(stmt.order_by(AIService.last_seen_at.desc()).limit(limit)).scalars().all()
+    rows: Any = ctx.db.execute(stmt.order_by(AIService.last_seen_at.desc()).limit(limit)).scalars().all()
     since = utcnow() - timedelta(days=30)
     base = (AIGatewayRequest.tenant_id == ctx.principal.tenant_id, AIGatewayRequest.created_at >= since)
     by_status = {k: int(n) for k, n in ctx.db.execute(select(AIGatewayRequest.status, func.count()).where(*base).group_by(AIGatewayRequest.status)).all()}

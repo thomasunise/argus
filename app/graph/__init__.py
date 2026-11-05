@@ -5,8 +5,23 @@ from __future__ import annotations
 import logging
 
 from ..core import events
-from .service import (EdgeDraft, NodeDraft, apply, attack_paths, edge_to_dict, exposure_score, link_asset, neighbors, node_to_dict,  # noqa: F401
-                      path_to_dict, query, recompute, stats, upsert_edge, upsert_node)
+from .service import (  # noqa: F401
+    EdgeDraft,
+    NodeDraft,
+    apply,
+    attack_paths,
+    edge_to_dict,
+    exposure_score,
+    link_asset,
+    neighbors,
+    node_to_dict,
+    path_to_dict,
+    query,
+    recompute,
+    stats,
+    upsert_edge,
+    upsert_node,
+)
 
 log = logging.getLogger('argus.graph')
 

@@ -7,7 +7,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, dig, event, first, hash_item, scan_markers, snake
+from ._common import ParseContext, Parser, as_dict, dig, event, first, hash_item, scan_markers, snake
 
 # operationName (lower-case) -> dotted action the cloud/identity rules recognise.
 _OPERATIONS = {
@@ -63,7 +63,7 @@ class AzureDefenderParser(Parser):
         return payload
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
-        props = item.get('properties') if isinstance(item.get('properties'), dict) else {}
+        props = as_dict(item.get('properties'))
         if 'alertDisplayName' in props or 'alertType' in props or str(item.get('type') or '').lower().endswith('/alerts'):
             return [self._alert(item, props)]
         if 'operationName' in item or 'operationName' in props:
@@ -74,7 +74,8 @@ class AzureDefenderParser(Parser):
 
     def _alert(self, item: dict, props: dict) -> EventDraft:
         alert_type = str(props.get('alertType') or props.get('alertName') or 'SecurityAlert')
-        entities = props.get('entities') if isinstance(props.get('entities'), list) else []
+        raw_entities = props.get('entities')
+        entities = raw_entities if isinstance(raw_entities, list) else []
         accounts = [e for e in entities if isinstance(e, dict) and str(e.get('type', '')).lower() == 'account']
         hosts = [e for e in entities if isinstance(e, dict) and str(e.get('type', '')).lower() == 'host']
         ips = [e for e in entities if isinstance(e, dict) and str(e.get('type', '')).lower() == 'ip']
@@ -82,10 +83,11 @@ class AzureDefenderParser(Parser):
         if accounts:
             a = accounts[0]
             actor = str(a.get('upnSuffix') and f'{a.get("name")}@{a.get("upnSuffix")}' or a.get('name') or a.get('aadUserId') or '')
-        resource_ids = props.get('resourceIdentifiers') if isinstance(props.get('resourceIdentifiers'), list) else []
+        raw_resource_ids = props.get('resourceIdentifiers')
+        resource_ids = raw_resource_ids if isinstance(raw_resource_ids, list) else []
         azure_res = next((r for r in resource_ids if isinstance(r, dict) and r.get('azureResourceId')), {})
         entity = str(props.get('compromisedEntity') or (hosts[0].get('hostName') if hosts else '') or azure_res.get('azureResourceId') or '')
-        ext = props.get('extendedProperties') if isinstance(props.get('extendedProperties'), dict) else {}
+        ext = as_dict(props.get('extendedProperties'))
         meta: dict[str, Any] = {
             'alert_type': alert_type, 'alert_id': props.get('systemAlertId') or item.get('name') or '', 'status': props.get('status') or '',
             'intent': props.get('intent') or '', 'product': props.get('productName') or 'Microsoft Defender for Cloud',
@@ -108,7 +110,7 @@ class AzureDefenderParser(Parser):
         action = _activity_action(operation)
         caller = str(item.get('caller') or dig(item, 'claims', 'name') or dig(item, 'identity', 'claims', 'name') or props.get('caller') or '')
         resource_id = str(item.get('resourceId') or props.get('resourceId') or dig(item, 'resourceId', 'value') or '')
-        http = item.get('httpRequest') if isinstance(item.get('httpRequest'), dict) else {}
+        http = as_dict(item.get('httpRequest'))
         ip = http.get('clientIpAddress') or item.get('callerIpAddress') or props.get('callerIpAddress') or ''
         status = item.get('status')
         status_text = str(status.get('value') if isinstance(status, dict) else status or props.get('status') or '')

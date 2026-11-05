@@ -1,10 +1,24 @@
 """Read-only asset inventory tools."""
 from __future__ import annotations
 
+from typing import Any
+
 from ...core.db import scoped
 from ...models import Asset, SecurityEvent
-from ._common import (asset_authorizations, asset_dict, authorization_dict, clamp_limit, compact_event, compact_finding, event_time, load_asset,
-                      open_findings_for_asset, optional_module, serialize, since)
+from ._common import (
+    asset_authorizations,
+    asset_dict,
+    authorization_dict,
+    clamp_limit,
+    compact_event,
+    compact_finding,
+    event_time,
+    load_asset,
+    open_findings_for_asset,
+    optional_module,
+    serialize,
+    since,
+)
 from .registry import ToolContext, registry
 
 
@@ -26,7 +40,7 @@ def list_assets(args: dict, ctx: ToolContext) -> dict:
         stmt = stmt.where(Asset.kind == args['kind'])
     if args.get('environment'):
         stmt = stmt.where(Asset.environment == args['environment'])
-    rows = ctx.db.execute(stmt.order_by(Asset.name.asc()).limit(clamp_limit(args.get('limit'), default=100, maximum=500))).scalars().all()
+    rows: Any = ctx.db.execute(stmt.order_by(Asset.name.asc()).limit(clamp_limit(args.get('limit'), default=100, maximum=500))).scalars().all()
     return {'count': len(rows), 'items': [asset_dict(a) for a in rows]}
 
 
@@ -59,7 +73,7 @@ def asset_context(args: dict, ctx: ToolContext) -> dict:
     if asset is None:
         return {'found': False, 'asset_id': args['asset_id']}
     days = clamp_limit(args.get('days'), default=7, maximum=90)
-    events = ctx.db.execute(scoped(SecurityEvent, ctx.principal).where(SecurityEvent.asset_id == asset.id, event_time() >= since(days=days))
+    events: Any = ctx.db.execute(scoped(SecurityEvent, ctx.principal).where(SecurityEvent.asset_id == asset.id, event_time() >= since(days=days))
                             .order_by(event_time().desc()).limit(50)).scalars().all()
     authorizations = [authorization_dict(a) for a in asset_authorizations(ctx, asset.id)]
     return {'found': True, 'asset': asset_dict(asset), 'authorizations': authorizations,

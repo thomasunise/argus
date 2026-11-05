@@ -7,9 +7,9 @@ from __future__ import annotations
 import json
 import re
 
+from ...core import policy
 from ...core.config import Settings
 from ...core.errors import ScopeDenied, Unavailable
-from ...core import policy
 from ..harness import HarnessContext, NormalizedFinding, TestAdapter, register, run_tool
 
 _SEV_MAP = {'ERROR': 'high', 'WARNING': 'medium', 'INFO': 'low', 'INVENTORY': 'informational', 'EXPERIMENT': 'informational'}
@@ -38,7 +38,7 @@ def parse_report(report: dict) -> list[NormalizedFinding]:
         findings.append(NormalizedFinding(
             rule=f'{check_id}:{path}:{start}', title=str(extra.get('message') or check_id)[:240],
             description=f'{extra.get("message") or check_id}'[:2000] + f' ({path}:{start})',
-            remediation=str((extra.get('fix') or meta.get('references') or 'Review and remediate the flagged code path.'))[:2000],
+            remediation=str(extra.get('fix') or meta.get('references') or 'Review and remediate the flagged code path.')[:2000],
             severity=_SEV_MAP.get(str(extra.get('severity') or '').upper(), 'medium'),
             evidence={'check_id': check_id, 'file': path, 'line': start, 'cwe': cwe_list[:5],
                       'owasp': (meta.get('owasp') if isinstance(meta.get('owasp'), list) else [meta.get('owasp')] if meta.get('owasp') else [])[:5]}))

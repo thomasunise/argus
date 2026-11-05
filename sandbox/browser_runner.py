@@ -11,10 +11,9 @@ Playwright is imported lazily so the module can be unit-tested without a browser
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urljoin, urlsplit
 
 MARKER = 'ARGUS_DISCOVERY '
 TRAILER = 'ARGUS_ENGINE '

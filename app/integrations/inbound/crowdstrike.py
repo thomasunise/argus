@@ -6,7 +6,7 @@ from typing import Any
 
 from ...core.findings import EventDraft
 from . import registry
-from ._common import ParseContext, Parser, as_float, event, first, hash_item, snake
+from ._common import ParseContext, Parser, as_dict, as_float, event, first, hash_item, snake
 
 _SEVERITY_NAMES = {'critical': 'critical', 'high': 'high', 'medium': 'medium', 'low': 'low', 'informational': 'informational', 'info': 'informational'}
 
@@ -52,7 +52,7 @@ class CrowdStrikeParser(Parser):
         raise ValueError('not a Falcon detection or event-stream record')
 
     def _detection(self, item: dict) -> EventDraft:
-        device = item.get('device') if isinstance(item.get('device'), dict) else {}
+        device = as_dict(item.get('device'))
         behaviors = [b for b in (item.get('behaviors') or []) if isinstance(b, dict)]
         lead = behaviors[0] if behaviors else item
         tactic = str(first(lead, 'tactic', 'tactic_id') or item.get('tactic') or 'detection')

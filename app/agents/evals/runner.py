@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import select
 
@@ -196,6 +197,7 @@ async def run_suite(suite_name: str, *, principal: Principal, db_factory, settin
     passed = sum(1 for r in reports if r['passed'])
     with session_scope(db_factory) as db:
         run = db.get(EvalRun, eval_id)
+        assert run is not None
         run.status, run.total, run.passed, run.failed, run.finished_at = status, len(reports), passed, len(reports) - passed, utcnow()
         run.report_json = dumps({'suite': suite['name'], 'description': suite.get('description', ''), 'grader': suite.get('grader', ''),
                                  'provider': provider.name if provider else ('factory' if provider_factory else settings.ai_provider),

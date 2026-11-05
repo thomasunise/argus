@@ -10,7 +10,6 @@ from datetime import timedelta
 
 import httpx
 import pytest
-
 from app.agents.tools.registry import ToolContext
 from app.core.findings import EventDraft, upsert_event, upsert_finding
 from app.core.rbac import Principal, Role

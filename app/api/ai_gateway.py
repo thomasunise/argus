@@ -16,6 +16,7 @@ import json
 import logging
 import time
 from datetime import timedelta
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Body, Depends, Request
@@ -379,7 +380,7 @@ def list_requests(status: str | None = None, provider: str | None = None, model:
         stmt = stmt.where(AIGatewayRequest.model == model)
     if api_key_id:
         stmt = stmt.where(AIGatewayRequest.api_key_id == api_key_id)
-    rows = db.execute(page.apply(stmt.order_by(AIGatewayRequest.created_at.desc(), AIGatewayRequest.id.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(AIGatewayRequest.created_at.desc(), AIGatewayRequest.id.desc()))).scalars().all()
     return page.wrap(rows, gw.request_to_dict)
 
 

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from ..engine import DetectionDraft, DetectionRule, RuleContext, registry
-from ..util import event_ids, event_time, iso, window_bucket
+from ..util import event_ids, event_time, window_bucket
 
 
 def _stage(event) -> str:
@@ -46,8 +47,8 @@ class CrossSourceAttackChain(DetectionRule):
                 if _stage(start) != 'auth':
                     continue
                 horizon = event_time(start).timestamp() + window * 60
-                seen = set()
-                chain = []
+                seen: Any = set()
+                chain: Any = []
                 for ev in events[index:]:
                     if event_time(ev).timestamp() > horizon:
                         break

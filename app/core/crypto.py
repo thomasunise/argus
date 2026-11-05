@@ -96,12 +96,12 @@ def decrypt(value: str | None) -> str | None:
 
 
 def is_encrypted(value: str | None) -> bool:
-    return bool(value) and value.startswith(PREFIX)
+    return value is not None and value.startswith(PREFIX)
 
 
 def needs_rotation(value: str | None) -> bool:
     """True when the value is encrypted under a key other than the current one."""
-    if not is_encrypted(value) or not _current:
+    if not value or not is_encrypted(value) or not _current:
         return False
     kid = value[len(PREFIX):].split(':', 1)[0]
     return kid != _current

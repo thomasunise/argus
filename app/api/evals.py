@@ -1,6 +1,8 @@
 """Specialist evals: suites, queued runs and reports."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -64,7 +66,7 @@ def list_evals(suite: str | None = None, status: str | None = None, spec: str | 
         stmt = stmt.where(EvalRun.status == status)
     if spec:
         stmt = stmt.where(EvalRun.spec == spec)
-    rows = db.execute(page.apply(stmt.order_by(EvalRun.created_at.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(EvalRun.created_at.desc()))).scalars().all()
     return page.wrap(rows, lambda r: eval_to_dict(r, with_report=False))
 
 

@@ -13,18 +13,18 @@ from __future__ import annotations
 import json
 import logging
 import socket
+from collections.abc import Callable
+from typing import Any
 
 import httpx
-from typing import Any, Callable
-
 from sqlalchemy import select
 
 from ..core.audit import record_audit
-from ..core.db import get_scoped, session_scope
+from ..core.db import session_scope
 from ..core.errors import NotFound, PolicyDenied, ScopeDenied, Unavailable
 from ..core.rbac import Principal, system_principal
 from ..exploit import engine
-from ..models import Asset, AssetAuthorization, Tenant, dumps, loads, utcnow
+from ..models import Asset, AssetAuthorization, Tenant, loads, utcnow
 from ..models.discovery import DISCOVERY_KINDS, Discovery, DiscoveryRun, RequestCapture
 from ..models.testing import TestScope
 from ..testing import scope as scope_module
@@ -160,6 +160,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
     except (ScopeDenied, OSError) as exc:
         with session_scope(app.state.db_factory) as db:
             run = db.get(DiscoveryRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'failed', str(exc)[:500], utcnow()
             record_audit(db, system_principal(tenant_id), 'discovery.run.failed', run_id, {'error': 'resolution'})
         return {'run_id': run_id, 'status': 'failed', 'error': 'resolution'}
@@ -188,6 +189,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
     if client is None:
         with session_scope(app.state.db_factory) as db:
             run = db.get(DiscoveryRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'failed', 'no executor is configured (EXPLOIT_EXECUTOR_URL)', utcnow()
             record_audit(db, system_principal(tenant_id), 'discovery.run.failed', run_id, {'error': 'no_executor'})
         return {'run_id': run_id, 'status': 'failed', 'error': 'no_executor'}
@@ -200,6 +202,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
         except Unavailable as exc:
             with session_scope(app.state.db_factory) as db:
                 run = db.get(DiscoveryRun, run_id)
+                assert run is not None
                 run.status, run.error, run.finished_at = 'failed', str(exc)[:500], utcnow()
                 record_audit(db, system_principal(tenant_id), 'discovery.run.failed', run_id, {'error': 'executor'})
             return {'run_id': run_id, 'status': 'failed', 'error': 'executor'}
@@ -218,6 +221,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
     created: list[Discovery] = []
     with session_scope(app.state.db_factory) as db:
         run = db.get(DiscoveryRun, run_id)
+        assert run is not None
         principal = system_principal(tenant_id)
         for fact in facts:
             row, is_new = _upsert_fact(db, tenant_id, run.asset_id, run.id, fact)
@@ -254,6 +258,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
 
     with session_scope(app.state.db_factory) as db:
         run = db.get(DiscoveryRun, run_id)
+        assert run is not None
         run.follow_up_count = follow_ups
     return {'run_id': run_id, 'status': 'completed', 'discoveries': len(facts), 'follow_ups': follow_ups}
 

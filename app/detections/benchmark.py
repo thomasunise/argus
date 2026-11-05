@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -25,7 +25,7 @@ class BenchmarkScenario:
 
 
 def default_scenarios(now: datetime | None = None) -> list[BenchmarkScenario]:
-    t0 = (now or datetime.now(timezone.utc).replace(microsecond=0)) - timedelta(minutes=15)
+    t0 = (now or datetime.now(UTC).replace(microsecond=0)) - timedelta(minutes=15)
     return [
         BenchmarkScenario(
             id='attack_cloud_public_s3',
@@ -171,7 +171,7 @@ def default_scenarios(now: datetime | None = None) -> list[BenchmarkScenario]:
 
 def run_benchmark(db: Session, tenant_id: str, scenarios: list[BenchmarkScenario] | None = None) -> dict[str, Any]:
     """Execute the detection benchmark dataset against `tenant_id` and return precision/recall/FPR metrics."""
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     suite = scenarios if scenarios is not None else default_scenarios(now)
     for sc in suite:
         for ev in sc.events:

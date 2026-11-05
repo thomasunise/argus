@@ -2,19 +2,18 @@
 kill switch, approvals, agent-originated proposals, cross-tenant isolation, permissions."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
 from app.actions import broker, catalog, credentials, policy
 from app.actions.catalog import ActionError, ActionType, DryRunResult, ExecResult, entities
 from app.actions.schema import validate
 from app.core.rbac import Principal, Role
 from app.models import AuditEntry, Tenant, dumps, loads
 from app.models.actions import ActionRequest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
 from tests.conftest import login, wait_job
 
 PW = 'operator-password-long-123456'
@@ -231,7 +230,7 @@ def test_policy_kill_switch_and_deny_list(settings, fakes):
 
 
 def test_policy_maintenance_window(settings, fakes):
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     inside = settings.model_copy(update={'actions_maintenance_window': '11:00-13:00'})
     outside = settings.model_copy(update={'actions_maintenance_window': '02:00-04:00'})
     wrap = settings.model_copy(update={'actions_maintenance_window': '23:00-01:00'})
@@ -241,7 +240,7 @@ def test_policy_maintenance_window(settings, fakes):
     assert not requested.denied and requested.within_window is False  # request allowed, execution gated
     assert policy.evaluate(None, _tenant(), outside, high, {}, _principal(), now=now, phase='execute').denied
     assert not policy.evaluate(None, _tenant(), outside, medium, {}, _principal(), now=now, phase='execute').denied  # window only for high/critical
-    assert policy.in_window('23:00-01:00', datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc)) is True
+    assert policy.in_window('23:00-01:00', datetime(2026, 1, 1, 0, 30, tzinfo=UTC)) is True
     assert policy.evaluate(None, _tenant(), wrap, high, {}, _principal(), now=now, phase='execute').denied
     assert policy.in_window('garbage') is None
     malformed = policy.evaluate(None, _tenant(maintenance_window='25:99-xx'), settings, high, {}, _principal(), now=now, phase='execute')
@@ -461,7 +460,7 @@ def test_expired_request_cannot_be_approved(app, owner, make_user, fakes):
     op1, h1 = as_user(app, 'op1@test.local', PW)
     rid = make_request(op1, h1, action_type='test.fake.medium')['id']
     with app.state.db_factory() as session:
-        session.get(ActionRequest, rid).expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        session.get(ActionRequest, rid).expires_at = datetime.now(UTC) - timedelta(minutes=1)
         session.commit()
     resp = client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers=headers)
     assert resp.status_code == 409 and 'expired' in resp.json()['detail']
@@ -510,7 +509,7 @@ def test_maintenance_window_gates_high_execution(app, owner, make_user, fakes, d
     enable_actions(client, headers)
     make_user('op1@test.local', PW, 'operator')
     op1, h1 = as_user(app, 'op1@test.local', PW)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     closed = f'{(now + timedelta(hours=2)).strftime("%H:%M")}-{(now + timedelta(hours=3)).strftime("%H:%M")}'
     open_ = f'{(now - timedelta(hours=1)).strftime("%H:%M")}-{(now + timedelta(hours=1)).strftime("%H:%M")}'
     set_tenant_policy(app, default_tenant_id, maintenance_window=closed, require_two_for_high=False)

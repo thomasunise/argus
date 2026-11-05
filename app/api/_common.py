@@ -2,8 +2,8 @@
 approvals, audit, reports, admin). Underscore-prefixed so router discovery skips it."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, overload
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,13 +17,21 @@ class BadRequest(ArgusError):
     code = 'bad_request'
 
 
+@overload
+def aware(value: datetime) -> datetime: ...
+
+
+@overload
+def aware(value: None) -> None: ...
+
+
 def aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for timezone-aware columns; treat naive as UTC."""
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def parse_since(value: str | None, *, field: str = 'since') -> datetime | None:
@@ -71,7 +79,7 @@ def active_authorizations(db: Session, tenant_id: str, asset_id: str, now: datet
     rows = db.execute(select(AssetAuthorization).where(AssetAuthorization.tenant_id == tenant_id, AssetAuthorization.asset_id == asset_id,
                                                        AssetAuthorization.revoked_at.is_(None))
                       .order_by(AssetAuthorization.created_at.desc())).scalars().all()
-    return [r for r in rows if aware(r.expires_at) is None or aware(r.expires_at) > now]
+    return [r for r in rows if (exp := aware(r.expires_at)) is None or exp > now]
 
 
 def current_authorization(db: Session, tenant_id: str, asset_id: str) -> AssetAuthorization | None:

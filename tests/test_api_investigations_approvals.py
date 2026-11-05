@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi.testclient import TestClient
-
 from app.core.findings import upsert_finding
 from app.models import AgentRun, Investigation, dumps, utcnow
+from fastapi.testclient import TestClient
 from tests.conftest import login
 
 

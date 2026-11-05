@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
-
 from app.core import crypto
 from app.core.audit import record_audit, verify_chain
 from app.core.config import Settings
 from app.core.rbac import Principal, Role
 from app.models import User
+from sqlalchemy import text
 
 
 def test_encrypt_roundtrip_and_rotation():

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from ...models import SecurityEvent
 from ..engine import DetectionDraft, DetectionRule, RuleContext, baseline_stddev, registry
@@ -27,8 +27,9 @@ class RateSpike(DetectionRule):
         min_samples = int(ctx.param('min_samples', 30))
         min_events = int(ctx.param('min_events', 10))
         dimensions = [d for d in ctx.param('dimensions', []) if d in _ENTITY_KIND]
-        window_start = ctx.now - timedelta(minutes=window)
-        events = ctx.events(since=max(window_start, ctx.since))
+        now = ctx.now or datetime.now(UTC)
+        window_start = now - timedelta(minutes=window)
+        events = ctx.events(since=max(window_start, ctx.since) if ctx.since else window_start)
         buckets: dict[str, dict[str, list[SecurityEvent]]] = {d: defaultdict(list) for d in dimensions}
         for event in events:
             for dimension in dimensions:
@@ -55,11 +56,11 @@ class RateSpike(DetectionRule):
                                  f'and standard deviation {std:.2f} over {baseline.samples} windows (z = {"inf" if z == float("inf") else f"{z:.1f}"}).'),
                     severity='high' if z >= 2 * sigma else self.severity, confidence=round(min(0.95, 0.6 + 0.035 * min(z, 10.0)), 3),
                     entity=key, entity_kind=_ENTITY_KIND[dimension], fingerprint_parts=[dimension, key],
-                    window_bucket=window_bucket(window_start, window), first_seen_at=window_start, last_seen_at=ctx.now,
+                    window_bucket=window_bucket(window_start, window), first_seen_at=window_start, last_seen_at=now,
                     evidence={'dimension': dimension, 'key': key, 'count': count, 'baseline_mean': round(baseline.mean, 3),
                               'baseline_stddev': round(std, 3), 'baseline_samples': baseline.samples, 'threshold': round(threshold, 2),
                               'z_score': None if z == float('inf') else round(z, 2), 'window_minutes': window, 'window_start': iso(window_start),
-                              'window_end': iso(ctx.now), 'actions_sample': sample(e.action for e in items), 'event_ids': event_ids(items)}))
+                              'window_end': iso(now), 'actions_sample': sample(e.action for e in items), 'event_ids': event_ids(items)}))
         return drafts
 
 

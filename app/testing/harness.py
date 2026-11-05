@@ -12,9 +12,10 @@ import asyncio
 import hashlib
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from ..core.config import Settings
 from ..core.errors import ScopeDenied, Unavailable
@@ -109,13 +110,13 @@ async def run_tool(argv: list[str], timeout: int, cwd: str | None = None, env: d
         raise Unavailable(f'tool not available: {argv[0]}') from exc
     try:
         out, err = await asyncio.wait_for(process.communicate(input=stdin), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         try:
             await process.communicate()
         except Exception:  # noqa: BLE001 - process already gone
-            pass
-        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout')
+            log.debug("tool process already gone", exc_info=True)
+        raise Unavailable(f'tool {argv[0]} exceeded {timeout}s timeout') from None
     stdout = redact(_decode(out))
     stderr = redact(_decode(err))
     return process.returncode or 0, stdout, stderr
@@ -146,7 +147,7 @@ def _decode(raw: bytes | None) -> str:
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbeat=None, job_tenant_id: str = '',
@@ -159,14 +160,15 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
     When the scope already has `max_concurrency` runs in progress the run stays queued and is
     re-enqueued after CONCURRENCY_RETRY_SECONDS; `deferrals` counts how often that happened.
     """
+    from sqlalchemy import select
+
     from ..core.audit import record_audit
     from ..core.db import session_scope
     from ..core.findings import upsert_finding
     from ..core.rbac import system_principal
     from ..models import Asset, AssetAuthorization, utcnow
-    from .auth import load_auth_headers, load_role_headers
     from ..models.testing import TestResult, TestRun, TestScope
-    from sqlalchemy import select
+    from .auth import load_auth_headers, load_role_headers
 
     # 1) load run + asset + scope + authorization
     with session_scope(db_factory) as db:
@@ -213,7 +215,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
                                             deferrals)
 
     # 2) re-check scope at execution time
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         if adapter is None:
             raise ScopeDenied(f'unknown adapter {run.adapter!r}')
@@ -224,6 +226,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
     except ScopeDenied as exc:
         with session_scope(db_factory) as db:
             run = db.get(TestRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'denied', str(exc), utcnow()
             record_audit(db, principal, 'testing.run.denied', run_id,
                          {'adapter': run.adapter, 'asset_id': run.asset_id, 'reason': str(exc)})
@@ -252,13 +255,15 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
     except ScopeDenied as exc:
         with session_scope(db_factory) as db:
             run = db.get(TestRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'denied', str(exc), utcnow()
             record_audit(db, principal, 'testing.run.denied', run_id, {'reason': str(exc)})
         return {'run_id': run_id, 'status': 'denied', 'reason': str(exc)}
-    except (asyncio.TimeoutError, Unavailable, Exception) as exc:  # noqa: BLE001
+    except (TimeoutError, Unavailable, Exception) as exc:  # noqa: BLE001
         reason = exc.message if isinstance(exc, Unavailable) else f'{type(exc).__name__}'
         with session_scope(db_factory) as db:
             run = db.get(TestRun, run_id)
+            assert run is not None
             run.status, run.finished_at = 'failed', utcnow()
             run.error = redact(str(reason))[:1000]
             record_audit(db, principal, 'testing.run.failed', run_id,
@@ -269,6 +274,7 @@ async def execute_run(run_id: str, db_factory, settings: Settings, app, heartbea
     # 5) persist findings + TestResult rows, update asset, audit
     with session_scope(db_factory) as db:
         run = db.get(TestRun, run_id)
+        assert run is not None
         asset = db.get(Asset, run.asset_id)
         written = 0
         by_severity: dict[str, int] = {}
@@ -331,6 +337,7 @@ async def _defer_for_concurrency(app, db_factory, settings: Settings, principal,
         reason = f'scope stayed at max_concurrency ({limit}) for {deferrals} retries'
         with session_scope(db_factory) as db:
             run = db.get(TestRun, run_id)
+            assert run is not None
             run.status, run.error, run.finished_at = 'failed', reason, utcnow()
             record_audit(db, principal, 'testing.run.failed', run_id, {'adapter': run.adapter, 'error': 'concurrency_wait'})
         log.warning('run %s failed: %s', run_id, reason)
@@ -352,8 +359,9 @@ def precheck(db, adapter: TestAdapter, asset, scope, settings: Settings, *, tier
     """Request-time scope check. Loads the asset's current authorization and evaluates
     scope.check against read-only snapshots. Raises ScopeDenied or returns the normalized target.
     """
-    from ..models import AssetAuthorization
     from sqlalchemy import select
+
+    from ..models import AssetAuthorization
 
     authorization = db.execute(
         select(AssetAuthorization)
@@ -366,7 +374,7 @@ def precheck(db, adapter: TestAdapter, asset, scope, settings: Settings, *, tier
         _AssetSnapshot.of(asset),
         _ScopeSnapshot.of(scope) if scope is not None else None,
         _AuthSnapshot.of(authorization) if authorization is not None else None,
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
         settings,
         tier=tier,
     )
@@ -413,7 +421,7 @@ class _AssetSnapshot:
     criticality: str
 
     @classmethod
-    def of(cls, asset) -> '_AssetSnapshot':
+    def of(cls, asset) -> _AssetSnapshot:
         return cls(id=asset.id, name=asset.name, kind=asset.kind, target=asset.target,
                    environment=asset.environment, criticality=asset.criticality)
 
@@ -433,7 +441,7 @@ class _ScopeSnapshot:
     revoked_at: datetime | None
 
     @classmethod
-    def of(cls, scope) -> '_ScopeSnapshot':
+    def of(cls, scope) -> _ScopeSnapshot:
         from ..models import loads
 
         return cls(id=scope.id, name=scope.name, asset_ids=loads(scope.asset_ids_json, []),
@@ -454,7 +462,7 @@ class _AuthSnapshot:
     revoked_at: datetime | None
 
     @classmethod
-    def of(cls, auth) -> '_AuthSnapshot':
+    def of(cls, auth) -> _AuthSnapshot:
         return cls(id=auth.id, allow_active=bool(auth.allow_active), allow_intrusive=bool(auth.allow_intrusive),
                    allow_exploit=bool(getattr(auth, 'allow_exploit', False)),
                    scope_document_ref=str(getattr(auth, 'scope_document_ref', '') or ''),

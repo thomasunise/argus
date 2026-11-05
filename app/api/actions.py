@@ -1,6 +1,8 @@
 """Action broker API: catalog, requests, approvals, execution, runs, rollback, kill switch."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -58,7 +60,7 @@ def get_catalog(request: Request, db: Session = Depends(get_db), principal: Prin
 def list_requests(status: str | None = None, action_type: str | None = None, finding_id: str | None = None, agent_only: bool = False,
                   page: Page = Depends(), db: Session = Depends(get_db), principal: Principal = Depends(require('actions:read'))):
     stmt = broker.list_requests(db, principal, status=status, action_type=action_type, finding_id=finding_id, agent_only=agent_only)
-    rows = db.execute(page.apply(stmt)).scalars().all()
+    rows: Any = db.execute(page.apply(stmt)).scalars().all()
     return page.wrap(rows, broker.request_to_dict)
 
 
@@ -102,7 +104,7 @@ def cancel_request(request_id: str, body: CancelBody | None = None, db: Session 
 @router.get('/runs')
 def list_runs(status: str | None = None, request_id: str | None = None, page: Page = Depends(), db: Session = Depends(get_db),
               principal: Principal = Depends(require('actions:read'))):
-    rows = db.execute(page.apply(broker.list_runs(db, principal, status=status, request_id=request_id))).scalars().all()
+    rows: Any = db.execute(page.apply(broker.list_runs(db, principal, status=status, request_id=request_id))).scalars().all()
     return page.wrap(rows, broker.run_to_dict)
 
 

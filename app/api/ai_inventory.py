@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -56,7 +56,7 @@ def list_services(status: str | None = None, channel: str | None = None, provide
     if q:
         pattern = like(q)
         stmt = stmt.where(or_(AIService.service.ilike(pattern), AIService.actor.ilike(pattern), AIService.evidence.ilike(pattern)))
-    rows = db.execute(page.apply(stmt.order_by(AIService.last_seen_at.desc(), AIService.id.desc()))).scalars().all()
+    rows: Any = db.execute(page.apply(stmt.order_by(AIService.last_seen_at.desc(), AIService.id.desc()))).scalars().all()
     return page.wrap(rows, service_to_dict)
 
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import statistics
-from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any, overload
 
 from ..core.security import redact
 from ..models import SecurityEvent, loads
@@ -14,17 +15,25 @@ MAX_EVIDENCE_IDS = 25
 MAX_EVIDENCE_SAMPLES = 10
 
 
+@overload
+def aware(value: datetime) -> datetime: ...
+
+
+@overload
+def aware(value: None) -> None: ...
+
+
 def aware(value: datetime | None) -> datetime | None:
     """SQLite returns naive datetimes for timezone-aware columns; treat naive as UTC."""
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def event_time(event: SecurityEvent) -> datetime:
-    return aware(event.occurred_at) or aware(event.received_at) or datetime.now(timezone.utc)
+    return aware(event.occurred_at) or aware(event.received_at) or datetime.now(UTC)
 
 
 def epoch(value: datetime) -> float:
@@ -39,7 +48,7 @@ def window_bucket(when: datetime, window_minutes: int) -> str:
 
 def bucket_start(when: datetime, window_minutes: int) -> datetime:
     seconds = max(60, int(window_minutes) * 60)
-    return datetime.fromtimestamp((epoch(when) // seconds) * seconds, tz=timezone.utc)
+    return datetime.fromtimestamp((epoch(when) // seconds) * seconds, tz=UTC)
 
 
 _META_CACHE_ATTR = '_argus_meta_cache'
@@ -142,7 +151,8 @@ def user_agent(event: SecurityEvent) -> str:
 def geo_of(event: SecurityEvent) -> tuple[float | None, float | None, str]:
     """(lat, lon, country) from common metadata layouts. Missing values are None/''."""
     data = meta(event)
-    geo = data.get('geo') if isinstance(data.get('geo'), dict) else data
+    raw_geo = data.get('geo')
+    geo = raw_geo if isinstance(raw_geo, dict) else data
     lat = first_present(geo, 'lat', 'latitude')
     lon = first_present(geo, 'lon', 'lng', 'long', 'longitude')
     country = first_present(geo, 'country', 'country_code', 'countryCode', default='') or first_present(data, 'src_country', 'geo_country', default='')
@@ -176,7 +186,7 @@ def sliding(times: Sequence[float], window_seconds: float) -> Iterator[tuple[int
 
 
 def gaps_ms(times: Sequence[float]) -> list[float]:
-    return [(b - a) * 1000.0 for a, b in zip(times, times[1:])]
+    return [(b - a) * 1000.0 for a, b in zip(times, times[1:], strict=False)]
 
 
 def median(values: Iterable[float]) -> float:

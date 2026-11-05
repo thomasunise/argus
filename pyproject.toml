@@ -17,6 +17,39 @@ ignore = ["E501", "S101", "B008"]
 [tool.ruff.lint.mccabe]
 max-complexity = 18
 
+# Legacy complexity debt: these modules predate the C901 gate. C901 is ignored
+# only for the files below so new code is held to max-complexity=18; remove a
+# file from this list when its functions are split below the limit.
+[tool.ruff.lint.per-file-ignores]
+"app/actions/schema.py" = ["C901"]
+"app/agents/runtime.py" = ["C901"]
+"app/agents/specialists/investigate.py" = ["C901"]
+"app/agents/specialists/posture_report.py" = ["C901"]
+"app/agents/specialists/swarm_responder.py" = ["C901"]
+"app/agents/specialists/triage.py" = ["C901"]
+"app/agents/tools/pentest_tool.py" = ["C901"]
+"app/api/admin.py" = ["C901"]
+"app/api/ai_gateway.py" = ["C901"]
+"app/collectors/aws.py" = ["C901"]
+"app/collectors/azure.py" = ["C901"]
+"app/collectors/entra.py" = ["C901"]
+"app/collectors/gcp.py" = ["C901"]
+"app/collectors/kubernetes.py" = ["C901"]
+"app/collectors/netflow.py" = ["C901"]
+"app/collectors/osquery.py" = ["C901"]
+"app/discovery/service.py" = ["C901"]
+"app/exploit/executor/engine_validation.py" = ["C901"]
+"app/integrations/delivery.py" = ["C901"]
+"app/integrations/schema.py" = ["C901"]
+"app/main.py" = ["C901"]
+"app/pentest/orchestrator.py" = ["C901"]
+"app/testing/adapters/jwt_attack.py" = ["C901"]
+"app/testing/autopilot.py" = ["C901"]
+# Test fixtures use literal passwords/tokens and /tmp paths by design, and
+# conftest must set env vars before importing the app (E402).
+"tests/**" = ["S105", "S106", "S107", "S108", "S603", "S608", "B017", "E402"]
+"sandbox/browser_runner.py" = ["C901"]  # legacy entrypoint; split when next touched
+
 [tool.ruff.format]
 quote-style = "single"
 indent-style = "space"
@@ -32,6 +65,7 @@ exclude = ["alembic/versions/.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [

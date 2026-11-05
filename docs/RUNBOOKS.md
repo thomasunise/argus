@@ -171,6 +171,19 @@ A code change that stores a key id per entry and verifies segments with the matc
 | Model provider keys | Next agent run uses the new key | Change, restart workers (and API when in-process). |
 | Collector / executor secrets | Resolved per run via `secret_ref` | Rotate at the source (env, file, secret manager); no restart when using `file:` or `secrets:` refs. |
 | `DATABASE_URL` / `REDIS_URL` passwords | Connections fail until updated | Rotate at the store, update the secret, restart API and workers in that order. |
+| `DATA_ENCRYPTION_KEY` | Old key still decrypts; new key encrypts | Set `DATA_ENCRYPTION_KEYS=k2=<new>,k1=<old>`, restart API and workers. Re-encrypt stored secrets (they rotate on next write), then drop `k1` in a later change. Never replace the only key outright: stored TOTP seeds and credentials become unreadable. |
+| `INGEST_API_KEY` | Old sensors rejected | Generate a new key, update sensors, restart API. Prefer per-sensor DB API keys (`/api/v1/auth/api-keys`) so rotation needs no restart. |
+
+### If a `.env` file was exposed (synced, shared, committed, backed up)
+
+Treat every value in it as compromised, in this order:
+
+1. `SESSION_SECRET` — change and restart the API (all sessions die; that is the point).
+2. `ADMIN_PASSWORD` — change and restart; the bootstrap owner password is reset on start. If OIDC is configured, also disable the local owner until you have logged in once.
+3. `DATA_ENCRYPTION_KEY` — rotate via the key ring above (`k2` new, `k1` old). Do not swap it outright.
+4. `AUDIT_SIGNING_KEY` — follow the signing-key rotation above; expect the historical segment note.
+5. `INGEST_API_KEY` and any provider/collector keys in the file — rotate at the source.
+6. Move the checkout out of synced folders (OneDrive, Dropbox, iCloud). Secrets belong in the platform secret store (Key Vault, Secrets Manager, sealed Kubernetes Secret), with `.env` only on the host that runs the stack.
 
 ---
 

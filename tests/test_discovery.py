@@ -8,17 +8,14 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-
 from app.core import policy
-from app.core.errors import ScopeDenied
 from app.discovery import service
+from app.exploit.engine import EngineResult
 from app.models import Asset, AssetAuthorization, Tenant, dumps, loads
 from app.models.discovery import Discovery, DiscoveryRun
 from app.models.testing import TestScope
-from app.exploit.engine import EngineResult
 
 REPO = Path(__file__).resolve().parents[1]
 STDOUT = '\n'.join([

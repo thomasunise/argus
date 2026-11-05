@@ -5,7 +5,7 @@ import hashlib
 import secrets
 import time
 from collections import defaultdict, deque
-from typing import Iterator
+from collections.abc import Iterator, Sequence
 
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
@@ -60,10 +60,19 @@ class RateLimiter:
     Production with Redis enabled fails closed if the shared limiter is unavailable.
     A separate edge limiter is still recommended for anonymous traffic.
     """
+    # Sliding window: drop hits older than the window, count what remains, and
+    # only record this hit when it is within the limit (rejected hits do not
+    # extend the window). Matches the in-process implementation below.
     REDIS_SCRIPT = """
-local n = redis.call('INCR', KEYS[1])
-if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
-return n
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[4])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+local n = redis.call('ZCARD', KEYS[1])
+if n >= limit then return n + 1 end
+redis.call('ZADD', KEYS[1], now, ARGV[3])
+redis.call('PEXPIRE', KEYS[1], window)
+return n + 1
 """
 
     def __init__(self, redis_url: str = ''):
@@ -83,10 +92,13 @@ return n
     def check(self, key: str, limit: int, window: float = 60.0) -> None:
         if self._redis is not None:
             hashed = hashlib.sha256(key.encode('utf-8')).hexdigest()
-            # Fixed window from the first accepted hit, executed atomically on all workers.
+            # Sliding window, executed atomically on all workers.
             try:
-                seen = int(self._redis.eval(self.REDIS_SCRIPT, 1,
-                                           'argus:rate:' + hashed, max(1, int(window * 1000))))
+                now_ms = int(time.time() * 1000)
+                raw_seen: object = self._redis.eval(self.REDIS_SCRIPT, 1,
+                                                    'argus:rate:' + hashed, str(now_ms), str(max(1, int(window * 1000))),
+                                                    f'{now_ms}:{secrets.token_hex(8)}', str(limit))
+                seen = int(str(raw_seen))
             except Exception as exc:
                 from ..core.errors import Unavailable
                 raise Unavailable('Distributed rate limiter is unavailable') from exc
@@ -217,7 +229,7 @@ class Page:
     def apply(self, stmt):
         return stmt.offset(self.offset).limit(self.limit + 1)
 
-    def wrap(self, rows: list, serialize) -> dict:
+    def wrap(self, rows: Sequence, serialize) -> dict:
         items = rows[: self.limit]
         next_cursor = str(self.offset + self.limit) if len(rows) > self.limit else None
         return {'items': [serialize(r) for r in items], 'next_cursor': next_cursor}

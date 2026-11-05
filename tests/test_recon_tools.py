@@ -4,7 +4,6 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-
 from app.testing.adapters import dir_probe, js_libs, subdomain_enum, waf_detect
 from tests.test_testing_adapters import _asset, _ctx, _scope
 

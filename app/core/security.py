@@ -30,7 +30,7 @@ _SCRYPT_MAXMEM = 64 * 1024 * 1024
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32, maxmem=_SCRYPT_MAXMEM)
-    return 'scrypt$%d$%d$%d$%s$%s' % (_SCRYPT_N, _SCRYPT_R, _SCRYPT_P, base64.b64encode(salt).decode(), base64.b64encode(digest).decode())
+    return f'scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}'
 
 
 def verify_password(password: str, stored: str) -> bool:

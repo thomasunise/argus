@@ -2,14 +2,14 @@
 every list/get endpoint, permission checks, the queued run job and the public hit endpoints."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.core.findings import EventDraft, upsert_event
-from app.detections.engine import run, registry
+from app.detections.engine import registry, run
 from app.models.detections import CanaryHit, Detection
 from tests.conftest import login, wait_job
 
-NOW = datetime.now(timezone.utc).replace(microsecond=0)
+NOW = datetime.now(UTC).replace(microsecond=0)
 T0 = NOW - timedelta(minutes=15)
 
 

@@ -258,7 +258,7 @@ def _fetch(config: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
     for project in projects:
         pid = project['project_id']
         entry: dict[str, Any] = {**project, 'instances': [], 'firewalls': [], 'buckets': [], 'gke_clusters': [], 'iam_bindings': [], 'bucket_iam': {}}
-        resources = guarded(f'assets.list_assets[{pid}]', lambda: list(assets.list_assets(request={'parent': f'projects/{pid}', 'asset_types': RESOURCE_TYPES,
+        resources = guarded(f'assets.list_assets[{pid}]', lambda pid=pid: list(assets.list_assets(request={'parent': f'projects/{pid}', 'asset_types': RESOURCE_TYPES,
                                                                                                     'content_type': 'RESOURCE'})), [])
         for asset in resources:
             d = _to_dict(asset)
@@ -273,7 +273,7 @@ def _fetch(config: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
                 entry['buckets'].append(bucket)
             elif atype.endswith('/Cluster'):
                 entry['gke_clusters'].append(bucket)
-        policies = guarded(f'assets.list_assets[{pid}:iam]', lambda: list(assets.list_assets(request={'parent': f'projects/{pid}', 'asset_types': IAM_TYPES,
+        policies = guarded(f'assets.list_assets[{pid}:iam]', lambda pid=pid: list(assets.list_assets(request={'parent': f'projects/{pid}', 'asset_types': IAM_TYPES,
                                                                                                        'content_type': 'IAM_POLICY'})), [])
         for asset in policies:
             d = _to_dict(asset)

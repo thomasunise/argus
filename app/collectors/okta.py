@@ -201,7 +201,7 @@ async def _fetch(ctx: CollectorContext) -> dict[str, Any]:
     raw: dict[str, Any] = {'domain': domain, 'users': [], 'groups': [], 'apps': [], 'admin_roles': {}, 'logs': [], 'warnings': warnings}
     since = ctx.since_or(int(config.get('log_lookback_hours') or 24)).strftime('%Y-%m-%dT%H:%M:%SZ')
     async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(30.0)) as client:
-        user_params = {'limit': 200}
+        user_params: dict[str, Any] = {'limit': 200}
         if not config.get('include_deprovisioned'):
             user_params['filter'] = 'status ne "DEPROVISIONED"'
         users = await _get_all(client, f'{base}/api/v1/users', user_params, warnings, 'users')

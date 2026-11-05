@@ -6,8 +6,9 @@ single-node `exposure_score()` call and the batch recompute job. No database acc
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 # Relations along which an attacker who controls the source can plausibly reach the target.
 REACH_RELS: frozenset[str] = frozenset({'exposes', 'can_assume', 'has_permission', 'connects_to', 'reaches', 'runs', 'stores', 'member_of', 'trusts'})
