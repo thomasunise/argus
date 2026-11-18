@@ -23,23 +23,48 @@ export function html(strings, ...values) {
   return new SafeHtml(out);
 }
 
-const TRUSTED_POLICY = (() => {
+/** Strip executable elements, inline event handlers, and script-bearing URI schemes without invoking DOM sinks. */
+export function sanitizeHtmlString(input) {
+  let out = String(input ?? '');
+  out = out.replace(/<(script|iframe|object|embed|applet|base|meta)\b[\s\S]*?(?:<\/\1\s*>|>|$)/gi, '');
+  out = out.replace(/<([a-zA-Z][a-zA-Z0-9:-]*)(\s[^>]*)?>/g, (full, tag, attrs) => {
+    if (!attrs) return full;
+    let clean = attrs.replace(/\s+on[a-zA-Z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    clean = clean.replace(
+      /(\s+(?:href|src|action|formaction|xlink:href)\s*=\s*)(?:"\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^"]*"|'\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^']*'|(?:\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^\s>]*))/gi,
+      '$1"#"',
+    );
+    return `<${tag}${clean}>`;
+  });
+  return out;
+}
+
+const TRUSTED_POLICIES = (() => {
+  const policies = { argus: null, default: null };
   if (typeof window !== 'undefined' && window.trustedTypes && window.trustedTypes.createPolicy) {
     try {
-      return window.trustedTypes.createPolicy('default', {
-        createHTML: (input) => String(input ?? '').replace(/<script\b[\s\S]*?>[\s\S]*?<\/script>/gi, ''),
+      policies.argus = window.trustedTypes.createPolicy('argus-html', {
+        createHTML: (input) => sanitizeHtmlString(input),
       });
     } catch {
-      return null;
+      policies.argus = null;
+    }
+    try {
+      policies.default = window.trustedTypes.createPolicy('default', {
+        createHTML: (input) => sanitizeHtmlString(input),
+      });
+    } catch {
+      policies.default = null;
     }
   }
-  return null;
+  return policies;
 })();
 
 export function setHtml(node, content) {
   if (!node) return;
   const str = content instanceof SafeHtml ? content.__html : String(content ?? '');
-  node.innerHTML = TRUSTED_POLICY ? TRUSTED_POLICY.createHTML(str) : str;
+  const policy = TRUSTED_POLICIES.argus || TRUSTED_POLICIES.default;
+  node.innerHTML = policy ? policy.createHTML(str) : sanitizeHtmlString(str);
 }
 
 export function el(htmlStr) {

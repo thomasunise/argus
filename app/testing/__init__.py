@@ -27,7 +27,7 @@ def _import_adapters(*, core_only: bool = False) -> None:
                 continue
             try:
                 importlib.import_module(f'app.testing.adapters.{module.name}')
-            except ModuleNotFoundError:
+            except ImportError:
                 continue
 
 
@@ -62,7 +62,7 @@ def setup(app) -> None:
             @queue.handler('testing.pentest')
             async def _pentest(job, ctx):
                 return await pentest_orchestrator.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
-        except ModuleNotFoundError:
+        except ImportError:
             pass
 
         try:
@@ -71,7 +71,7 @@ def setup(app) -> None:
             @queue.handler('testing.autopilot')
             async def _autopilot(job, ctx):
                 return await autopilot.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
-        except ModuleNotFoundError:
+        except ImportError:
             pass
 
     if settings.autoscan_enabled:

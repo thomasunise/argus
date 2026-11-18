@@ -8,6 +8,7 @@ import time
 from collections import defaultdict, deque
 from collections.abc import Iterator, Sequence
 from datetime import UTC
+from typing import Any
 
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
@@ -163,16 +164,26 @@ def _principal_from_api_key(db: Session, raw: str, request: Request) -> Principa
                      email=f'api-key:{key.name}', request_id=getattr(request.state, 'request_id', ''))
 
 
+_PASSWORD_CHANGE_ALLOWED_PATHS = frozenset({
+    '/api/v1/auth/change-password',
+    '/api/v1/auth/logout',
+    '/api/v1/auth/session',
+})
+
+
 def _principal_from_session(db: Session, request: Request, settings: Settings) -> Principal | None:
-    session = request.session
-    sid = str(session.get('sid') or '')
+    raw_session = request.session
+    sid = str(raw_session.get('sid') or '')
     store = getattr(request.app.state, 'session_store', None)
-    if sid and store is not None:
-        if store.is_revoked(sid):
+    if store is not None:
+        if not sid:
             return None
         server_data = store.get(sid)
-        if server_data is not None:
-            session = {**session, **server_data}
+        if server_data is None:
+            return None
+        session: dict[str, Any] = server_data
+    else:
+        session = dict(raw_session)
     user_id, tenant_id = session.get('user_id'), session.get('tenant_id')
     if not user_id or not tenant_id or session.get('authed') is not True:
         return None
@@ -187,6 +198,9 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
     if user.totp_enabled and not session.get('mfa'):
         return None
     if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
+        return None
+    if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+        request.state.must_change_password = True
         return None
     tenant = db.get(Tenant, tenant_id)
     if not tenant or not tenant.is_active:
@@ -230,13 +244,17 @@ def require(*perms: str):
     def dependency(request: Request, principal: Principal | None = Depends(current_principal),
                    settings: Settings = Depends(get_settings)) -> Principal:
         if principal is None:
+            if getattr(request.state, 'must_change_password', False):
+                raise Forbidden('Password change required')
             raise Unauthorized('Authentication required')
         if principal.auth == 'session' and request.method not in SAFE_METHODS:
             sid = str(request.session.get('sid') or '')
             store = getattr(request.app.state, 'session_store', None)
-            server_csrf = (store.get(sid) or {}).get('csrf', '') if (sid and store is not None) else ''
+            if store is not None:
+                expected = str((store.get(sid) or {}).get('csrf') or '') if sid else ''
+            else:
+                expected = str(request.session.get('csrf') or '')
             given = request.headers.get('x-csrf-token', '')
-            expected = request.session.get('csrf', '') or server_csrf
             if not expected or not secrets.compare_digest(given, expected):
                 raise Forbidden('CSRF validation failed')
         for perm in perms:

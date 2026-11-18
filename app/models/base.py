@@ -63,15 +63,30 @@ class EncryptedText(TypeDecorator):
     impl = Text
     cache_ok = True
 
+    def __init__(self, *, table: str = '', column: str = '') -> None:
+        super().__init__()
+        self.table = table
+        self.column = column
+
+    def _aad(self) -> str:
+        if not self.table and not self.column:
+            return ''
+        from ..core import crypto
+
+        return crypto.bind_aad(table=self.table, column=self.column)
+
     def process_bind_param(self, value, dialect):
         from ..core import crypto
 
-        return crypto.encrypt(value)
+        return crypto.encrypt(value, aad=self._aad())
 
     def process_result_value(self, value, dialect):
         from ..core import crypto
 
-        return crypto.decrypt(value)
+        aad = self._aad()
+        if aad and isinstance(value, str) and value.startswith(crypto.PREFIX):
+            return crypto.decrypt(value)
+        return crypto.decrypt(value, aad=aad)
 
 
 class Base(DeclarativeBase):

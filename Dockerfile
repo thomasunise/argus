@@ -41,7 +41,8 @@ LABEL org.opencontainers.image.title="Argus" \
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH=/opt/venv/bin:$PATH \
     HOME=/tmp XDG_CACHE_HOME=/tmp/.cache \
     DATABASE_URL=sqlite:////app/data/argus.db SCAN_ROOT=/app/targets \
-    RUN_MIGRATIONS=false UVICORN_WORKERS=1 TRUSTED_PROXY_HOPS=0
+    RUN_MIGRATIONS=false UVICORN_WORKERS=1 TRUSTED_PROXY_HOPS=0 \
+    CORE_ONLY_BUILD=true
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libpq5 ca-certificates tini curl \
  && rm -rf /var/lib/apt/lists/* \
@@ -56,7 +57,7 @@ RUN install -m 0755 docker/entrypoint.sh /usr/local/bin/argus-entrypoint \
  && rm -rf docker \
  && if [ "$INCLUDE_OFFENSIVE" != "1" ]; then \
       rm -rf app/pentest app/discovery app/exploit \
-             app/api/pentest.py app/api/discovery.py app/api/exploits.py \
+             app/api/pentest.py app/api/discovery.py app/api/exploits.py app/api/autopilot.py \
              app/testing/autopilot.py app/testing/adapters/strix.py \
              app/agents/tools/exploit.py app/agents/tools/pentest_tool.py \
              app/agents/specialists/poc_author.py app/agents/specialists/offensive_pentest.py \

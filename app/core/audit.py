@@ -13,7 +13,6 @@ import json
 import logging
 import socket
 import threading
-import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -107,16 +106,21 @@ class SiemHttpSink(AuditSink):
     name = 'siem_http'
 
     def __init__(self, url: str, token: str = ''):
+        if not url.startswith(('https://', 'http://')):
+            raise ValueError('AUDIT_SIEM_URL must start with https:// or http://')
         self.url, self.token = url, token
 
     def write(self, record: dict) -> None:
+        import httpx
+
+        if not self.url.startswith(('https://', 'http://')):
+            raise ValueError('AUDIT_SIEM_URL must start with https:// or http://')
         body = json.dumps({'event': record, 'source': 'argus.audit'}, sort_keys=True, default=str).encode('utf-8')
         headers = {'Content-Type': 'application/json'}
         if self.token:
             headers['Authorization'] = f'Bearer {self.token}'
-        req = urllib.request.Request(self.url, data=body, headers=headers, method='POST')  # noqa: S310
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-            resp.read()
+        resp = httpx.post(self.url, content=body, headers=headers, timeout=5.0, follow_redirects=False)
+        resp.raise_for_status()
 
 
 class SyslogSink(AuditSink):
@@ -336,16 +340,17 @@ def _flush_outbox(session: Session) -> None:
                         log.debug('could not record audit_outbox failure', exc_info=True)
 
 
-def flush_outbox_backlog(db: Session, *, limit: int = 200) -> dict[str, int]:
+def flush_outbox_backlog(db: Session, *, tenant_id: str = '', limit: int = 200) -> dict[str, int]:
     """Deliver pending rows from `audit_outbox` with retries. Returns counts of delivered and failed rows."""
     now = utcnow()
     sink_map = {s.name: s for s in _sinks}
-    rows = db.execute(
+    stmt = (
         select(AuditOutbox)
         .where(AuditOutbox.delivered_at.is_(None), (AuditOutbox.next_attempt_at.is_(None)) | (AuditOutbox.next_attempt_at <= now))
-        .order_by(AuditOutbox.created_at.asc())
-        .limit(limit)
-    ).scalars().all()
+    )
+    if tenant_id:
+        stmt = stmt.where(AuditOutbox.tenant_id == tenant_id)
+    rows = db.execute(stmt.order_by(AuditOutbox.created_at.asc()).limit(limit)).scalars().all()
     delivered = failed = 0
     for row in rows:
         sink = sink_map.get(row.sink_name)
@@ -365,11 +370,14 @@ def flush_outbox_backlog(db: Session, *, limit: int = 200) -> dict[str, int]:
             row.next_attempt_at = utcnow() + timedelta(seconds=backoff)
             failed += 1
     db.flush()
-    return {'delivered': delivered, 'failed': failed, 'backlog': outbox_backlog_count(db)}
+    return {'delivered': delivered, 'failed': failed, 'backlog': outbox_backlog_count(db, tenant_id=tenant_id)}
 
 
-def outbox_backlog_count(db: Session) -> int:
-    return int(db.scalar(select(func.count()).select_from(AuditOutbox).where(AuditOutbox.delivered_at.is_(None))) or 0)
+def outbox_backlog_count(db: Session, *, tenant_id: str = '') -> int:
+    stmt = select(func.count()).select_from(AuditOutbox).where(AuditOutbox.delivered_at.is_(None))
+    if tenant_id:
+        stmt = stmt.where(AuditOutbox.tenant_id == tenant_id)
+    return int(db.scalar(stmt) or 0)
 
 
 def write_chain_head(db: Session, tenant_id: str) -> dict[str, Any]:

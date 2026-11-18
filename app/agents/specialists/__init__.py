@@ -13,5 +13,5 @@ def load_all(*, core_only: bool = False) -> None:
     for name in SPECIALISTS:
         if core_only and name in OFFENSIVE_SPECIALISTS:
             continue
-        with contextlib.suppress(ModuleNotFoundError):
+        with contextlib.suppress(ImportError):
             importlib.import_module(f'{__name__}.{name}')

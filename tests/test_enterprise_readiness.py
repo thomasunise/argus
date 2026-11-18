@@ -54,7 +54,7 @@ def test_phase1_core_only_build_excludes_offensive_routers_and_specs():
         assert forbidden not in core_prefixes
 
     full_routers = discover_routers(core_only=False)
-    assert len(full_routers) == len(core_routers) + 3
+    assert len(full_routers) == len(core_routers) + 4
 
 
 def test_phase1_supply_chain_and_governance_files_present():
@@ -709,3 +709,219 @@ def test_phase6_healthcare_phi_dlp_and_baa_providers(app, client, owner, setting
     # 3. BAA-covered providers (Bedrock & Azure OpenAI) instantiate cleanly
     assert isinstance(get_provider(settings, override='azure_openai'), AzureOpenAIProvider)
     assert isinstance(get_provider(settings, override='bedrock'), BedrockProvider)
+
+
+# ==============================================================================
+# SELF-AUDIT HARDENING REGRESSION TESTS
+# ==============================================================================
+
+
+def test_audit_review_opaque_session_cookie_csrf_and_must_change_password(app, client, make_user):
+    import json
+
+    uid = make_user('temp-pw@test.local', 'temporary-pass-123456', 'analyst')
+    owner_headers = login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+    # Admin issues temporary password -> must_change_password = True
+    reset_resp = client.post(
+        f'/api/v1/admin/users/{uid}/reset-password',
+        json={},
+        headers=owner_headers,
+    )
+    assert reset_resp.status_code == 200
+    temp_pw = reset_resp.json()['temporary_password']
+
+    client.cookies.clear()
+    login_resp = client.post('/api/v1/auth/login', json={'email': 'temp-pw@test.local', 'password': temp_pw})
+    assert login_resp.status_code == 200 and login_resp.json().get('password_change_required') is True
+    user_csrf = login_resp.json()['csrf']
+
+    # 1. Cookie payload contains ONLY opaque 'sid' (no user_id, csrf, or secrets in cookie)
+    raw_cookie = client.cookies.get('argus_session') or ''
+    cookie_payload_b64 = raw_cookie.split('.')[0]
+    cookie_data = json.loads(base64.b64decode(cookie_payload_b64 + '=' * (-len(cookie_payload_b64) % 4)).decode())
+    assert list(cookie_data.keys()) == ['sid']
+
+    # 2. All normal API endpoints are blocked with 403 until password is changed
+    assert client.get('/api/v1/ops/jobs').status_code == 403
+    assert client.get('/api/v1/auth/session').json()['password_change_required'] is True
+
+    # 3. Missing CSRF on /change-password fails with 403; valid CSRF succeeds and unblocks API
+    assert client.post(
+        '/api/v1/auth/change-password',
+        json={'current_password': temp_pw, 'new_password': 'brand-new-strong-password-456'},
+    ).status_code == 403
+    changed = client.post(
+        '/api/v1/auth/change-password',
+        json={'current_password': temp_pw, 'new_password': 'brand-new-strong-password-456'},
+        headers={'X-CSRF-Token': user_csrf},
+    )
+    assert changed.status_code == 200
+    new_headers = {'X-CSRF-Token': changed.json()['csrf']}
+    assert client.get('/api/v1/ops/jobs', headers=new_headers).status_code == 200
+
+    # 4. CSRF is enforced on /totp/enroll as well
+    assert client.post('/api/v1/auth/totp/enroll').status_code == 403
+    assert client.post('/api/v1/auth/totp/enroll', headers=new_headers).status_code == 200
+
+    # 5. Deleting session from server store (simulating Redis deletion on another replica) fails closed without fallback
+    app.state.session_store._mem.clear()
+    assert client.get('/api/v1/ops/jobs', headers=new_headers).status_code == 401
+
+
+def test_audit_review_webauthn_es256_and_saml_replay_and_expiry(app, owner, client):
+    import json
+
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    owner_client, headers = owner
+    # 1. Real P-256 ECDSA (ES256) WebAuthn registration and assertion verification
+    priv_key = ec.generate_private_key(ec.SECP256R1())
+    pub_pem = priv_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode('utf-8')
+    reg_begin = owner_client.post('/api/v1/auth/webauthn/register/begin', headers=headers).json()
+    reg_done = owner_client.post(
+        '/api/v1/auth/webauthn/register/complete',
+        json={'credential_id': 'es256-cred-1', 'public_key': pub_pem, 'challenge': reg_begin['challenge'], 'name': 'ES256 Passkey'},
+        headers=headers,
+    )
+    assert reg_done.status_code == 201
+
+    auth_begin = owner_client.post('/api/v1/auth/webauthn/authenticate/begin', headers=headers).json()
+    ch = auth_begin['challenge']
+    auth_data = hashlib.sha256(b'127.0.0.1').digest() + bytes([0x01]) + (1).to_bytes(4, 'big')
+    client_data = json.dumps({'type': 'webauthn.get', 'challenge': ch, 'origin': 'http://127.0.0.1:8080'}).encode('utf-8')
+    der_sig = priv_key.sign(auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+    auth_done = owner_client.post(
+        '/api/v1/auth/webauthn/authenticate/complete',
+        json={
+            'credential_id': 'es256-cred-1',
+            'challenge': ch,
+            'signature': base64.urlsafe_b64encode(der_sig).decode().rstrip('='),
+            'authenticator_data': base64.urlsafe_b64encode(auth_data).decode().rstrip('='),
+            'client_data_json': base64.urlsafe_b64encode(client_data).decode().rstrip('='),
+            'sign_count': 1,
+        },
+        headers=headers,
+    )
+    assert auth_done.status_code == 200 and auth_done.json()['mfa'] is True
+
+    # 2. SAML assertion expiry and ID replay protection
+    app.state.settings.saml_idp_entity_id = 'https://idp.corp.example/saml'
+    app.state.settings.saml_signing_secret = 'saml-hmac-signing-secret-key-32b'
+    try:
+        expired_ts = (utcnow() - timedelta(minutes=10)).isoformat()
+        exp_xml = (
+            f'<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol">'
+            f'<Issuer>https://idp.corp.example/saml</Issuer>'
+            f'<Assertion ID="assert-exp-1"><Conditions NotOnOrAfter="{expired_ts}"/>'
+            f'<Subject><NameID>saml-user@test.local</NameID></Subject></Assertion></Response>'
+        )
+        exp_b64 = base64.b64encode(exp_xml.encode()).decode()
+        exp_sig = hmac.new(app.state.settings.saml_signing_secret.encode(), exp_b64.encode(), hashlib.sha256).hexdigest()
+        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': exp_b64, 'Signature': exp_sig}).status_code == 401
+
+        valid_ts = (utcnow() + timedelta(minutes=10)).isoformat()
+        ok_xml = (
+            f'<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol">'
+            f'<Issuer>https://idp.corp.example/saml</Issuer>'
+            f'<Assertion ID="assert-once-99"><Conditions NotOnOrAfter="{valid_ts}"/>'
+            f'<Subject><NameID>saml-user@test.local</NameID></Subject></Assertion></Response>'
+        )
+        ok_b64 = base64.b64encode(ok_xml.encode()).decode()
+        ok_sig = hmac.new(app.state.settings.saml_signing_secret.encode(), ok_b64.encode(), hashlib.sha256).hexdigest()
+        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': ok_b64, 'Signature': ok_sig}).status_code == 200
+        # Replaying the exact same signed assertion ID must be rejected
+        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': ok_b64, 'Signature': ok_sig}).status_code == 401
+    finally:
+        app.state.settings.saml_idp_entity_id = ''
+        app.state.settings.saml_signing_secret = ''
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_audit_review_broker_multitenant_creds_kms_vault_and_dns_pinning(
+    app, db, default_tenant_id, second_tenant, settings, monkeypatch
+):
+    from app.core import crypto as crypto_mod
+    from app.integrations.outbound import request_with_retry
+    from app.models.actions import ActionRequest
+
+    # 1. broker.build_context populates _tenant_slug and _multi_tenant=True when >1 tenant exists
+    monkeypatch.setenv('ACTIONS_GITHUB_TOKEN', 'global-leaked-gh-token')
+    tenant = db.get(Tenant, default_tenant_id)
+    dummy_action = next(iter(catalog.all()))
+    dummy_req = ActionRequest(tenant_id=default_tenant_id, action_type=dummy_action.name, params_json='{}', reason='r', risk='low')
+    fresh_settings = settings.model_copy()
+    fresh_settings.model_fields_set.discard('allow_env_action_credentials')
+    ctx = broker.build_context(fresh_settings, tenant, dummy_req, dummy_action, db=db)
+    assert ctx.tenant_settings['_tenant_slug'] == 'default'
+    assert ctx.tenant_settings['_multi_tenant'] is True
+    assert credentials.resolve('github', 'token', fresh_settings, ctx.tenant_settings) == ''
+
+    # 2. Vault Transit KMS envelope encryption & decryption with per-tenant DEK wrapping + AAD binding
+    wrapped_store: dict[str, str] = {}
+
+    def _vault_encrypt(request: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        data = _json.loads(request.content.decode())
+        token_ct = f"vault:v1:{data['context']}:{data['plaintext']}"
+        wrapped_store[token_ct] = data['plaintext']
+        return httpx.Response(200, json={'data': {'ciphertext': token_ct}})
+
+    def _vault_decrypt(request: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        data = _json.loads(request.content.decode())
+        ct = data['ciphertext']
+        expected_ctx = ct.split(':', 3)[2]
+        if data['context'] != expected_ctx:
+            return httpx.Response(400, json={'errors': ['context mismatch']})
+        return httpx.Response(200, json={'data': {'plaintext': wrapped_store[ct]}})
+
+    respx.post('https://vault.internal.test/v1/transit/encrypt/argus-kek').mock(side_effect=_vault_encrypt)
+    respx.post('https://vault.internal.test/v1/transit/decrypt/argus-kek').mock(side_effect=_vault_decrypt)
+    prev_keys, prev_curr = dict(crypto_mod._keys), crypto_mod._current
+    try:
+        crypto_mod.configure(
+            kms_provider='vault_transit',
+            kms_key_id='argus-kek',
+            vault_addr='https://vault.internal.test',
+            vault_token='s.vault-test-tok',
+        )
+        aad = bind_aad(tenant_id='t-bank', table='findings', column='evidence')
+        ct = encrypt('kms-protected-evidence', tenant_id='t-bank', aad=aad)
+        assert ct is not None and ct.startswith('enc:kms:v2:vault_transit:t-bank:')
+        crypto_mod._kms_unwrap_cache.clear()  # force real Vault decrypt round-trip
+        assert decrypt(ct, tenant_id='t-bank', aad=aad) == 'kms-protected-evidence'
+        with pytest.raises(ValueError, match='cannot decrypt kms v2 value'):
+            decrypt(ct, tenant_id='t-other', aad=aad)
+    finally:
+        crypto_mod._keys, crypto_mod._current = prev_keys, prev_curr
+        crypto_mod._kms_provider = 'local'
+        crypto_mod._kms_key_id = ''
+
+    # 3. Send-time DNS pinning rewrites outbound URL host to validated IP while keeping Host & SNI
+    monkeypatch.setattr(
+        'socket.getaddrinfo',
+        lambda host, port, *a, **kw: [(2, 1, 6, '', ('93.184.216.34', port or 443))],
+    )
+    captured: list[httpx.Request] = []
+
+    def _pinned_target(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={'ok': True})
+
+    respx.post('https://93.184.216.34/webhook').mock(side_effect=_pinned_target)
+    resp, err = await request_with_retry(
+        lambda c: c.post('https://hooks.customer-siem.org/webhook', json={'ping': 1}),
+        pin_dns=True,
+    )
+    assert err == '' and resp is not None and resp.status_code == 200
+    assert captured[0].url.host == '93.184.216.34'
+    assert captured[0].headers['Host'] == 'hooks.customer-siem.org'
+    assert captured[0].extensions.get('sni_hostname') == 'hooks.customer-siem.org'
+

@@ -52,6 +52,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends nmap \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=tools-fetch /out/bin/ /usr/local/bin/
+COPY --chown=10001:10001 app /app/app
+ENV CORE_ONLY_BUILD=false
 USER 10001:10001
 HEALTHCHECK NONE
 CMD ["worker"]

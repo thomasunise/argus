@@ -345,6 +345,7 @@ async function boot() {
     const session = await get('/auth/session', null, { silent: true });
     if (session.authenticated) { store.setSession(session); await enterApp(); return; }
     if (session.mfa_required) {
+      if (session.csrf) store.csrf = session.csrf;
       const enrol = await post('/auth/totp/enroll', {}, { silent: true }).catch(() => null);
       if (enrol) showLogin('enroll', { ...enrol, oidc: session.oidc_enabled }); else showLogin('totp', { oidc: session.oidc_enabled });
       return;

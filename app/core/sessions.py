@@ -13,10 +13,12 @@ from typing import Any
 
 
 class ServerSessionStore:
+    MAX_MEM_ENTRIES = 10_000
+
     def __init__(self, redis_url: str = '', ttl_seconds: int = 43200):
         self.ttl_seconds = max(60, int(ttl_seconds))
         self._mem: dict[str, tuple[float, dict[str, Any]]] = {}
-        self._revoked: set[str] = set()
+        self._revoked: dict[str, float] = {}
         self._redis = None
         if redis_url:
             import redis
@@ -26,13 +28,27 @@ class ServerSessionStore:
     def _key(self, sid: str) -> str:
         return f'argus:sess:{sid}'
 
+    def _prune(self, now: float) -> None:
+        if len(self._mem) >= self.MAX_MEM_ENTRIES:
+            expired = [k for k, (exp, _) in self._mem.items() if exp <= now]
+            for k in expired:
+                self._mem.pop(k, None)
+            while len(self._mem) >= self.MAX_MEM_ENTRIES:
+                self._mem.pop(next(iter(self._mem)), None)
+        if len(self._revoked) >= self.MAX_MEM_ENTRIES:
+            expired_rev = [k for k, exp in self._revoked.items() if exp <= now]
+            for k in expired_rev:
+                self._revoked.pop(k, None)
+            while len(self._revoked) >= self.MAX_MEM_ENTRIES:
+                self._revoked.pop(next(iter(self._revoked)), None)
+
     def create(self, data: dict[str, Any], ttl: int | None = None) -> str:
         sid = secrets.token_urlsafe(32)
         self.set(sid, data, ttl=ttl)
         return sid
 
     def get(self, sid: str) -> dict[str, Any] | None:
-        if not sid or sid in self._revoked:
+        if not sid or self.is_revoked(sid):
             return None
         if self._redis is not None:
             raw = self._redis.get(self._key(sid))
@@ -59,7 +75,9 @@ class ServerSessionStore:
         if self._redis is not None:
             self._redis.set(self._key(sid), json.dumps(data, default=str), ex=lifetime)
             return
-        self._mem[sid] = (time.time() + lifetime, dict(data))
+        now = time.time()
+        self._prune(now)
+        self._mem[sid] = (now + lifetime, dict(data))
 
     def update(self, sid: str, **fields: Any) -> dict[str, Any]:
         current = self.get(sid) or {}
@@ -80,11 +98,21 @@ class ServerSessionStore:
     def revoke(self, sid: str) -> None:
         if not sid:
             return
-        self._revoked.add(sid)
+        now = time.time()
+        self._prune(now)
+        self._revoked[sid] = now + self.ttl_seconds
         if self._redis is not None:
             self._redis.delete(self._key(sid))
         else:
             self._mem.pop(sid, None)
 
     def is_revoked(self, sid: str) -> bool:
-        return bool(sid and sid in self._revoked)
+        if not sid:
+            return False
+        exp = self._revoked.get(sid)
+        if exp is None:
+            return False
+        if time.time() > exp:
+            self._revoked.pop(sid, None)
+            return False
+        return True

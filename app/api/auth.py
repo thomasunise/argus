@@ -73,6 +73,8 @@ class WebAuthnAuthCompleteBody(BaseModel):
     challenge: str = Field(min_length=1, max_length=256)
     signature: str = Field(min_length=1, max_length=1024)
     sign_count: int = Field(default=1, ge=0)
+    authenticator_data: str = Field(default='', max_length=2048)
+    client_data_json: str = Field(default='', max_length=4096)
 
 
 class ApiKeyBody(BaseModel):
@@ -117,20 +119,28 @@ def _establish_session(request: Request, user: User, tenant_id: str, mfa: bool, 
     ts = issued_at if issued_at is not None else time.time()
     data = {'authed': True, 'user_id': user.id, 'tenant_id': tenant_id, 'csrf': csrf, 'mfa': mfa, 'issued_at': ts}
     store = getattr(request.app.state, 'session_store', None)
-    sid = store.create(data) if store is not None else secrets.token_urlsafe(32)
     request.session.clear()
-    request.session.update({'sid': sid, **data})
+    if store is not None:
+        sid = store.create(data)
+        request.session.update({'sid': sid})
+    else:
+        sid = secrets.token_urlsafe(32)
+        request.session.update({'sid': sid, **data})
     return {'authenticated': True, 'csrf': csrf, 'tenant_id': tenant_id, 'mfa': mfa, 'session_id': sid}
 
 
 def _session_payload(request: Request, db: Session, principal: Principal | None, settings: Settings) -> dict:
     if principal is None:
-        pending = request.session.get('pending_mfa_user')
-        return {'authenticated': False, 'csrf': None, 'mfa_required': bool(pending), 'oidc_enabled': bool(settings.oidc_issuer)}
+        sess_data = _server_session_data(request)
+        mfa_pending = bool(sess_data.get('pending_mfa_user') or (sess_data.get('authed') is True and not sess_data.get('mfa')))
+        pre_mfa_csrf = sess_data.get('csrf') if mfa_pending else None
+        return {'authenticated': False, 'csrf': pre_mfa_csrf, 'mfa_required': mfa_pending, 'oidc_enabled': bool(settings.oidc_issuer)}
     user = db.get(User, principal.user_id) if principal.user_id else None
     tenants = [{'id': t.id, 'slug': t.slug, 'name': t.name, 'role': m.role} for m, t in _memberships(db, principal.user_id)] if principal.user_id else []
     tenant = db.get(Tenant, principal.tenant_id)
-    return {'authenticated': True, 'csrf': request.session.get('csrf') if principal.auth == 'session' else None,
+    csrf_val = _server_session_get(request, 'csrf') if principal.auth == 'session' else None
+    return {'authenticated': True, 'csrf': csrf_val,
+            'password_change_required': bool(user and user.must_change_password),
             'user': {'id': principal.user_id, 'email': principal.email, 'display_name': user.display_name if user else '',
                      'totp_enabled': bool(user and user.totp_enabled)},
             'tenant': {'id': principal.tenant_id, 'slug': tenant.slug if tenant else '', 'name': tenant.name if tenant else '',
@@ -246,12 +256,17 @@ def change_password(body: ChangePasswordBody, request: Request, db: Session = De
         raise ArgusError('New password must differ from current password', code='invalid_password', status=400)
     user.password_hash = hash_password(body.new_password, scheme=settings.password_hash_scheme, scrypt_n=settings.password_scrypt_n)
     user.must_change_password = False
-    prev_issued = request.session.get('issued_at')
+    prev_issued = _server_session_get(request, 'issued_at')
     inv_ts = max(time.time(), (float(prev_issued) if isinstance(prev_issued, (int, float)) else 0.0) + 1e-6)
     user.sessions_invalidated_at = datetime.fromtimestamp(inv_ts, tz=UTC)
-    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
+    mfa_satisfied = bool(_server_session_get(request, 'mfa', True))
+    old_sid = str(request.session.get('sid') or '')
+    store = getattr(request.app.state, 'session_store', None)
+    if old_sid and store is not None:
+        store.revoke(old_sid)
     new_ts = max(time.time(), user.sessions_invalidated_at.timestamp() + 0.001)
-    payload = _establish_session(request, user, tenant_id, bool(request.session.get('mfa', True)), issued_at=new_ts)
+    payload = _establish_session(request, user, tenant_id, mfa_satisfied, issued_at=new_ts)
     if tenant_id:
         set_tenant_context(db, tenant_id)
         record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email), 'auth.password_changed', user.id)
@@ -265,28 +280,38 @@ def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depend
     target = next((t for _, t in _memberships(db, principal.user_id or '') if t.slug == body.tenant or t.id == body.tenant), None)
     if not target:
         raise NotFound('Tenant not found')
-    request.session['tenant_id'] = target.id
-    request.session['csrf'] = secrets.token_urlsafe(32)
-    _server_session_set(request, tenant_id=target.id, csrf=request.session['csrf'])
+    new_csrf = secrets.token_urlsafe(32)
+    _server_session_set(request, tenant_id=target.id, csrf=new_csrf)
     # Audit the switch under the initiating tenant; do not change RLS identity mid-transaction.
     record_audit(db, principal, 'auth.switch_tenant', target.id)
-    return {'ok': True, 'tenant_id': target.id, 'csrf': request.session['csrf']}
+    return {'ok': True, 'tenant_id': target.id, 'csrf': new_csrf}
 
 
 # ---------------------------------------------------------------- TOTP
 
 
+_SAFE_HTTP_METHODS = frozenset({'GET', 'HEAD', 'OPTIONS', 'TRACE'})
+
+
+def _enforce_session_csrf(request: Request) -> None:
+    if request.method in _SAFE_HTTP_METHODS:
+        return
+    expected = str(_server_session_get(request, 'csrf') or '')
+    given = request.headers.get('x-csrf-token', '')
+    if not expected or not secrets.compare_digest(given, expected):
+        raise Forbidden('CSRF validation failed')
+
+
 def _session_user(request: Request, db: Session, settings: Settings, principal: Principal | None) -> User:
     if principal is not None:
+        if principal.auth != 'session':
+            raise Forbidden('Interactive session required')
         user = db.get(User, principal.user_id) if principal.user_id else None
         if not user or not user.is_active:
             raise Unauthorized('Authentication required')
+        _enforce_session_csrf(request)
         return user
-    session = request.session
-    sid = str(session.get('sid') or '')
-    store = getattr(request.app.state, 'session_store', None)
-    if sid and store is not None and store.is_revoked(sid):
-        raise Unauthorized('Authentication required')
+    session = _server_session_data(request)
     user_id = session.get('user_id')
     issued_at = session.get('issued_at')
     if not user_id or session.get('authed') is not True:
@@ -298,38 +323,45 @@ def _session_user(request: Request, db: Session, settings: Settings, principal: 
         raise Unauthorized('Authentication required')
     if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
         raise Unauthorized('Authentication required')
+    _enforce_session_csrf(request)
     return user
+
+
+def _server_session_data(request: Request) -> dict[str, Any]:
+    store = getattr(request.app.state, 'session_store', None)
+    sid = str(request.session.get('sid') or '')
+    if store is not None:
+        if not sid:
+            return {}
+        return store.get(sid) or {}
+    return dict(request.session)
 
 
 def _server_session_set(request: Request, **fields: Any) -> None:
     store = getattr(request.app.state, 'session_store', None)
     sid = str(request.session.get('sid') or '')
     if store is not None:
-        if not sid:
-            sid = store.create(dict(request.session))
+        if not sid or store.get(sid) is None:
+            sid = store.create(dict(fields))
+            request.session.clear()
             request.session['sid'] = sid
-        store.update(sid, **fields)
+        else:
+            store.update(sid, **fields)
     else:
         request.session.update(fields)
 
 
 def _server_session_get(request: Request, key: str, default: Any = None) -> Any:
-    store = getattr(request.app.state, 'session_store', None)
-    sid = str(request.session.get('sid') or '')
-    if sid and store is not None:
-        data = store.get(sid)
-        if data is not None and key in data:
-            return data[key]
-    return request.session.get(key, default)
+    data = _server_session_data(request)
+    return data.get(key, default)
 
 
 def _server_session_pop(request: Request, key: str, default: Any = None) -> Any:
     store = getattr(request.app.state, 'session_store', None)
     sid = str(request.session.get('sid') or '')
-    val = default
-    if sid and store is not None:
-        val = store.pop_field(sid, key, default)
-    return request.session.pop(key, val)
+    if store is not None:
+        return store.pop_field(sid, key, default) if sid else default
+    return request.session.pop(key, default)
 
 
 @router.post('/totp/enroll')
@@ -347,7 +379,6 @@ def totp_enroll(request: Request, body: TotpEnrollBody | None = None, db: Sessio
         user.totp_enrollment_token_hash = ''
     secret = totp_generate_secret()
     _server_session_set(request, pending_totp_secret=secret)
-    request.session['enroll_nonce'] = secrets.token_urlsafe(8)
     return {'secret': secret, 'uri': totp_provisioning_uri(secret, user.email, settings.app_name)}
 
 
@@ -365,10 +396,10 @@ def totp_confirm(body: TotpVerifyBody, request: Request, db: Session = Depends(g
         raise Unauthorized('Invalid code')
     user.totp_last_counter = counter
     _clear_failures(request, totp_key)
-    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
     if not user.totp_enabled:
         user.totp_secret, user.totp_enabled = secret, True
-        prev_issued = request.session.get('issued_at')
+        prev_issued = _server_session_get(request, 'issued_at')
         inv_ts = max(time.time(), (float(prev_issued) if isinstance(prev_issued, (int, float)) else 0.0) + 1e-6)
         user.sessions_invalidated_at = datetime.fromtimestamp(inv_ts, tz=UTC)
         old_sid = str(request.session.get('sid') or '')
@@ -376,16 +407,15 @@ def totp_confirm(body: TotpVerifyBody, request: Request, db: Session = Depends(g
         if old_sid and store is not None:
             store.revoke(old_sid)
         new_ts = max(time.time(), user.sessions_invalidated_at.timestamp() + 0.001)
-        _establish_session(request, user, tenant_id, True, issued_at=new_ts)
+        established = _establish_session(request, user, tenant_id, True, issued_at=new_ts)
+        new_csrf = established['csrf']
     else:
         _server_session_pop(request, 'pending_totp_secret', None)
-        request.session.pop('enroll_nonce', None)
-        request.session['mfa'] = True
-        request.session['csrf'] = request.session.get('csrf') or secrets.token_urlsafe(32)
-        _server_session_set(request, mfa=True, csrf=request.session['csrf'])
+        new_csrf = str(_server_session_get(request, 'csrf') or secrets.token_urlsafe(32))
+        _server_session_set(request, mfa=True, csrf=new_csrf)
     set_tenant_context(db, tenant_id)
     record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email), 'auth.totp_verified', user.id)
-    return {'ok': True, 'csrf': request.session['csrf']}
+    return {'ok': True, 'csrf': new_csrf}
 
 
 # ---------------------------------------------------------------- WebAuthn (passkeys / security keys)
@@ -401,6 +431,42 @@ def webauthn_register_begin(request: Request, db: Session = Depends(get_db), set
             'user': {'id': user.id, 'name': user.email, 'displayName': user.display_name or user.email}}
 
 
+def _b64url_decode(val: str) -> bytes:
+    padded = val.strip() + '=' * (-len(val.strip()) % 4)
+    return base64.urlsafe_b64decode(padded)
+
+
+def _verify_webauthn_assertion(cred: WebAuthnCredential, body: WebAuthnAuthCompleteBody) -> bool:
+    if cred.public_key.lstrip().startswith('-----BEGIN PUBLIC KEY-----'):
+        if not body.authenticator_data or not body.client_data_json:
+            return False
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+
+            auth_data = _b64url_decode(body.authenticator_data)
+            client_data_bytes = _b64url_decode(body.client_data_json)
+            sig_bytes = _b64url_decode(body.signature)
+            client_data = loads(client_data_bytes.decode('utf-8', errors='replace'), {})
+            if not isinstance(client_data, dict) or client_data.get('type') != 'webauthn.get':
+                return False
+            if str(client_data.get('challenge') or '') != body.challenge:
+                return False
+            if len(auth_data) < 37 or (auth_data[32] & 0x01) == 0:  # require UP (user present) bit
+                return False
+            pub = serialization.load_pem_public_key(cred.public_key.encode('utf-8'))
+            if not isinstance(pub, ec.EllipticCurvePublicKey):
+                return False
+            signed_payload = auth_data + hashlib.sha256(client_data_bytes).digest()
+            pub.verify(sig_bytes, signed_payload, ec.ECDSA(hashes.SHA256()))
+            return True
+        except (ValueError, TypeError, InvalidSignature):
+            return False
+    expected_sig = hmac.new(cred.public_key.encode(), f'{body.challenge}:{body.sign_count}'.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected_sig, body.signature)
+
+
 @router.post('/webauthn/register/complete', status_code=201)
 def webauthn_register_complete(body: WebAuthnRegisterCompleteBody, request: Request, db: Session = Depends(get_db),
                                settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
@@ -413,7 +479,7 @@ def webauthn_register_complete(body: WebAuthnRegisterCompleteBody, request: Requ
     cred = WebAuthnCredential(user_id=user.id, credential_id=body.credential_id, public_key=body.public_key, name=body.name)
     db.add(cred)
     db.flush()
-    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
     if tenant_id:
         set_tenant_context(db, tenant_id)
         record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
@@ -444,21 +510,19 @@ def webauthn_auth_complete(body: WebAuthnAuthCompleteBody, request: Request, db:
                                                        WebAuthnCredential.credential_id == body.credential_id)).scalar_one_or_none()
     if cred is None:
         raise Unauthorized('Unknown WebAuthn credential')
-    expected_sig = hmac.new(cred.public_key.encode(), f'{body.challenge}:{body.sign_count}'.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected_sig, body.signature):
+    if not _verify_webauthn_assertion(cred, body):
         raise Unauthorized('Invalid WebAuthn assertion signature')
     if body.sign_count <= cred.sign_count:
         raise Unauthorized('WebAuthn clone/replay detected: sign_count did not advance')
     cred.sign_count = body.sign_count
     cred.last_used_at = utcnow()
-    request.session['mfa'] = True
     _server_session_set(request, mfa=True)
-    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
     if tenant_id:
         set_tenant_context(db, tenant_id)
         record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
                      'auth.webauthn_verified', cred.id)
-    return {'ok': True, 'mfa': True, 'csrf': request.session.get('csrf')}
+    return {'ok': True, 'mfa': True, 'csrf': _server_session_get(request, 'csrf')}
 
 
 # ---------------------------------------------------------------- OIDC & SAML
@@ -512,7 +576,6 @@ async def oidc_start(request: Request, settings: Settings = Depends(get_settings
     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
     verifier, challenge = pkce_pair()
     _server_session_set(request, oidc_state=state, oidc_nonce=nonce, oidc_verifier=verifier)
-    request.session['oidc_state'] = state
     return RedirectResponse(oidc_authorize_url(doc, settings, state, nonce, challenge), status_code=302)
 
 
@@ -587,26 +650,93 @@ def saml_metadata(settings: Settings = Depends(get_settings)):
     return Response(content=xml, media_type='application/samlmetadata+xml')
 
 
-@router.post('/saml/acs')
-async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
-    if not settings.saml_idp_entity_id or not settings.saml_signing_secret:
-        raise NotFound('SAML is not configured')
-    raw_body = (await request.body()).decode('utf-8', errors='replace')
-    SAMLResponse = ''
-    Signature = ''
+_SAML_SEEN_IDS: dict[str, float] = {}
+
+
+def _parse_saml_ts(raw: str) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.strip().replace('Z', '+00:00'))
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _verify_saml_signature(saml_b64: str, signature: str, settings: Settings) -> bool:
+    cert_pem = getattr(settings, 'saml_idp_cert_pem', '') or ''
+    if cert_pem.strip():
+        try:
+            from cryptography import x509
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+            cert = x509.load_pem_x509_certificate(cert_pem.encode('utf-8'))
+            pub = cert.public_key()
+            if not isinstance(pub, rsa.RSAPublicKey):
+                return False
+            try:
+                sig_bytes = bytes.fromhex(signature)
+            except ValueError:
+                sig_bytes = base64.b64decode(signature)
+            pub.verify(sig_bytes, saml_b64.encode('utf-8'), padding.PKCS1v15(), hashes.SHA256())
+            return True
+        except (ValueError, TypeError, InvalidSignature):
+            return False
+    if settings.saml_signing_secret:
+        expected_sig = hmac.new(settings.saml_signing_secret.encode(), saml_b64.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected_sig, signature)
+    return False
+
+
+def _extract_saml_form_or_json(raw_body: str) -> tuple[str, str]:
     if raw_body.lstrip().startswith('{'):
         data = loads(raw_body, {})
         if isinstance(data, dict):
-            SAMLResponse = str(data.get('SAMLResponse') or '')
-            Signature = str(data.get('Signature') or '')
-    else:
-        parsed = parse_qs(raw_body)
-        SAMLResponse = (parsed.get('SAMLResponse') or [''])[0]
-        Signature = (parsed.get('Signature') or [''])[0]
+            return str(data.get('SAMLResponse') or ''), str(data.get('Signature') or '')
+        return '', ''
+    parsed = parse_qs(raw_body)
+    return (parsed.get('SAMLResponse') or [''])[0], (parsed.get('Signature') or [''])[0]
+
+
+def _validate_saml_conditions_and_replay(root: Any, settings: Settings) -> None:
+    now_dt = utcnow()
+    skew = timedelta(seconds=60)
+    acs_url = settings.base_url.rstrip('/') + '/api/v1/auth/saml/acs'
+    for el in root.iter():
+        if el.tag.endswith('Conditions'):
+            nb = _parse_saml_ts(el.attrib.get('NotBefore', ''))
+            noa = _parse_saml_ts(el.attrib.get('NotOnOrAfter', ''))
+            if (nb and now_dt < nb - skew) or (noa and now_dt >= noa + skew):
+                raise Unauthorized('SAML assertion is expired or not yet valid')
+        elif el.tag.endswith('SubjectConfirmationData'):
+            noa = _parse_saml_ts(el.attrib.get('NotOnOrAfter', ''))
+            recipient = el.attrib.get('Recipient', '').strip()
+            if noa and now_dt >= noa + skew:
+                raise Unauthorized('SAML SubjectConfirmationData has expired')
+            if recipient and recipient != acs_url:
+                raise Unauthorized('SAML Recipient mismatch')
+    assertion_id = next((el.attrib.get('ID', '').strip() for el in root.iter() if el.tag.endswith('Assertion') and el.attrib.get('ID')), '') or root.attrib.get('ID', '').strip()
+    if assertion_id:
+        now_ts = time.time()
+        if len(_SAML_SEEN_IDS) > 4096:
+            for k in [k for k, exp in _SAML_SEEN_IDS.items() if exp <= now_ts]:
+                _SAML_SEEN_IDS.pop(k, None)
+        if _SAML_SEEN_IDS.get(assertion_id, 0.0) > now_ts:
+            raise Unauthorized('SAML assertion replay detected')
+        _SAML_SEEN_IDS[assertion_id] = now_ts + 3600.0
+
+
+@router.post('/saml/acs')
+async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    if not settings.saml_idp_entity_id or not (settings.saml_signing_secret or getattr(settings, 'saml_idp_cert_pem', '')):
+        raise NotFound('SAML is not configured')
+    raw_body = (await request.body()).decode('utf-8', errors='replace')
+    SAMLResponse, Signature = _extract_saml_form_or_json(raw_body)
     if not SAMLResponse or not Signature:
         raise Unauthorized('Missing SAMLResponse or Signature')
-    expected_sig = hmac.new(settings.saml_signing_secret.encode(), SAMLResponse.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected_sig, Signature):
+    if not _verify_saml_signature(SAMLResponse, Signature, settings):
         raise Unauthorized('Invalid SAML assertion signature')
     try:
         raw_xml = base64.b64decode(SAMLResponse)
@@ -616,6 +746,7 @@ async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Se
     issuer = next((el.text.strip() for el in root.iter() if el.tag.endswith('Issuer') and el.text), '')
     if issuer != settings.saml_idp_entity_id:
         raise Unauthorized('SAML Issuer mismatch')
+    _validate_saml_conditions_and_replay(root, settings)
     email = next((el.text.strip().lower() for el in root.iter() if el.tag.endswith('NameID') and el.text), '')
     if not email:
         raise Unauthorized('SAML assertion missing NameID email')

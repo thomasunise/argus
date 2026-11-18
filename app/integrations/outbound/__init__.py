@@ -138,14 +138,55 @@ def is_transient(status_code: int | None) -> bool:
     return status_code is None or status_code == 429 or status_code >= 500
 
 
+class _PinnedAsyncClient(httpx.AsyncClient):
+    """Resolves and validates destination IPs right before sending and connects directly to the validated IP."""
+
+    def __init__(self, *, pin_dns: bool = False, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._pin_dns = pin_dns
+
+    async def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        if self._pin_dns:
+            from ..egress import EgressDenied, resolve_pinned_outbound
+
+            try:
+                settings = get_settings()
+            except Exception:
+                from ...core.config import Settings
+
+                settings = Settings(session_secret='x' * 32, admin_password='x' * 14)
+            try:
+                _, pinned_ip = resolve_pinned_outbound(
+                    str(request.url),
+                    settings,
+                    allow_http=(request.url.scheme == 'http' and bool(settings.allow_private_targets)),
+                )
+            except EgressDenied as exc:
+                raise httpx.ConnectError(str(exc), request=request) from exc
+            orig_host = request.url.host
+            if pinned_ip and pinned_ip != orig_host:
+                default_port = 443 if request.url.scheme == 'https' else 80
+                port = request.url.port or default_port
+                host_header = f'{orig_host}:{port}' if port != default_port else orig_host
+                request.headers.setdefault('Host', host_header)
+                request.extensions['sni_hostname'] = orig_host
+                request.url = request.url.copy_with(host=pinned_ip)
+        return await super().send(request, **kwargs)
+
+
 async def request_with_retry(fn: Callable[[httpx.AsyncClient], Awaitable[httpx.Response]], *, attempts: int = 1, backoff: float = 0.5,
-                             timeout: float = DEFAULT_TIMEOUT) -> tuple[httpx.Response | None, str]:
+                             timeout: float = DEFAULT_TIMEOUT, pin_dns: bool | None = None) -> tuple[httpx.Response | None, str]:
     """Run `fn(client)` up to `attempts` times, backing off exponentially on transport errors, 429 and 5xx.
     Returns (last response or None, last error text)."""
     attempts = max(1, int(attempts))
     last_error = ''
     response: httpx.Response | None = None
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+    if pin_dns is None:
+        try:
+            pin_dns = bool(get_settings().is_production)
+        except Exception:
+            pin_dns = False
+    async with _PinnedAsyncClient(pin_dns=bool(pin_dns), timeout=timeout, follow_redirects=False) as client:
         for index in range(attempts):
             try:
                 response = await fn(client)

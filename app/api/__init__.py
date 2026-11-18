@@ -9,7 +9,7 @@ import pkgutil
 from fastapi import APIRouter
 
 log = logging.getLogger('argus.api')
-OFFENSIVE_ROUTERS = {'pentest', 'discovery', 'exploits'}
+OFFENSIVE_ROUTERS = {'pentest', 'discovery', 'exploits', 'autopilot'}
 
 
 def discover_routers(*, core_only: bool = False) -> list[APIRouter]:
@@ -21,7 +21,7 @@ def discover_routers(*, core_only: bool = False) -> list[APIRouter]:
             continue
         try:
             module = importlib.import_module(f'{__name__}.{module_info.name}')
-        except ModuleNotFoundError:
+        except (ModuleNotFoundError, ImportError):
             continue
         router = getattr(module, 'router', None)
         if isinstance(router, APIRouter):

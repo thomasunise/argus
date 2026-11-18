@@ -172,7 +172,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         client_ip_str = resolve_client_ip(request, self.settings)
         ua_str = (request.headers.get('user-agent') or '')[:256]
-        ctx_token = set_audit_request_context(source_ip=client_ip_str, user_agent=ua_str, request_id=request_id)
+        sess_scope = request.scope.get('session')
+        sid_str = str(sess_scope.get('sid') or '') if isinstance(sess_scope, dict) else ''
+        ctx_token = set_audit_request_context(source_ip=client_ip_str, user_agent=ua_str, session_id=sid_str, request_id=request_id)
         start = time.perf_counter()
         try:
             response = await call_next(request)

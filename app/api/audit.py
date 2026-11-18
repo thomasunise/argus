@@ -61,14 +61,14 @@ def list_audit(request: Request, actor: str | None = None, action: str | None = 
 
 @router.post('/outbox/flush')
 def flush_outbox(db: Session = Depends(get_db), principal: Principal = Depends(require('admin:settings'))):
-    result = flush_outbox_backlog(db)
+    result = flush_outbox_backlog(db, tenant_id=principal.tenant_id)
     anchor = write_chain_head(db, principal.tenant_id)
     return {**result, 'anchor': anchor}
 
 
 @router.get('/outbox/status')
 def outbox_status(db: Session = Depends(get_db), principal: Principal = Depends(require('audit:read'))):
-    return {'backlog': outbox_backlog_count(db)}
+    return {'backlog': outbox_backlog_count(db, tenant_id=principal.tenant_id)}
 
 
 @router.get('/verify')
@@ -103,7 +103,8 @@ def export_jsonl(actor: str | None = None, action: str | None = None, subject: s
     def generate() -> Iterator[str]:
         for e in rows:
             record = {'id': e.id, 'tenant_id': e.tenant_id, 'actor': e.actor, 'actor_kind': e.actor_kind, 'action': e.action, 'subject': e.subject,
-                      'detail': e.detail, 'request_id': e.request_id, 'previous_hash': e.previous_hash, 'entry_hash': e.entry_hash,
+                      'detail': e.detail, 'request_id': e.request_id, 'source_ip': e.source_ip, 'user_agent': e.user_agent,
+                      'session_id': e.session_id, 'previous_hash': e.previous_hash, 'entry_hash': e.entry_hash,
                       'signature': e.signature, 'created_at': aware(e.created_at).isoformat()}
             yield json.dumps(record, sort_keys=True, default=str) + '\n'
 

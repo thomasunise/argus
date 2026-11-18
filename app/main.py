@@ -52,7 +52,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     assert_safe_config(settings)
     configure_logging(settings)
     audit_module.configure(settings)
-    crypto.configure(settings.data_encryption_keys, settings.data_encryption_key, refuse_plaintext=settings.is_production)
+    crypto.configure(
+        settings.data_encryption_keys,
+        settings.data_encryption_key,
+        refuse_plaintext=settings.is_production,
+        kms_provider=settings.kms_provider,
+        kms_key_id=settings.kms_key_id,
+        vault_addr=settings.vault_addr,
+        vault_token=settings.vault_token,
+    )
 
     engine = make_engine(settings)
     if settings.is_production:

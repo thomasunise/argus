@@ -14,7 +14,7 @@ import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
@@ -95,8 +95,13 @@ async def _noop_heartbeat() -> None:
 
 def build_context(settings: Settings, tenant: Tenant | None, req: ActionRequest, action: ActionType, *, db: Session | None = None,
                   heartbeat=None, actor: str = '', dry_run: bool = False) -> ExecContext:
+    t_settings = dict(_tenant_settings(tenant))
+    if tenant is not None:
+        t_settings.setdefault('_tenant_slug', tenant.slug)
+    if db is not None and '_multi_tenant' not in t_settings:
+        t_settings['_multi_tenant'] = int(db.scalar(select(func.count()).select_from(Tenant)) or 0) > 1
     return ExecContext(tenant_id=req.tenant_id, settings=settings, request=req, logger=log, heartbeat=heartbeat or _noop_heartbeat,
-                       platform=action.platform, tenant_settings=_tenant_settings(tenant), db=db, actor=actor, dry_run=dry_run)
+                       platform=action.platform, tenant_settings=t_settings, db=db, actor=actor, dry_run=dry_run)
 
 
 async def safe_dry_run(action: ActionType, params: dict, ctx: ExecContext) -> DryRunResult:
@@ -321,6 +326,8 @@ def _principal_from_payload(tenant_id: str, payload: dict, db: Session | None = 
             if key is not None:
                 if key.revoked_at is not None or key.tenant_id != tenant_id:
                     raise PermissionError('API key for queued action was revoked or belongs to another tenant')
+                if key.expires_at is not None and _aware(key.expires_at) <= _now():  # type: ignore[operator]
+                    raise PermissionError('API key for queued action has expired')
                 role = Role(key.role)
                 email = f'api-key:{key.name}'
         elif user_id:
@@ -330,9 +337,10 @@ def _principal_from_payload(tenant_id: str, payload: dict, db: Session | None = 
                     raise PermissionError('User for queued action is no longer active')
                 membership = db.execute(select(Membership).where(Membership.user_id == user.id,
                                                                  Membership.tenant_id == tenant_id)).scalar_one_or_none()
-                if membership is not None:
-                    role = Role(membership.role)
-                    email = user.email
+                if membership is None:
+                    raise PermissionError('User for queued action is no longer a member of this tenant')
+                role = Role(membership.role)
+                email = user.email
     return Principal(tenant_id=tenant_id, role=role, auth=auth, user_id=user_id, email=email, api_key_id=api_key_id)
 
 

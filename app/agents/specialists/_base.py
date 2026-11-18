@@ -14,8 +14,13 @@ from typing import Any
 
 from ...core.findings import SEVERITIES
 from ..runtime import AgentSpec, register_spec
-from ..tools import actions, ai, assets, detections, events, exploit, findings, graph, intel, memory, pentest_tool, tests_tool  # noqa: F401  (registers tools)
+from ..tools import actions, ai, assets, detections, events, findings, graph, intel, memory, tests_tool  # noqa: F401  (registers tools)
 from ..tools.registry import ToolContext, registry
+
+try:
+    from ..tools import exploit, pentest_tool  # noqa: F401  (offensive tools absent in core-only build)
+except ImportError:
+    pass
 
 log = logging.getLogger('argus.agents.specialists')
 

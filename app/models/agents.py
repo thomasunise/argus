@@ -40,8 +40,8 @@ class AgentStep(Base):
     index: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(12))  # model or tool
     name: Mapped[str] = mapped_column(String(80), default='')
-    input_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
-    output_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
+    input_json: Mapped[str] = mapped_column(EncryptedText(table='agent_steps', column='input_json'), default='{}')
+    output_json: Mapped[str] = mapped_column(EncryptedText(table='agent_steps', column='output_json'), default='{}')
     input_hash: Mapped[str] = mapped_column(String(64), default='')
     tokens_in: Mapped[int] = mapped_column(Integer, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)

@@ -37,7 +37,6 @@ def upgrade():
         sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['users.id']),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('credential_id'),
     )
     op.create_index('ix_webauthn_credentials_user_id', 'webauthn_credentials', ['user_id'])
     op.create_index('ix_webauthn_credentials_credential_id', 'webauthn_credentials', ['credential_id'], unique=True)
@@ -63,6 +62,15 @@ def upgrade():
     op.create_index('ix_audit_outbox_tenant_id', 'audit_outbox', ['tenant_id'])
     op.create_index('ix_audit_outbox_entry_id', 'audit_outbox', ['entry_id'])
     op.create_index('ix_audit_outbox_pending', 'audit_outbox', ['delivered_at', 'next_attempt_at'])
+    bind = op.get_bind()
+    if bind.dialect.name == 'postgresql':
+        op.execute(sa.text('ALTER TABLE "audit_outbox" ENABLE ROW LEVEL SECURITY'))
+        op.execute(sa.text('DROP POLICY IF EXISTS tenant_isolation_policy ON "audit_outbox"'))
+        op.execute(sa.text(
+            'CREATE POLICY tenant_isolation_policy ON "audit_outbox" '
+            "USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')) "
+            "WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))"
+        ))
 
 
 def downgrade():

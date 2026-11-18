@@ -25,7 +25,7 @@ def _import_all(package_name: str, *, skip: set[str] | None = None) -> None:
         if not module.name.startswith('_') and (not skip or module.name not in skip):
             try:
                 importlib.import_module(f'{package_name}.{module.name}')
-            except ModuleNotFoundError:
+            except ImportError:
                 continue
 
 

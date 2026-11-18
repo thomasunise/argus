@@ -21,22 +21,22 @@ import argparse
 import os
 import secrets
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault('ARGUS_LAZY_APP', '1')
 
-from sqlalchemy import select  # noqa: E402
-
 from app.core import audit as audit_module  # noqa: E402
+from app.core import crypto  # noqa: E402
 from app.core.audit import record_audit  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
-from app.core.db import make_engine, make_session_factory, session_scope  # noqa: E402
+from app.core.db import make_engine, make_session_factory, session_scope, set_tenant_context  # noqa: E402
 from app.core.findings import EventDraft, refresh_open_metrics, upsert_event, upsert_finding  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.models import AgentRun, AgentStep, Asset, AssetAuthorization, Base, Finding, Membership, Tenant, User, dumps  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 DEMO_SLUG = 'demo'
 DEMO_EMAIL = 'demo-owner@argus.local'
@@ -214,11 +214,19 @@ def main(argv: list[str]) -> int:
         sys.stderr.write('refusing to seed demo data with APP_ENV=production\n')
         return 2
     audit_module.configure(settings)
+    crypto.configure(
+        settings.data_encryption_keys,
+        settings.data_encryption_key,
+        kms_provider=settings.kms_provider,
+        kms_key_id=settings.kms_key_id,
+        vault_addr=settings.vault_addr,
+        vault_token=settings.vault_token,
+    )
     engine = make_engine(settings)
     Base.metadata.create_all(engine)
     factory = make_session_factory(engine)
     password = args.password or secrets.token_urlsafe(18)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     with session_scope(factory) as db:
         if db.execute(select(Tenant).where(Tenant.slug == DEMO_SLUG)).scalar_one_or_none():
@@ -236,6 +244,7 @@ def main(argv: list[str]) -> int:
             user.password_hash = hash_password(password)
         db.add(Membership(user_id=user.id, tenant_id=tenant.id, role='owner'))
         db.flush()
+        set_tenant_context(db, tenant.id)
 
         assets = _assets(db, tenant.id, user.id, now)
         events = _events(db, tenant.id, assets, now)

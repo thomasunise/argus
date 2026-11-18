@@ -167,7 +167,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan container image with Trivy (fail on HIGH or CRITICAL)
-        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # 0.30.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: argus:ci
           format: table
@@ -300,9 +300,9 @@ jobs:
       - name: terraform validate (azure)
         working-directory: infra/terraform-azure
         run: terraform init -backend=false -input=false && terraform validate
-      - uses: terraform-linters/setup-tflint@4cb2feea7bb3cabbe6fc0dc8cde3fd3dc6936222 # v4.1.1
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
       - run: tflint --chdir=infra/terraform && tflint --chdir=infra/terraform-azure
-      - uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933fc8ab20dc # v4.3.0
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - run: helm lint --strict infra/helm/argus --set secrets.sessionSecret=x --set secrets.adminPassword=x --set secrets.dataEncryptionKey=x
       - name: helm template + kubeconform
         run: |

@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     saml_idp_entity_id: str = ''
     saml_idp_sso_url: str = ''
     saml_signing_secret: str = ''
+    saml_idp_cert_pem: str = ''  # PEM X.509 IdP certificate for RSA-SHA256 SAML signature verification
     scim_bearer_token: str = ''
     login_max_attempts: int = 8
     login_window_seconds: int = 300
@@ -259,6 +260,10 @@ class Settings(BaseSettings):
     secrets_dir: Path = Path('/run/secrets')  # file: refs must resolve under this directory
     max_request_body_bytes: int = 8 * 1024 * 1024
     data_encryption_keys: str = ''  # 'kid=base64key,kid2=base64key2'; first encrypts, all decrypt
+    kms_provider: str = 'local'  # local, aws_kms, azure_keyvault, vault_transit
+    kms_key_id: str = ''  # KMS key ARN/alias, Azure Key Vault key URL, or Vault Transit key name
+    vault_addr: str = ''  # HashiCorp Vault base URL for vault_transit
+    vault_token: str = ''  # HashiCorp Vault token for vault_transit
     allow_literal_secret_refs: bool = True  # forced False in production
 
     # --- legacy integrations ---
@@ -346,8 +351,8 @@ def _assert_production(settings: Settings) -> None:
         raise RuntimeError('Production requires REDIS_URL for durable job processing')
     if not settings.base_url.startswith('https://'):
         raise RuntimeError('Production requires BASE_URL to be an https:// URL')
-    if not (settings.data_encryption_key or settings.data_encryption_keys):
-        raise RuntimeError('Production requires DATA_ENCRYPTION_KEY (or DATA_ENCRYPTION_KEYS) for encryption at rest')
+    if not (settings.data_encryption_key or settings.data_encryption_keys or (settings.kms_provider != 'local' and settings.kms_key_id)):
+        raise RuntimeError('Production requires DATA_ENCRYPTION_KEY, DATA_ENCRYPTION_KEYS, or KMS_PROVIDER + KMS_KEY_ID for encryption at rest')
     if not (settings.audit_signing_key or settings.audit_signing_keys):
         raise RuntimeError('Production requires AUDIT_SIGNING_KEY (or AUDIT_SIGNING_KEYS)')
     if not (settings.audit_jsonl_path or settings.audit_s3_bucket or settings.audit_azure_container):
