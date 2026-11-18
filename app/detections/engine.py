@@ -122,7 +122,7 @@ class RuleContext:
         start = aware(before) - timedelta(days=max(1, lookback_days))  # type: ignore[operator]
         stmt = (select(column_a, column_b).where(SecurityEvent.tenant_id == self.tenant_id, when >= start, when < aware(before))
                 .distinct().limit(200_000))
-        return {(a or '', b or '') for a, b in self.db.execute(stmt).all()}
+        return {(a or '', b or '') for a, b in self.db.execute(stmt).all()}  # type: ignore[misc]
 
     def baselines(self, dimension: str, window_minutes: int = BASELINE_WINDOW_MINUTES) -> dict[str, Baseline]:
         cache_key = (dimension, window_minutes)

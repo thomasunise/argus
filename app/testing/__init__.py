@@ -16,20 +16,26 @@ from .harness import ADAPTERS, HarnessContext, NormalizedFinding, TestAdapter, e
 log = logging.getLogger('argus.testing')
 
 
-def _import_adapters() -> None:
+def _import_adapters(*, core_only: bool = False) -> None:
     try:
         package = importlib.import_module('app.testing.adapters')
     except ModuleNotFoundError:  # pragma: no cover
         return
     for module in pkgutil.iter_modules(package.__path__):
         if not module.name.startswith('_'):
-            importlib.import_module(f'app.testing.adapters.{module.name}')
+            if core_only and module.name in {'strix'}:
+                continue
+            try:
+                importlib.import_module(f'app.testing.adapters.{module.name}')
+            except ModuleNotFoundError:
+                continue
 
 
 def setup(app) -> None:
-    _import_adapters()
-    queue = app.state.queue
     settings = app.state.settings
+    core_only = bool(getattr(settings, 'core_only_build', False))
+    _import_adapters(core_only=core_only)
+    queue = app.state.queue
 
     @queue.handler('testing.run')
     async def _run(job, ctx):
@@ -49,16 +55,24 @@ def setup(app) -> None:
 
     auto_verification.install(app)
 
-    from ..pentest import orchestrator as pentest_orchestrator
-    from . import autopilot
+    if not core_only:
+        try:
+            from ..pentest import orchestrator as pentest_orchestrator
 
-    @queue.handler('testing.pentest')
-    async def _pentest(job, ctx):
-        return await pentest_orchestrator.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+            @queue.handler('testing.pentest')
+            async def _pentest(job, ctx):
+                return await pentest_orchestrator.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+        except ModuleNotFoundError:
+            pass
 
-    @queue.handler('testing.autopilot')
-    async def _autopilot(job, ctx):
-        return await autopilot.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+        try:
+            from . import autopilot
+
+            @queue.handler('testing.autopilot')
+            async def _autopilot(job, ctx):
+                return await autopilot.execute(ctx.app, ctx.db_factory, ctx.settings, job.tenant_id, job.payload['run_id'], heartbeat=ctx.heartbeat)
+        except ModuleNotFoundError:
+            pass
 
     if settings.autoscan_enabled:
         async def _start_scheduler(app) -> None:

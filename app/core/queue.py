@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import json
 import logging
 import secrets
@@ -43,11 +45,30 @@ class Job:
     not_before: float = 0.0
     started_at: float | None = None
     finished_at: float | None = None
+    signature: str = ''
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data['result'] = None if self.result is None else json.loads(json.dumps(self.result, default=str))
         return data
+
+
+def _queue_hmac_key(settings: Settings) -> bytes:
+    raw = (getattr(settings, 'audit_signing_key', '') or getattr(settings, 'session_secret', '') or 'argus-default-queue-key').encode('utf-8')
+    return hashlib.sha256(b'argus-queue-hmac:v1:' + raw).digest()
+
+
+def sign_job(job: Job, settings: Settings) -> str:
+    payload_canonical = json.dumps(job.payload or {}, sort_keys=True, separators=(',', ':'), default=str)
+    material = f'{job.id}|{job.kind}|{job.tenant_id}|{payload_canonical}'.encode()
+    return hmac.new(_queue_hmac_key(settings), material, hashlib.sha256).hexdigest()
+
+
+def verify_job(job: Job, settings: Settings) -> bool:
+    if not job.signature:
+        return False
+    expected = sign_job(job, settings)
+    return hmac.compare_digest(job.signature, expected)
 
 
 def _count(job: Job, status: str) -> None:
@@ -138,6 +159,7 @@ class JobQueue:
                   priority=max(0, min(9, priority)), idempotency_key=idempotency_key,
                   max_attempts=max_attempts or self.settings.queue_max_attempts,
                   not_before=time.time() + delay_seconds if delay_seconds else 0.0)
+        job.signature = sign_job(job, self.settings)
         await self._call(self._backend.put, job)
         return job
 
@@ -263,6 +285,11 @@ class JobQueue:
         ctx = JobContext(self, job)
         if handler is None:
             job.status, job.error, job.finished_at = 'failed', f'no handler for {job.kind}', time.time()
+            await self._backend.update(job)
+            return
+        if not verify_job(job, self.settings):
+            job.status, job.error, job.finished_at = 'failed', 'job payload signature verification failed', time.time()
+            _count(job, 'failed')
             await self._backend.update(job)
             return
         try:

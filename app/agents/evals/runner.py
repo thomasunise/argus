@@ -55,7 +55,7 @@ def _read(path: Path) -> dict:
     text = path.read_text(encoding='utf-8')
     if path.suffix.lower() == '.json':
         return json.loads(text)
-    import yaml  # optional, only for yaml suites
+    import yaml  # type: ignore[import-untyped]
 
     return yaml.safe_load(text)
 

@@ -77,7 +77,7 @@ def expand(db: Session, tenant_id: str, seeds: Iterable[str], *, rels: Iterable[
             elif direction == 'in':
                 cond = GraphEdge.dst_id.in_(chunk)
             else:
-                cond = or_(GraphEdge.src_id.in_(chunk), GraphEdge.dst_id.in_(chunk))
+                cond = or_(GraphEdge.src_id.in_(chunk), GraphEdge.dst_id.in_(chunk))  # type: ignore[assignment]
             stmt = select(GraphEdge).where(GraphEdge.tenant_id == tenant_id, cond)
             if rel_list:
                 stmt = stmt.where(GraphEdge.rel.in_(rel_list))
@@ -99,7 +99,7 @@ def expand(db: Session, tenant_id: str, seeds: Iterable[str], *, rels: Iterable[
 
 def count_by(db: Session, column, tenant_id: str, model) -> dict[str, int]:
     rows = db.execute(select(column, func.count()).where(model.tenant_id == tenant_id).group_by(column)).all()
-    return {str(k): int(n) for k, n in rows}
+    return {str(k): int(n) for k, n in rows}  # type: ignore[call-overload]
 
 
 def build_index(db: Session, tenant_id: str, *, rels: Iterable[str] | None = None, include_stale: bool = False) -> GraphIndex:

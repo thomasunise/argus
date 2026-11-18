@@ -74,10 +74,10 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
         finding = _anchor_finding(ctx, detection_id)
         if finding:
             evidence = finding.get('evidence') if isinstance(finding.get('evidence'), dict) else {}
-            anchor = {'id': finding['id'], 'entity': evidence.get('entity') or evidence.get('target') or '', 'actor': evidence.get('actor') or evidence.get('user') or '',
-                      'action': evidence.get('action') or '', 'title': finding['title'], 'description': finding.get('description', ''),
+            anchor = {'id': finding['id'], 'entity': evidence.get('entity') or evidence.get('target') or '', 'actor': evidence.get('actor') or evidence.get('user') or '',  # type: ignore[union-attr]
+                      'action': evidence.get('action') or '', 'title': finding['title'], 'description': finding.get('description', ''),  # type: ignore[union-attr]
                       'severity': finding['severity'], 'created_at': finding['created_at'], 'evidence': evidence,
-                      'category': evidence.get('category') or '', 'asset_id': finding.get('asset_id')}
+                      'category': evidence.get('category') or '', 'asset_id': finding.get('asset_id')}  # type: ignore[union-attr]
     if not anchor:
         why = 'Detection not found in this tenant' + ('' if detection.get('available') else ' (detections package unavailable)') + '; no finding references it either.'
         return {'is_coordinated': False, 'confidence': 'low', 'actors': [], 'shared_indicators': [], 'containment_proposals': [],
@@ -123,7 +123,7 @@ async def fallback(inputs: dict, ctx: ToolContext) -> dict:
             continue
         metadata = event.get('metadata') if isinstance(event.get('metadata'), dict) else {}
         for key in INDICATOR_KEYS:
-            value = metadata.get(key)
+            value = metadata.get(key)  # type: ignore[union-attr]
             if isinstance(value, (str, int)) and str(value):
                 by_indicator[f'{key}={value}'].add(actor)
         if event.get('action'):

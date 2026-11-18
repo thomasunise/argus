@@ -54,7 +54,7 @@ def purge(db: Session, sandbox: Tenant) -> int:
     for table in reversed(Base.metadata.sorted_tables):
         if table.name in KEEP_TABLES or 'tenant_id' not in table.c:
             continue
-        removed += db.execute(delete(table).where(table.c.tenant_id == sandbox.id)).rowcount or 0
+        removed += db.execute(delete(table).where(table.c.tenant_id == sandbox.id)).rowcount or 0  # type: ignore[attr-defined]
     db.flush()
     return removed
 

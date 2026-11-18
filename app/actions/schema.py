@@ -18,7 +18,7 @@ def _is_type(value: Any, expected: str) -> bool:
         return True
     if expected in {'integer', 'number'} and isinstance(value, bool):
         return False
-    return isinstance(value, py)
+    return isinstance(value, py)  # type: ignore[arg-type]
 
 
 def validate(schema: dict, value: Any, path: str = '$') -> list[str]:

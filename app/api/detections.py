@@ -106,7 +106,7 @@ def stats(db: Session = Depends(get_db), principal: Principal = Depends(require(
 
     def grouped(column) -> dict[str, int]:
         rows = db.execute(select(column, func.count()).where(Detection.tenant_id == tenant).group_by(column)).all()
-        return {str(key): int(count) for key, count in rows}
+        return {str(key): int(count) for key, count in rows}  # type: ignore[call-overload]
 
     open_by_severity = db.execute(select(Detection.severity, func.count()).where(Detection.tenant_id == tenant, Detection.status.in_(['open', 'investigating']))
                                   .group_by(Detection.severity)).all()

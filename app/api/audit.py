@@ -5,12 +5,12 @@ import json
 from collections.abc import Iterator
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..core.audit import record_audit, verify_chain
+from ..core.audit import flush_outbox_backlog, outbox_backlog_count, record_audit, verify_chain, write_chain_head
 from ..core.errors import Forbidden
 from ..core.rbac import Principal, Role, role_at_least
 from ..models import AuditEntry, loads
@@ -24,7 +24,8 @@ EXPORT_BATCH = 500
 
 def entry_to_dict(e: AuditEntry) -> dict:
     return {'id': e.id, 'actor': e.actor, 'actor_kind': e.actor_kind, 'action': e.action, 'subject': e.subject, 'detail': loads(e.detail),
-            'request_id': e.request_id, 'previous_hash': e.previous_hash, 'entry_hash': e.entry_hash, 'signed': bool(e.signature),
+            'request_id': e.request_id, 'source_ip': e.source_ip, 'user_agent': e.user_agent, 'session_id': e.session_id,
+            'previous_hash': e.previous_hash, 'entry_hash': e.entry_hash, 'signed': bool(e.signature),
             'created_at': e.created_at}
 
 
@@ -46,14 +47,28 @@ def _filtered(principal: Principal, actor: str | None, action: str | None, subje
 
 
 @router.get('')
-def list_audit(actor: str | None = None, action: str | None = None, subject: str | None = None, since: str | None = None,
+def list_audit(request: Request, actor: str | None = None, action: str | None = None, subject: str | None = None, since: str | None = None,
                until: str | None = None, search: str | None = None, page: Page = Depends(Page), db: Session = Depends(get_db),
                principal: Principal = Depends(require('audit:read'))):
     stmt = _filtered(principal, actor, action, subject, since, until)
     if search:
         stmt = stmt.where(AuditEntry.detail.ilike(like(search.strip()), escape='\\'))
     rows: Any = db.execute(page.apply(stmt.order_by(AuditEntry.id.desc()))).scalars().all()
+    if getattr(request.app.state.settings, 'audit_reads_enabled', False):
+        record_audit(db, principal, 'audit.viewed', '', {'count': len(rows), 'action_filter': action or ''})
     return page.wrap(rows, entry_to_dict)
+
+
+@router.post('/outbox/flush')
+def flush_outbox(db: Session = Depends(get_db), principal: Principal = Depends(require('admin:settings'))):
+    result = flush_outbox_backlog(db)
+    anchor = write_chain_head(db, principal.tenant_id)
+    return {**result, 'anchor': anchor}
+
+
+@router.get('/outbox/status')
+def outbox_status(db: Session = Depends(get_db), principal: Principal = Depends(require('audit:read'))):
+    return {'backlog': outbox_backlog_count(db)}
 
 
 @router.get('/verify')

@@ -65,7 +65,7 @@ def compare(baseline: str, followup: str, db: Session = Depends(get_db),
     return {'status': 'comparable', 'asset_id': a.asset_id, 'adapter': a.adapter,
             'baseline_run_id': a.id, 'followup_run_id': b.id, 'remediation_confirmed': False,
             'note': 'A missing finding in one follow-up scan is not sufficient proof of remediation.',
-            **compare_rules(old, new)}
+            **compare_rules(old, new)}  # type: ignore[arg-type]
 
 
 @router.post('/actions/{action_run_id}/retest', status_code=202)
@@ -122,10 +122,10 @@ def get_auto_verification_settings(db: Session = Depends(get_db),
 def set_auto_verification_settings(body: AutoVerifySettings, db: Session = Depends(get_db),
                                    principal: Principal = Depends(require('tests:scopes'))):
     tenant = db.get(Tenant, principal.tenant_id)
-    data = loads(tenant.settings_json, {})
+    data = loads(tenant.settings_json, {})  # type: ignore[union-attr]
     data = data if isinstance(data, dict) else {}
     data['auto_verification'] = {'enabled': bool(body.enabled)}
-    tenant.settings_json = dumps(data)
-    record_audit(db, principal, 'verification.auto_settings', tenant.id, {'enabled': bool(body.enabled)})
+    tenant.settings_json = dumps(data)  # type: ignore[union-attr]
+    record_audit(db, principal, 'verification.auto_settings', tenant.id, {'enabled': bool(body.enabled)})  # type: ignore[union-attr]
     return {'enabled': bool(body.enabled), 'required_scope_autonomous': True,
             'supported_tiers': ['passive', 'active']}

@@ -211,6 +211,21 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
         parsed = response.json()
     except ValueError:
         parsed = None
+    resp_content = response.content
+    if isinstance(parsed, dict) and response.status_code < 400:
+        parsed_checked, resp_hits, resp_action, resp_block_reason = gw.inspect_response(parsed, policy)
+        if resp_hits:
+            merged_hits = dict(inspection.dlp_hits)
+            for k, v in resp_hits.items():
+                merged_hits[k] = merged_hits.get(k, 0) + v
+            call.row.dlp_hits_json = dumps(merged_hits)
+            if resp_action in ('blocked', 'redacted') or not call.row.dlp_action:
+                call.row.dlp_action = resp_action
+        if resp_block_reason:
+            return call.reject(403, resp_block_reason)
+        if resp_action == 'redacted':
+            parsed = parsed_checked
+            resp_content = json.dumps(parsed).encode()
     call.row.input_tokens, call.row.output_tokens = gw.usage_from_body(provider, parsed)
     call.row.cost_usd = gw.cost(settings, model, call.row.input_tokens, call.row.output_tokens)
     call.row.upstream_status = response.status_code
@@ -222,7 +237,7 @@ async def _proxy(request: Request, db: Session, settings: Settings, principal: P
     if response.status_code < 400:
         _sanction(db, principal, provider)
     db.flush()
-    return Response(content=response.content, status_code=response.status_code,
+    return Response(content=resp_content, status_code=response.status_code,
                     media_type=response.headers.get('content-type', 'application/json'), headers={'x-argus-gateway-request-id': call.row.id})
 
 
@@ -411,7 +426,7 @@ def stats(days: int = 30, db: Session = Depends(get_db), principal: Principal = 
 
     def grouped(column) -> dict:
         rows = db.execute(select(column, func.count()).where(*base).group_by(column)).all()
-        return {str(k or ''): int(n) for k, n in rows}
+        return {str(k or ''): int(n) for k, n in rows}  # type: ignore[call-overload]
 
     totals = db.execute(select(func.count(), func.coalesce(func.sum(AIGatewayRequest.input_tokens), 0),
                                func.coalesce(func.sum(AIGatewayRequest.output_tokens), 0),

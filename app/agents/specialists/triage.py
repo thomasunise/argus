@@ -50,9 +50,9 @@ def priority_score(recommendation: str, *, kev: bool, epss: float | None, cvss: 
                    occurrences: int, duplicate_count: int, status: str) -> int:
     score = SEV_BASE_SCORE.get(recommendation, 20)
     score += 10 if kev else 0
-    score += (epss or 0) * 10
+    score += (epss or 0) * 10  # type: ignore[assignment]
     if cvss:
-        score += max(0.0, float(cvss) - 7.0) * 2
+        score += max(0.0, float(cvss) - 7.0) * 2  # type: ignore[assignment]
     score += CRITICALITY_BONUS.get(criticality, 0) + ENVIRONMENT_BONUS.get(environment, 0)
     if occurrences >= 5:
         score += 3

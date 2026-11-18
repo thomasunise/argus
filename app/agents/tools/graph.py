@@ -72,7 +72,7 @@ def _query_nodes(ctx: ToolContext, kind: str | None, key: str | None, search: st
     if search:
         pattern = like(search)
         stmt = stmt.where(or_(GraphNode.key.ilike(pattern, escape='\\'), GraphNode.label.ilike(pattern, escape='\\'), GraphNode.props_json.ilike(pattern, escape='\\')))
-    rows: Any = ctx.db.execute(stmt.limit(limit)).scalars().all()
+    rows: Any = ctx.db.execute(stmt.limit(limit)).scalars().all()  # type: ignore[no-redef]
     return [_node_dict(n) for n in rows], None
 
 

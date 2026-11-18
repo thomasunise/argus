@@ -77,6 +77,34 @@ def get_request(request_id: str, db: Session = Depends(get_db), principal: Princ
     return broker.request_detail(db, broker.get_request(db, principal, request_id))
 
 
+@router.get('/requests/{request_id}/change-record')
+def export_change_record(request_id: str, db: Session = Depends(get_db), principal: Principal = Depends(require('actions:read'))):
+    """Export an action request, its approvals, dry-run blast radius, and execution/rollback history
+    as a standardized ITIL/ServiceNow/Jira change-management record."""
+    req = broker.get_request(db, principal, request_id)
+    detail = broker.request_detail(db, req)
+    return {
+        'schema': 'argus.change_record.v1',
+        'change_id': f"CHG-ARGUS-{req.id[:12].upper()}",
+        'tenant_id': req.tenant_id,
+        'action_type': req.action_type,
+        'risk': req.risk,
+        'status': req.status,
+        'reason': req.reason,
+        'requested_by': req.requested_by,
+        'requested_by_role': req.requested_by_role,
+        'agent_originated': bool(req.agent_run_id),
+        'required_approvals': req.required_approvals,
+        'owner_approval_required': bool(req.owner_approval_required),
+        'approvals': detail.get('approvals', []),
+        'dry_run_plan': detail.get('dry_run', {}),
+        'policy_evaluation': detail.get('policy', {}),
+        'executions': detail.get('runs', []),
+        'created_at': req.created_at,
+        'decided_at': req.decided_at,
+    }
+
+
 @router.post('/requests/{request_id}/approve')
 def approve_request(request_id: str, body: DecisionBody, db: Session = Depends(get_db),
                     principal: Principal = Depends(require('actions:approve'))):

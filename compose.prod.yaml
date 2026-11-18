@@ -1,5 +1,10 @@
-# Production-shaped overlay: TLS termination with Caddy, restart policies, JSON logs, and
+# PILOT-ONLY single-host TLS overlay: TLS termination with Caddy, restart policies, JSON logs, and
 # no host port on the API (Caddy reaches it on the internal network).
+#
+# IMPORTANT: Single-host Docker Compose is intended for evaluations and pilots only.
+# Regulated production deployments MUST use the Helm chart (infra/helm/argus) or Terraform modules
+# (infra/terraform, infra/terraform-azure) backed by managed Multi-AZ PostgreSQL with continuous WAL
+# archiving (PITR), managed Redis with TLS, and an external KMS / WORM audit sink (see docs/BACKUP.md).
 #
 #   docker compose -f compose.yaml -f compose.prod.yaml up -d
 #
@@ -37,7 +42,7 @@ services:
     # (SSH tunnel, scripts). Caddy is the only network-reachable ingress.
     environment:
       <<: *production-env
-      FORWARDED_ALLOW_IPS: "*"   # only Caddy can reach the API on the internal network
+      TRUSTED_PROXY_HOPS: "1"   # Caddy is the single reverse proxy hop appending to X-Forwarded-For
     restart: always
     logging: &json-logging
       driver: json-file

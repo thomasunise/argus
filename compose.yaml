@@ -48,7 +48,7 @@ services:
       <<: *argus-env
       RUN_MIGRATIONS: "true"
       WORKERS_INPROCESS: "false"   # the worker service owns job execution
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

@@ -96,7 +96,7 @@ services:
       <<: *argus-env
       RUN_MIGRATIONS: "true"
       WORKERS_INPROCESS: "false"
-      FORWARDED_ALLOW_IPS: "*"   # only Coolify's proxy can reach the API; it has no host port
+      TRUSTED_PROXY_HOPS: "1"   # Coolify's proxy is the single reverse proxy hop appending to X-Forwarded-For
     expose:
       - "8080"
     depends_on:

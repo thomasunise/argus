@@ -73,8 +73,8 @@ def apply(finding: Finding, kev: dict[str, dict], epss: dict[str, dict], setting
                     'vendor': v.get('vendorProject'), 'product': v.get('product')} for c, v in listed.items()},
         'epss': {c: {'score': v.get('epss'), 'percentile': v.get('percentile'), 'date': v.get('date')} for c, v in scored.items()},
     }
-    if previous.get('severity_raised_from'):
-        intel['severity_raised_from'] = previous['severity_raised_from']
+    if previous.get('severity_raised_from'):  # type: ignore[union-attr]
+        intel['severity_raised_from'] = previous['severity_raised_from']  # type: ignore[index]
 
     floor = str(getattr(settings, 'intel_kev_min_severity', 'high') or '').lower()
     if listed and floor in SEVERITIES:

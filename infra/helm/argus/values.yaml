@@ -40,7 +40,7 @@ api:
   replicas: 2
   runMigrations: false         # production runtime must use a non-owner RLS role; migrate separately using owner credentials
   uvicornWorkers: 1
-  forwardedAllowIps: "*"       # the ingress controller is the only client inside the cluster network policy
+  trustedProxyHops: 1          # the ingress controller appends one hop to X-Forwarded-For
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: "2", memory: 1Gi}

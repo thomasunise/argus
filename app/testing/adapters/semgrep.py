@@ -41,7 +41,7 @@ def parse_report(report: dict) -> list[NormalizedFinding]:
             remediation=str(extra.get('fix') or meta.get('references') or 'Review and remediate the flagged code path.')[:2000],
             severity=_SEV_MAP.get(str(extra.get('severity') or '').upper(), 'medium'),
             evidence={'check_id': check_id, 'file': path, 'line': start, 'cwe': cwe_list[:5],
-                      'owasp': (meta.get('owasp') if isinstance(meta.get('owasp'), list) else [meta.get('owasp')] if meta.get('owasp') else [])[:5]}))
+                      'owasp': (meta.get('owasp') if isinstance(meta.get('owasp'), list) else [meta.get('owasp')] if meta.get('owasp') else [])[:5]}))  # type: ignore[index]
     return findings
 
 

@@ -107,8 +107,8 @@ async def _principal(db: Session, row: IntegrationConfig, config: dict, secrets:
     """(principal, reason). The Slack user must map to an active Argus user with a membership in the tenant."""
     email = ''
     user_map = config.get('user_map') if isinstance(config.get('user_map'), dict) else {}
-    if slack_user in user_map:
-        email = str(user_map[slack_user])
+    if slack_user in user_map:  # type: ignore[operator]
+        email = str(user_map[slack_user])  # type: ignore[index]
     elif config.get('resolve_users_by_email') and secrets.get('bot_token'):
         email = await _email_from_slack(secrets['bot_token'], slack_user)
     if not email:
@@ -152,7 +152,7 @@ async def _act(request: Request, db: Session, row: IntegrationConfig, config: di
         if req.status == 'rejected':
             return f'Denied `{req.action_type}`.'
         return f'Approval recorded for `{req.action_type}`; it still needs {req.required_approvals} approval(s) in total.'
-    run = get_scoped(db, ActionRun, row.tenant_id, value)
+    run = get_scoped(db, ActionRun, row.tenant_id, value)  # type: ignore[assignment]
     req = get_scoped(db, ActionRequest, row.tenant_id, run.request_id) if run is not None else None
     if run is None or req is None:
         return 'That action run no longer exists.'

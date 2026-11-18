@@ -150,7 +150,7 @@ async def epss_scores(args: dict, ctx: ToolContext) -> dict:
     data, error = await _cached(EPSS_URL + ','.join(valid), HOUR)
     if data is None:
         return {'available': False, 'reason': f'EPSS API unreachable ({error})', 'checked': valid}
-    scores: dict[str, dict] = {}
+    scores: dict[str, dict] = {}  # type: ignore[no-redef]
     for row in data.get('data') or []:
         cve = str(row.get('cve', '')).upper()
         try:

@@ -25,7 +25,7 @@ from ..core.events import publish, publish_soon
 from ..core.rbac import Principal, Role, has
 from ..core.security import redact
 from ..core.telemetry import ACTIONS
-from ..models import Finding, Tenant, dumps, loads
+from ..models import ApiKey, Finding, Membership, Tenant, User, dumps, loads
 from ..models.actions import EXECUTABLE_STATUSES, ActionApproval, ActionRequest, ActionRun
 from . import catalog, policy
 from .catalog import ActionError, ActionType, DryRunResult, ExecContext, ExecResult
@@ -35,6 +35,8 @@ from .identity import (
     actor_id,
     approval_to_dict,
     approvals_satisfied,
+    cooling_off_reason,
+    identity_of,
     request_detail,
     request_to_dict,
     run_to_dict,
@@ -220,11 +222,15 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
         if req.status != 'pending':
             raise Conflict(f'request is {req.status}; only pending requests can be decided')
         me = actor_id(principal)
+        if not identity_of(db, me):
+            raise Forbidden('API keys without a recorded creator cannot approve or reject requests')
         if same_identity(db, me, req.requested_by):
             raise Forbidden('a requester cannot approve or reject their own request')
         existing = _approvals(db, req)
         if any(same_identity(db, a.approver_id, me) for a in existing):
             raise Conflict('you have already decided this request')
+        if decision == 'approve' and (cool_reason := cooling_off_reason(db, me, req.requested_by, req.tenant_id)):
+            raise Forbidden(cool_reason)
         approval = ActionApproval(tenant_id=req.tenant_id, request_id=req.id, approver_id=me, approver_role=str(principal.role),
                                   can_approve_critical=policy.can_fill_owner_slot(principal), decision=decision, comment=redact(comment or '')[:2000])
         db.add(approval)
@@ -300,14 +306,34 @@ def _principal_payload(principal: Principal) -> dict:
             'auth': principal.auth, 'api_key_id': principal.api_key_id}
 
 
-def _principal_from_payload(tenant_id: str, payload: dict) -> Principal:
+def _principal_from_payload(tenant_id: str, payload: dict, db: Session | None = None) -> Principal:
+    auth = payload.get('auth') or 'session'
+    user_id = payload.get('user_id')
+    api_key_id = payload.get('api_key_id')
+    email = payload.get('email') or ''
     try:
         role = Role(payload.get('role') or 'operator')
     except ValueError:
         role = Role.operator
-    auth = payload.get('auth') or 'session'
-    return Principal(tenant_id=tenant_id, role=role, auth=auth, user_id=payload.get('user_id'), email=payload.get('email') or '',
-                     api_key_id=payload.get('api_key_id'))
+    if db is not None:
+        if api_key_id:
+            key = db.get(ApiKey, api_key_id)
+            if key is not None:
+                if key.revoked_at is not None or key.tenant_id != tenant_id:
+                    raise PermissionError('API key for queued action was revoked or belongs to another tenant')
+                role = Role(key.role)
+                email = f'api-key:{key.name}'
+        elif user_id:
+            user = db.get(User, user_id)
+            if user is not None:
+                if not user.is_active:
+                    raise PermissionError('User for queued action is no longer active')
+                membership = db.execute(select(Membership).where(Membership.user_id == user.id,
+                                                                 Membership.tenant_id == tenant_id)).scalar_one_or_none()
+                if membership is not None:
+                    role = Role(membership.role)
+                    email = user.email
+    return Principal(tenant_id=tenant_id, role=role, auth=auth, user_id=user_id, email=email, api_key_id=api_key_id)
 
 
 async def execute(app, principal: Principal, request_id: str, *, db: Session | None = None) -> ActionRun:
@@ -346,7 +372,7 @@ async def execute(app, principal: Principal, request_id: str, *, db: Session | N
         .values(status='executing')
         .execution_options(synchronize_session=False)
     )
-    if claimed.rowcount != 1:
+    if claimed.rowcount != 1:  # type: ignore[attr-defined]
         raise Conflict('action request was already claimed for execution')
     db.refresh(req)
     run = ActionRun(tenant_id=req.tenant_id, request_id=req.id, status='queued', executed_by=actor_id(principal))
@@ -406,7 +432,7 @@ async def rollback(app, principal: Principal, run_id: str, *, db: Session | None
         .values(status='executed', rollback_job_id='claiming')
         .execution_options(synchronize_session=False)
     )
-    if claimed.rowcount != 1:
+    if claimed.rowcount != 1:  # type: ignore[attr-defined]
         raise Conflict('run is already being rolled back')
     db.refresh(run)
     record_audit(db, principal, 'actions.rollback_requested', run.id, {'action_type': req.action_type, 'request_id': req.id})
@@ -471,8 +497,8 @@ def _finish(run: ActionRun, req: ActionRequest, *, run_status: str, request_stat
 async def handle_execute(job, ctx) -> dict:
     payload = job.payload
     settings: Settings = ctx.settings
-    principal = _principal_from_payload(job.tenant_id, payload.get('principal') or {})
     with session_scope(ctx.db_factory) as db:
+        principal = _principal_from_payload(job.tenant_id, payload.get('principal') or {}, db=db)
         req, run = await _load_pair(db, job.tenant_id, payload['request_id'], payload['run_id'])
         if req is None or run is None:
             log.error('actions.execute: request %s / run %s not found for tenant %s', payload.get('request_id'), payload.get('run_id'), job.tenant_id)
@@ -575,8 +601,8 @@ def _audit_failure(db: Session, principal: Principal, req: ActionRequest, run: A
 async def handle_rollback(job, ctx) -> dict:
     payload = job.payload
     settings: Settings = ctx.settings
-    principal = _principal_from_payload(job.tenant_id, payload.get('principal') or {})
     with session_scope(ctx.db_factory) as db:
+        principal = _principal_from_payload(job.tenant_id, payload.get('principal') or {}, db=db)
         req, run = await _load_pair(db, job.tenant_id, payload['request_id'], payload['run_id'])
         if req is None or run is None:
             return {'ok': False, 'error': 'request or run not found'}

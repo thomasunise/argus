@@ -73,7 +73,7 @@ class ToolAbusePattern(DetectionRule):
         data = meta(event)
         keys = {str(k).lower() for k in data}
         headers = data.get('headers') if isinstance(data.get('headers'), dict) else {}
-        keys |= {str(k).lower() for k in headers}
+        keys |= {str(k).lower() for k in headers}  # type: ignore[union-attr]
         if keys & agent_keys:
             return True
         return bool(data.get('automated') is True or data.get('is_agent') is True)

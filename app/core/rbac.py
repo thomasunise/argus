@@ -7,12 +7,14 @@ from enum import StrEnum
 class Role(StrEnum):
     viewer = 'viewer'
     analyst = 'analyst'
+    approver = 'approver'
     operator = 'operator'
+    user_admin = 'user_admin'
     admin = 'admin'
     owner = 'owner'
 
 
-ROLE_ORDER = [Role.viewer, Role.analyst, Role.operator, Role.admin, Role.owner]
+ROLE_ORDER = [Role.viewer, Role.analyst, Role.approver, Role.operator, Role.user_admin, Role.admin, Role.owner]
 
 _VIEWER = {
     'assets:read', 'findings:read', 'events:read', 'graph:read', 'detections:read', 'collectors:read',
@@ -24,6 +26,15 @@ _ANALYST = _VIEWER | {
     'findings:write', 'investigations:write', 'agents:run', 'detections:write', 'canaries:write',
     'approvals:write', 'evals:run',
     'ai_gateway:use', 'exploit:run',
+}
+# Dedicated separation-of-duty roles:
+# - approver: can approve actions/exploits, but cannot administer users or API keys or request/execute actions
+# - user_admin: can administer users and API keys, but cannot request, approve, or execute actions
+_APPROVER = _ANALYST | {
+    'actions:approve', 'exploit:approve',
+}
+_USER_ADMIN = _ANALYST | {
+    'admin:users', 'admin:api_keys', 'admin:settings',
 }
 _OPERATOR = _ANALYST | {
     'assets:write', 'assets:authorize', 'tests:run', 'tests:write', 'scans:run', 'collectors:run',
@@ -37,7 +48,13 @@ _ADMIN = _OPERATOR | {
 _OWNER = _ADMIN | {'admin:tenant', 'actions:approve_critical'}
 
 PERMISSIONS: dict[Role, set[str]] = {
-    Role.viewer: _VIEWER, Role.analyst: _ANALYST, Role.operator: _OPERATOR, Role.admin: _ADMIN, Role.owner: _OWNER,
+    Role.viewer: _VIEWER,
+    Role.analyst: _ANALYST,
+    Role.approver: _APPROVER,
+    Role.operator: _OPERATOR,
+    Role.user_admin: _USER_ADMIN,
+    Role.admin: _ADMIN,
+    Role.owner: _OWNER,
 }
 
 ALL_PERMISSIONS: set[str] = _OWNER
@@ -53,6 +70,7 @@ class Principal:
     scopes: frozenset[str] = field(default_factory=frozenset)
     api_key_id: str | None = None
     request_id: str = ''
+    custom_permissions: frozenset[str] = field(default_factory=frozenset)
 
     @property
     def actor(self) -> str:
@@ -70,10 +88,13 @@ def has(principal: Principal, perm: str) -> bool:
     if principal.auth == 'system':
         return True
     if principal.scopes:
-        # Scoped API keys are limited to their scopes, intersected with their role.
+        # Scoped API keys are limited to their scopes, intersected with their role (or custom_permissions).
         if perm not in principal.scopes and not any(perm.startswith(s.rstrip('*')) for s in principal.scopes if s.endswith('*')):
             return False
-    return perm in PERMISSIONS.get(principal.role, set())
+    allowed = PERMISSIONS.get(principal.role, set()) | set(principal.custom_permissions)
+    if f'-{perm}' in principal.custom_permissions:
+        return False
+    return perm in allowed
 
 
 def role_at_least(role: Role, minimum: Role) -> bool:

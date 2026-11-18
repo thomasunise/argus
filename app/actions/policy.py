@@ -108,8 +108,9 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
         return _deny(decision, 'requester lacks actions:request')
 
     risk = action_type.risk
+    hard_no_autonomy = bool(getattr(settings, 'autonomy_hard_disabled', False))
     require_two_high = bool(overrides.get('require_two_for_high', settings.actions_require_two_for_high))
-    auto_low = bool(overrides.get('auto_approve_low', settings.actions_auto_approve_low))
+    auto_low = False if hard_no_autonomy else bool(overrides.get('auto_approve_low', settings.actions_auto_approve_low))
     max_auto_entities = int(overrides.get('max_auto_entities', 1) or 1)
 
     # -- approvals by tier
@@ -142,7 +143,7 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
 
     # -- autonomous playbook: replaces approvals only when every guardrail holds
     if autonomous is not None:
-        _autonomous(decision, action_type, dry_run, autonomous, agent_originated)
+        _autonomous(decision, action_type, dry_run, autonomous, agent_originated, hard_no_autonomy=hard_no_autonomy)
 
     # -- maintenance window for high and critical
     window = str(overrides.get('maintenance_window', settings.actions_maintenance_window) or '')
@@ -161,7 +162,10 @@ def evaluate(db, tenant: Tenant | None, settings: Settings, action_type: ActionT
     return decision
 
 
-def _autonomous(decision: PolicyDecision, action_type: ActionType, dry_run: DryRunResult | None, autonomous: dict, agent_originated: bool) -> None:
+def _autonomous(decision: PolicyDecision, action_type: ActionType, dry_run: DryRunResult | None, autonomous: dict, agent_originated: bool, *, hard_no_autonomy: bool = False) -> None:
+    if hard_no_autonomy:
+        decision.reasons.append('autonomous response is hard-disabled on this build (AUTONOMY_HARD_DISABLED=true)')
+        return
     name = str(autonomous.get('playbook') or 'playbook')
     max_risk = str(autonomous.get('max_risk') or 'medium')
     if max_risk not in RISK_RANK or RISK_RANK[max_risk] > RISK_RANK['high']:

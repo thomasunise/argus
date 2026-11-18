@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import ipaddress
 import secrets
 import time
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Request
+from defusedxml import ElementTree as DefusedET
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -12,20 +20,22 @@ from sqlalchemy.orm import Session
 from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.db import set_tenant_context
-from ..core.errors import Conflict, Forbidden, NotFound, Unauthorized
+from ..core.errors import ArgusError, Conflict, Forbidden, NotFound, RateLimited, Unauthorized
 from ..core.rbac import ALL_PERMISSIONS, Principal, Role, has
 from ..core.security import (
     generate_api_key,
+    hash_password,
     oidc_authorize_url,
     oidc_discover,
     oidc_exchange_code,
+    password_needs_rehash,
     pkce_pair,
     totp_generate_secret,
     totp_match,
     totp_provisioning_uri,
     verify_password,
 )
-from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, utcnow
+from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, WebAuthnCredential, loads, utcnow
 from .deps import current_principal, get_db, get_settings, require
 
 router = APIRouter(prefix='/api/v1/auth', tags=['auth'])
@@ -38,14 +48,39 @@ class LoginBody(BaseModel):
     tenant: str = ''  # slug; optional when the user belongs to one tenant
 
 
+class TotpEnrollBody(BaseModel):
+    enrollment_code: str = ''
+
+
 class TotpVerifyBody(BaseModel):
     code: str = Field(min_length=6, max_length=8)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=14, max_length=512)
+
+
+class WebAuthnRegisterCompleteBody(BaseModel):
+    credential_id: str = Field(min_length=1, max_length=256)
+    public_key: str = Field(min_length=1, max_length=4096)
+    challenge: str = Field(min_length=1, max_length=256)
+    name: str = Field(default='Security Key', max_length=120)
+
+
+class WebAuthnAuthCompleteBody(BaseModel):
+    credential_id: str = Field(min_length=1, max_length=256)
+    challenge: str = Field(min_length=1, max_length=256)
+    signature: str = Field(min_length=1, max_length=1024)
+    sign_count: int = Field(default=1, ge=0)
 
 
 class ApiKeyBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     role: Role = Role.viewer
     scopes: list[str] = []
+    expires_in_days: int = Field(default=90, ge=1, le=365)
+    allowed_ips: list[str] = []
 
 
 class SwitchTenantBody(BaseModel):
@@ -77,11 +112,15 @@ def _memberships(db: Session, user_id: str) -> list[tuple[Membership, Tenant]]:
     return [(m, t) for m, t in rows]
 
 
-def _establish_session(request: Request, user: User, tenant_id: str, mfa: bool) -> dict:
+def _establish_session(request: Request, user: User, tenant_id: str, mfa: bool, *, issued_at: float | None = None) -> dict:
+    csrf = secrets.token_urlsafe(32)
+    ts = issued_at if issued_at is not None else time.time()
+    data = {'authed': True, 'user_id': user.id, 'tenant_id': tenant_id, 'csrf': csrf, 'mfa': mfa, 'issued_at': ts}
+    store = getattr(request.app.state, 'session_store', None)
+    sid = store.create(data) if store is not None else secrets.token_urlsafe(32)
     request.session.clear()
-    request.session.update({'authed': True, 'user_id': user.id, 'tenant_id': tenant_id, 'csrf': secrets.token_urlsafe(32), 'mfa': mfa,
-                            'issued_at': time.time()})
-    return {'authenticated': True, 'csrf': request.session['csrf'], 'tenant_id': tenant_id, 'mfa': mfa}
+    request.session.update({'sid': sid, **data})
+    return {'authenticated': True, 'csrf': csrf, 'tenant_id': tenant_id, 'mfa': mfa, 'session_id': sid}
 
 
 def _session_payload(request: Request, db: Session, principal: Principal | None, settings: Settings) -> dict:
@@ -110,12 +149,29 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
     email = (body.email or '').strip().lower()
     if not email:
         raise Unauthorized('Invalid credentials')
+    if settings.local_login_disabled and email != (settings.break_glass_email or '').strip().lower():
+        raise Forbidden('Local password login is disabled; sign in with single sign-on')
     account_key = f'account:{email}'
-    _throttle(request, settings, account_key)
+    default_tid = getattr(request.app.state, 'default_tenant_id', '')
+    try:
+        _throttle(request, settings, account_key)
+    except RateLimited:
+        if default_tid:
+            set_tenant_context(db, default_tid)
+            record_audit(db, email, 'auth.login_locked', email, {'reason': 'rate_limited'}, tenant_id=default_tid, actor_kind='user')
+            db.commit()
+        raise
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if not user or not user.is_active or not user.password_hash or not verify_password(body.password, user.password_hash):
         _record_failure(request, account_key)
+        if default_tid:
+            set_tenant_context(db, default_tid)
+            record_audit(db, email, 'auth.login_failed', user.id if user else email, {'reason': 'bad_credentials'},
+                         tenant_id=default_tid, actor_kind='user')
+            db.commit()
         raise Unauthorized('Invalid credentials')
+    if password_needs_rehash(user.password_hash, scheme=settings.password_hash_scheme, min_scrypt_n=settings.password_scrypt_n):
+        user.password_hash = hash_password(body.password, scheme=settings.password_hash_scheme, scrypt_n=settings.password_scrypt_n)
     memberships = _memberships(db, user.id)
     if not memberships:
         raise Forbidden('User has no tenant membership')
@@ -130,13 +186,18 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
         counter = totp_match(user.totp_secret, body.totp or '')
         if counter is None or counter <= (user.totp_last_counter or 0):  # wrong, or a code that was already used
             _record_failure(request, account_key)
+            set_tenant_context(db, chosen.id)
+            record_audit(db, email, 'auth.login_failed', user.id, {'reason': 'invalid_totp'}, tenant_id=chosen.id, actor_kind='user')
+            db.commit()
             raise Unauthorized('TOTP code required or invalid')
         user.totp_last_counter = counter
-    elif settings.totp_required:
+    elif settings.totp_required or (settings.is_production and settings.oidc_issuer):
         mfa_ok = False
     _clear_failures(request, account_key)
     user.last_login_at = utcnow()
     payload = _establish_session(request, user, chosen.id, mfa_ok)
+    if user.must_change_password:
+        payload['password_change_required'] = True
     chosen_role = next(m.role for m, t in memberships if t.id == chosen.id)
     set_tenant_context(db, chosen.id)
     record_audit(db, Principal(tenant_id=chosen.id, role=Role(chosen_role), user_id=user.id, email=user.email),
@@ -149,6 +210,10 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
 
 @router.post('/logout')
 def logout(request: Request, db: Session = Depends(get_db), principal: Principal | None = Depends(current_principal)):
+    sid = str(request.session.get('sid') or '')
+    store = getattr(request.app.state, 'session_store', None)
+    if sid and store is not None:
+        store.revoke(sid)
     if principal and principal.auth == 'session':
         # Invalidate all previously issued signed cookies for this account.
         user = db.get(User, principal.user_id)
@@ -157,6 +222,40 @@ def logout(request: Request, db: Session = Depends(get_db), principal: Principal
         record_audit(db, principal, 'auth.logout', principal.user_id or '')
     request.session.clear()
     return {'ok': True}
+
+
+@router.delete('/sessions/{session_id}')
+def revoke_session_by_id(session_id: str, request: Request, db: Session = Depends(get_db), principal: Principal = Depends(require())):
+    store = getattr(request.app.state, 'session_store', None)
+    if store is not None:
+        target = store.get(session_id)
+        if target and target.get('user_id') != principal.user_id and not has(principal, 'admin:users'):
+            raise Forbidden('Cannot revoke another user session')
+        store.revoke(session_id)
+    record_audit(db, principal, 'auth.session_revoked', session_id)
+    return {'ok': True, 'session_id': session_id}
+
+
+@router.post('/change-password')
+def change_password(body: ChangePasswordBody, request: Request, db: Session = Depends(get_db),
+                    settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
+    if not user.password_hash or not verify_password(body.current_password, user.password_hash):
+        raise Unauthorized('Current password is invalid')
+    if body.new_password == body.current_password:
+        raise ArgusError('New password must differ from current password', code='invalid_password', status=400)
+    user.password_hash = hash_password(body.new_password, scheme=settings.password_hash_scheme, scrypt_n=settings.password_scrypt_n)
+    user.must_change_password = False
+    prev_issued = request.session.get('issued_at')
+    inv_ts = max(time.time(), (float(prev_issued) if isinstance(prev_issued, (int, float)) else 0.0) + 1e-6)
+    user.sessions_invalidated_at = datetime.fromtimestamp(inv_ts, tz=UTC)
+    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    new_ts = max(time.time(), user.sessions_invalidated_at.timestamp() + 0.001)
+    payload = _establish_session(request, user, tenant_id, bool(request.session.get('mfa', True)), issued_at=new_ts)
+    if tenant_id:
+        set_tenant_context(db, tenant_id)
+        record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email), 'auth.password_changed', user.id)
+    return {'ok': True, 'csrf': payload['csrf']}
 
 
 @router.post('/switch-tenant')
@@ -168,6 +267,7 @@ def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depend
         raise NotFound('Tenant not found')
     request.session['tenant_id'] = target.id
     request.session['csrf'] = secrets.token_urlsafe(32)
+    _server_session_set(request, tenant_id=target.id, csrf=request.session['csrf'])
     # Audit the switch under the initiating tenant; do not change RLS identity mid-transaction.
     record_audit(db, principal, 'auth.switch_tenant', target.id)
     return {'ok': True, 'tenant_id': target.id, 'csrf': request.session['csrf']}
@@ -176,51 +276,232 @@ def switch_tenant(body: SwitchTenantBody, request: Request, db: Session = Depend
 # ---------------------------------------------------------------- TOTP
 
 
-@router.post('/totp/enroll')
-def totp_enroll(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
-                principal: Principal | None = Depends(current_principal)):
-    user_id = principal.user_id if principal else request.session.get('user_id')
-    if not user_id:
+def _session_user(request: Request, db: Session, settings: Settings, principal: Principal | None) -> User:
+    if principal is not None:
+        user = db.get(User, principal.user_id) if principal.user_id else None
+        if not user or not user.is_active:
+            raise Unauthorized('Authentication required')
+        return user
+    session = request.session
+    sid = str(session.get('sid') or '')
+    store = getattr(request.app.state, 'session_store', None)
+    if sid and store is not None and store.is_revoked(sid):
+        raise Unauthorized('Authentication required')
+    user_id = session.get('user_id')
+    issued_at = session.get('issued_at')
+    if not user_id or session.get('authed') is not True:
+        raise Unauthorized('Authentication required')
+    if not isinstance(issued_at, (int, float)) or time.time() - issued_at > settings.session_absolute_max_age:
         raise Unauthorized('Authentication required')
     user = db.get(User, user_id)
-    if not user:
+    if not user or not user.is_active:
         raise Unauthorized('Authentication required')
+    if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
+        raise Unauthorized('Authentication required')
+    return user
+
+
+def _server_session_set(request: Request, **fields: Any) -> None:
+    store = getattr(request.app.state, 'session_store', None)
+    sid = str(request.session.get('sid') or '')
+    if store is not None:
+        if not sid:
+            sid = store.create(dict(request.session))
+            request.session['sid'] = sid
+        store.update(sid, **fields)
+    else:
+        request.session.update(fields)
+
+
+def _server_session_get(request: Request, key: str, default: Any = None) -> Any:
+    store = getattr(request.app.state, 'session_store', None)
+    sid = str(request.session.get('sid') or '')
+    if sid and store is not None:
+        data = store.get(sid)
+        if data is not None and key in data:
+            return data[key]
+    return request.session.get(key, default)
+
+
+def _server_session_pop(request: Request, key: str, default: Any = None) -> Any:
+    store = getattr(request.app.state, 'session_store', None)
+    sid = str(request.session.get('sid') or '')
+    val = default
+    if sid and store is not None:
+        val = store.pop_field(sid, key, default)
+    return request.session.pop(key, val)
+
+
+@router.post('/totp/enroll')
+def totp_enroll(request: Request, body: TotpEnrollBody | None = None, db: Session = Depends(get_db),
+                settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
     if user.totp_enabled:
         raise Conflict('TOTP already enabled')
+    if settings.totp_require_enrollment_code or user.totp_enrollment_token_hash:
+        code = (body.enrollment_code if body else '') or ''
+        expected_hash = user.totp_enrollment_token_hash
+        given_hash = hashlib.sha256(code.encode()).hexdigest() if code else ''
+        if not expected_hash or not given_hash or not hmac.compare_digest(expected_hash, given_hash):
+            raise Forbidden('A valid admin-issued TOTP enrollment code is required')
+        user.totp_enrollment_token_hash = ''
     secret = totp_generate_secret()
-    request.session['pending_totp_secret'] = secret
+    _server_session_set(request, pending_totp_secret=secret)
+    request.session['enroll_nonce'] = secrets.token_urlsafe(8)
     return {'secret': secret, 'uri': totp_provisioning_uri(secret, user.email, settings.app_name)}
 
 
 @router.post('/totp/verify')
 def totp_confirm(body: TotpVerifyBody, request: Request, db: Session = Depends(get_db), principal: Principal | None = Depends(current_principal),
                  settings: Settings = Depends(get_settings)):
-    user_id = principal.user_id if principal else request.session.get('user_id')
-    user = db.get(User, user_id) if user_id else None
-    if not user:
-        raise Unauthorized('Authentication required')
+    user = _session_user(request, db, settings, principal)
     # This runs on a pre-MFA session, so it gets the login throttle (per client and per user) and replay protection.
     totp_key = f'totp:{user.id}'
     _throttle(request, settings, totp_key)
-    secret = request.session.get('pending_totp_secret') or user.totp_secret
+    secret = user.totp_secret if user.totp_enabled else _server_session_get(request, 'pending_totp_secret')
     counter = totp_match(secret, body.code) if secret else None
     if counter is None or counter <= (user.totp_last_counter or 0):
         _record_failure(request, totp_key)
         raise Unauthorized('Invalid code')
     user.totp_last_counter = counter
     _clear_failures(request, totp_key)
+    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
     if not user.totp_enabled:
         user.totp_secret, user.totp_enabled = secret, True
-    request.session.pop('pending_totp_secret', None)
-    request.session['mfa'] = True
-    request.session['csrf'] = request.session.get('csrf') or secrets.token_urlsafe(32)
-    tenant_id = request.session.get('tenant_id', '')
+        prev_issued = request.session.get('issued_at')
+        inv_ts = max(time.time(), (float(prev_issued) if isinstance(prev_issued, (int, float)) else 0.0) + 1e-6)
+        user.sessions_invalidated_at = datetime.fromtimestamp(inv_ts, tz=UTC)
+        old_sid = str(request.session.get('sid') or '')
+        store = getattr(request.app.state, 'session_store', None)
+        if old_sid and store is not None:
+            store.revoke(old_sid)
+        new_ts = max(time.time(), user.sessions_invalidated_at.timestamp() + 0.001)
+        _establish_session(request, user, tenant_id, True, issued_at=new_ts)
+    else:
+        _server_session_pop(request, 'pending_totp_secret', None)
+        request.session.pop('enroll_nonce', None)
+        request.session['mfa'] = True
+        request.session['csrf'] = request.session.get('csrf') or secrets.token_urlsafe(32)
+        _server_session_set(request, mfa=True, csrf=request.session['csrf'])
     set_tenant_context(db, tenant_id)
     record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email), 'auth.totp_verified', user.id)
     return {'ok': True, 'csrf': request.session['csrf']}
 
 
-# ---------------------------------------------------------------- OIDC
+# ---------------------------------------------------------------- WebAuthn (passkeys / security keys)
+
+
+@router.post('/webauthn/register/begin')
+def webauthn_register_begin(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                            principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
+    challenge = secrets.token_urlsafe(32)
+    _server_session_set(request, webauthn_register_challenge=challenge)
+    return {'challenge': challenge, 'rp': {'name': settings.app_name, 'id': settings.base_url.split('://')[-1].split(':')[0]},
+            'user': {'id': user.id, 'name': user.email, 'displayName': user.display_name or user.email}}
+
+
+@router.post('/webauthn/register/complete', status_code=201)
+def webauthn_register_complete(body: WebAuthnRegisterCompleteBody, request: Request, db: Session = Depends(get_db),
+                               settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
+    expected = _server_session_pop(request, 'webauthn_register_challenge', '')
+    if not expected or not hmac.compare_digest(expected, body.challenge):
+        raise Unauthorized('Invalid or expired WebAuthn registration challenge')
+    if db.execute(select(WebAuthnCredential).where(WebAuthnCredential.credential_id == body.credential_id)).scalar_one_or_none():
+        raise Conflict('WebAuthn credential already registered')
+    cred = WebAuthnCredential(user_id=user.id, credential_id=body.credential_id, public_key=body.public_key, name=body.name)
+    db.add(cred)
+    db.flush()
+    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    if tenant_id:
+        set_tenant_context(db, tenant_id)
+        record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
+                     'auth.webauthn_registered', cred.id, {'name': cred.name})
+    return {'id': cred.id, 'credential_id': cred.credential_id, 'name': cred.name, 'created_at': cred.created_at}
+
+
+@router.post('/webauthn/authenticate/begin')
+def webauthn_auth_begin(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                        principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
+    creds = db.execute(select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)).scalars().all()
+    if not creds:
+        raise NotFound('No WebAuthn credentials registered for this user')
+    challenge = secrets.token_urlsafe(32)
+    _server_session_set(request, webauthn_auth_challenge=challenge)
+    return {'challenge': challenge, 'allowCredentials': [{'type': 'public-key', 'id': c.credential_id} for c in creds]}
+
+
+@router.post('/webauthn/authenticate/complete')
+def webauthn_auth_complete(body: WebAuthnAuthCompleteBody, request: Request, db: Session = Depends(get_db),
+                           settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+    user = _session_user(request, db, settings, principal)
+    expected_challenge = _server_session_pop(request, 'webauthn_auth_challenge', '')
+    if not expected_challenge or not hmac.compare_digest(expected_challenge, body.challenge):
+        raise Unauthorized('Invalid or expired WebAuthn authentication challenge')
+    cred = db.execute(select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id,
+                                                       WebAuthnCredential.credential_id == body.credential_id)).scalar_one_or_none()
+    if cred is None:
+        raise Unauthorized('Unknown WebAuthn credential')
+    expected_sig = hmac.new(cred.public_key.encode(), f'{body.challenge}:{body.sign_count}'.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_sig, body.signature):
+        raise Unauthorized('Invalid WebAuthn assertion signature')
+    if body.sign_count <= cred.sign_count:
+        raise Unauthorized('WebAuthn clone/replay detected: sign_count did not advance')
+    cred.sign_count = body.sign_count
+    cred.last_used_at = utcnow()
+    request.session['mfa'] = True
+    _server_session_set(request, mfa=True)
+    tenant_id = request.session.get('tenant_id', '') or (principal.tenant_id if principal else '')
+    if tenant_id:
+        set_tenant_context(db, tenant_id)
+        record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
+                     'auth.webauthn_verified', cred.id)
+    return {'ok': True, 'mfa': True, 'csrf': request.session.get('csrf')}
+
+
+# ---------------------------------------------------------------- OIDC & SAML
+
+
+def _apply_idp_groups(db: Session, user: User, groups: list[str], settings: Settings) -> None:
+    """Map IdP group names ('group=tenant_slug:role,group2=role') to Tenant memberships and roles."""
+    if not settings.oidc_group_role_map or not groups:
+        return
+    group_set = {str(g).strip() for g in groups if str(g).strip()}
+    for item in settings.oidc_group_role_map.split(','):
+        item = item.strip()
+        if not item or '=' not in item:
+            continue
+        grp, _, target_spec = item.partition('=')
+        if grp.strip() not in group_set:
+            continue
+        if ':' in target_spec:
+            t_slug, _, role_str = target_spec.partition(':')
+        else:
+            t_slug, role_str = settings.default_tenant_slug, target_spec
+        t_slug, role_str = t_slug.strip(), role_str.strip()
+        if role_str not in {r.value for r in Role}:
+            continue
+        tenant = db.execute(select(Tenant).where(Tenant.slug == t_slug)).scalar_one_or_none()
+        if tenant is None:
+            continue
+        membership = db.execute(select(Membership).where(Membership.user_id == user.id, Membership.tenant_id == tenant.id)).scalar_one_or_none()
+        if membership is None:
+            db.add(Membership(user_id=user.id, tenant_id=tenant.id, role=role_str))
+        else:
+            membership.role = role_str
+    db.flush()
+
+
+def _oidc_mfa_satisfied(claims: dict, settings: Settings) -> bool:
+    required = {x.strip().lower() for x in (settings.oidc_required_acr or '').split(',') if x.strip()}
+    if not required:
+        return True
+    acr = str(claims.get('acr') or '').strip().lower()
+    amr_raw = claims.get('amr') or []
+    amr = {str(x).strip().lower() for x in (amr_raw if isinstance(amr_raw, list) else [amr_raw]) if str(x).strip()}
+    return bool((acr and acr in required) or (amr & required))
 
 
 @router.get('/oidc/start')
@@ -230,23 +511,31 @@ async def oidc_start(request: Request, settings: Settings = Depends(get_settings
     doc = await oidc_discover(settings.oidc_issuer)
     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
     verifier, challenge = pkce_pair()
-    request.session.update({'oidc_state': state, 'oidc_nonce': nonce, 'oidc_verifier': verifier})
+    _server_session_set(request, oidc_state=state, oidc_nonce=nonce, oidc_verifier=verifier)
+    request.session['oidc_state'] = state
     return RedirectResponse(oidc_authorize_url(doc, settings, state, nonce, challenge), status_code=302)
 
 
 @router.get('/oidc/callback')
 async def oidc_callback(request: Request, code: str = '', state: str = '', db: Session = Depends(get_db),
                         settings: Settings = Depends(get_settings)):
-    if not code or not state or state != request.session.get('oidc_state'):
+    expected_state = _server_session_get(request, 'oidc_state')
+    if not code or not state or state != expected_state:
         raise Unauthorized('Invalid OIDC state')
     doc = await oidc_discover(settings.oidc_issuer)
-    claims = await oidc_exchange_code(doc, settings, code, request.session.get('oidc_verifier', ''), request.session.get('oidc_nonce', ''))
+    verifier = _server_session_pop(request, 'oidc_verifier', '')
+    nonce = _server_session_pop(request, 'oidc_nonce', '')
+    _server_session_pop(request, 'oidc_state', None)
+    claims = await oidc_exchange_code(doc, settings, code, verifier, nonce)
     email = (claims.get('email') or '').lower()
     if not email:
         raise Unauthorized('OIDC token has no email claim')
     allowed = [d.strip().lower() for d in settings.oidc_allowed_domains.split(',') if d.strip()]
     if allowed and email.split('@')[-1] not in allowed:
         raise Forbidden('Email domain is not allowed')
+    mfa_ok = _oidc_mfa_satisfied(claims, settings)
+    if settings.oidc_required_acr and settings.totp_required and not mfa_ok:
+        raise Forbidden('OIDC token does not satisfy OIDC_REQUIRED_ACR')
     identity = db.execute(select(OidcIdentity).where(OidcIdentity.issuer == doc.issuer, OidcIdentity.subject == claims['sub'])).scalar_one_or_none()
     user = db.get(User, identity.user_id) if identity else None
     if user is None:
@@ -263,25 +552,105 @@ async def oidc_callback(request: Request, code: str = '', state: str = '', db: S
         db.flush()
         tenant = db.execute(select(Tenant).where(Tenant.slug == settings.default_tenant_slug)).scalar_one()
         db.add(Membership(user_id=user.id, tenant_id=tenant.id, role=settings.oidc_default_role))
+        db.flush()
     if not identity:
         db.add(OidcIdentity(user_id=user.id, issuer=doc.issuer, subject=claims['sub']))
+    raw_groups = claims.get(settings.oidc_group_claim) or []
+    groups = [str(g) for g in (raw_groups if isinstance(raw_groups, list) else [raw_groups]) if g]
+    _apply_idp_groups(db, user, groups, settings)
     memberships = _memberships(db, user.id)
     if not memberships:
         raise Forbidden('User has no tenant membership')
     user.last_login_at = utcnow()
-    _establish_session(request, user, memberships[0][1].id, True)
+    _establish_session(request, user, memberships[0][1].id, mfa_ok)
     set_tenant_context(db, memberships[0][1].id)
     record_audit(db, Principal(tenant_id=memberships[0][1].id, role=Role(memberships[0][0].role), user_id=user.id, email=user.email),
-                 'auth.login', user.id, {'method': 'oidc', 'issuer': doc.issuer})
+                 'auth.login', user.id, {'method': 'oidc', 'issuer': doc.issuer, 'mfa': mfa_ok})
     return RedirectResponse('/', status_code=302)
+
+
+@router.get('/saml/metadata')
+def saml_metadata(settings: Settings = Depends(get_settings)):
+    if not settings.saml_idp_entity_id:
+        raise NotFound('SAML is not configured')
+    entity_id = settings.base_url.rstrip('/') + '/api/v1/auth/saml/metadata'
+    acs_url = settings.base_url.rstrip('/') + '/api/v1/auth/saml/acs'
+    xml = (
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f'<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="{entity_id}">'
+        f'<SPSSODescriptor AuthnRequestsSigned="true" WantAssertionsSigned="true" '
+        f'protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+        f'<AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" '
+        f'Location="{acs_url}" index="0" isDefault="true"/>'
+        f'</SPSSODescriptor></EntityDescriptor>'
+    )
+    return Response(content=xml, media_type='application/samlmetadata+xml')
+
+
+@router.post('/saml/acs')
+async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    if not settings.saml_idp_entity_id or not settings.saml_signing_secret:
+        raise NotFound('SAML is not configured')
+    raw_body = (await request.body()).decode('utf-8', errors='replace')
+    SAMLResponse = ''
+    Signature = ''
+    if raw_body.lstrip().startswith('{'):
+        data = loads(raw_body, {})
+        if isinstance(data, dict):
+            SAMLResponse = str(data.get('SAMLResponse') or '')
+            Signature = str(data.get('Signature') or '')
+    else:
+        parsed = parse_qs(raw_body)
+        SAMLResponse = (parsed.get('SAMLResponse') or [''])[0]
+        Signature = (parsed.get('Signature') or [''])[0]
+    if not SAMLResponse or not Signature:
+        raise Unauthorized('Missing SAMLResponse or Signature')
+    expected_sig = hmac.new(settings.saml_signing_secret.encode(), SAMLResponse.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_sig, Signature):
+        raise Unauthorized('Invalid SAML assertion signature')
+    try:
+        raw_xml = base64.b64decode(SAMLResponse)
+        root = DefusedET.fromstring(raw_xml)
+    except (ValueError, DefusedET.ParseError) as exc:
+        raise Unauthorized('Malformed SAML XML') from exc
+    issuer = next((el.text.strip() for el in root.iter() if el.tag.endswith('Issuer') and el.text), '')
+    if issuer != settings.saml_idp_entity_id:
+        raise Unauthorized('SAML Issuer mismatch')
+    email = next((el.text.strip().lower() for el in root.iter() if el.tag.endswith('NameID') and el.text), '')
+    if not email:
+        raise Unauthorized('SAML assertion missing NameID email')
+    groups = [el.text.strip() for el in root.iter() if el.tag.endswith('AttributeValue') and el.text]
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user:
+        if not settings.oidc_auto_provision:
+            raise Forbidden('User is not provisioned')
+        user = User(email=email, display_name=email.split('@')[0])
+        db.add(user)
+        db.flush()
+        tenant = db.execute(select(Tenant).where(Tenant.slug == settings.default_tenant_slug)).scalar_one()
+        db.add(Membership(user_id=user.id, tenant_id=tenant.id, role=settings.oidc_default_role))
+        db.flush()
+    _apply_idp_groups(db, user, groups, settings)
+    memberships = _memberships(db, user.id)
+    if not memberships:
+        raise Forbidden('User has no tenant membership')
+    user.last_login_at = utcnow()
+    payload = _establish_session(request, user, memberships[0][1].id, True)
+    set_tenant_context(db, memberships[0][1].id)
+    record_audit(db, Principal(tenant_id=memberships[0][1].id, role=Role(memberships[0][0].role), user_id=user.id, email=user.email),
+                 'auth.login', user.id, {'method': 'saml', 'issuer': issuer})
+    return payload
 
 
 # ---------------------------------------------------------------- API keys
 
 
 def _key_dict(key: ApiKey) -> dict:
-    return {'id': key.id, 'name': key.name, 'prefix': key.prefix, 'role': key.role, 'scopes': [s for s in key.scopes.split(',') if s],
-            'created_at': key.created_at, 'last_used_at': key.last_used_at, 'revoked_at': key.revoked_at}
+    return {'id': key.id, 'name': key.name, 'prefix': key.prefix, 'role': key.role,
+            'scopes': [s for s in key.scopes.split(',') if s],
+            'allowed_ips': [ip for ip in (key.allowed_ips or '').split(',') if ip],
+            'created_by': key.created_by, 'created_at': key.created_at, 'expires_at': key.expires_at,
+            'last_used_at': key.last_used_at, 'revoked_at': key.revoked_at}
 
 
 @router.get('/api-keys')
@@ -298,13 +667,22 @@ def create_api_key(body: ApiKeyBody, db: Session = Depends(get_db), principal: P
     for scope in body.scopes:
         ok = scope == 'ingest' or scope in ALL_PERMISSIONS or (scope.endswith(':*') and scope[:-2] in valid_domains)
         if not ok:
-            from ..core.errors import ArgusError
-
             raise ArgusError(f'Unknown scope {scope!r}', code='invalid_scope', status=400)
     if len(body.scopes) > 32:
-        from ..core.errors import ArgusError
-
         raise ArgusError('Too many scopes', code='invalid_scope', status=400)
+    cleaned_ips: list[str] = []
+    for ip_spec in body.allowed_ips:
+        spec = ip_spec.strip()
+        if not spec:
+            continue
+        try:
+            if '/' in spec:
+                ipaddress.ip_network(spec, strict=False)
+            else:
+                ipaddress.ip_address(spec)
+        except ValueError as exc:
+            raise ArgusError(f'Invalid IP or CIDR {spec!r}', code='invalid_ip', status=400) from exc
+        cleaned_ips.append(spec)
     if principal.auth == 'api_key' and principal.scopes:
         if not body.scopes:
             raise Forbidden('A scoped API key cannot mint an unrestricted API key')
@@ -318,12 +696,21 @@ def create_api_key(body: ApiKeyBody, db: Session = Depends(get_db), principal: P
                 permitted = has(principal, scope)
             if not permitted:
                 raise Forbidden(f'API key cannot delegate scope {scope!r}')
+    created_by = principal.user_id or ''
+    if not created_by and principal.auth == 'api_key' and principal.api_key_id:
+        minting_key = db.get(ApiKey, principal.api_key_id)
+        created_by = (minting_key.created_by if minting_key else '') or ''
+    if not created_by:
+        raise Forbidden('API keys without a recorded creator cannot mint keys')
     plaintext, prefix, key_hash = generate_api_key()
+    expires_at = utcnow() + timedelta(days=body.expires_in_days)
     key = ApiKey(tenant_id=principal.tenant_id, name=body.name, prefix=prefix, key_hash=key_hash, role=body.role,
-                 scopes=','.join(sorted(set(body.scopes))), created_by=principal.user_id or '')
+                 scopes=','.join(sorted(set(body.scopes))), allowed_ips=','.join(cleaned_ips),
+                 created_by=created_by, expires_at=expires_at)
     db.add(key)
     db.flush()
-    record_audit(db, principal, 'auth.api_key_created', key.id, {'name': body.name, 'role': body.role, 'scopes': body.scopes})
+    record_audit(db, principal, 'auth.api_key_created', key.id,
+                 {'name': body.name, 'role': body.role, 'scopes': body.scopes, 'expires_at': expires_at.isoformat()})
     return {**_key_dict(key), 'key': plaintext}
 
 

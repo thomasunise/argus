@@ -19,7 +19,7 @@ def _per_day(db: Session, column, *where) -> dict[str, int]:
     out: dict[str, int] = {}
     for key, n in rows:
         text = key.isoformat() if isinstance(key, date) else str(key)[:10]
-        out[text] = out.get(text, 0) + int(n)
+        out[text] = out.get(text, 0) + int(n)  # type: ignore[call-overload]
     return out
 
 

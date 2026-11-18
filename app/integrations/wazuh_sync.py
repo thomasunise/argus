@@ -59,7 +59,7 @@ async def fetch_alerts(url: str, index: str, auth: tuple[str, str] | None, ca_bu
     async with httpx.AsyncClient(timeout=20, verify=ca_bundle or True, trust_env=False, follow_redirects=False) as client:
         for _ in range(MAX_PAGES):
             try:
-                response = await client.post(f'{url.rstrip("/")}/{index}/_search', auth=auth, json=build_query(cursor, size))
+                response = await client.post(f'{url.rstrip("/")}/{index}/_search', auth=auth, json=build_query(cursor, size))  # type: ignore[arg-type]
                 response.raise_for_status()
                 hits = response.json().get('hits', {}).get('hits', [])
             except (httpx.HTTPError, ValueError) as exc:
@@ -138,7 +138,7 @@ async def run_sync(db_factory, settings: Settings, tenant_id: str, integration_i
             if integration_id:
                 row = db.get(IntegrationConfig, integration_id)
                 if row:
-                    newest = max((a.get('timestamp') for a in alerts if a.get('timestamp')), default=None)
+                    newest = max((a.get('timestamp') for a in alerts if a.get('timestamp')), default=None)  # type: ignore[type-var]
                     from .inbound import parse_time
 
                     newest_dt = parse_time(newest) if newest else None

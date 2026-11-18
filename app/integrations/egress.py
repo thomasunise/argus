@@ -41,13 +41,15 @@ def _unresolvable_by_design(hostname: str) -> bool:
     return hostname.endswith(RESERVED_TLDS) or hostname in RESERVED_DOMAINS or hostname.endswith(tuple('.' + d for d in RESERVED_DOMAINS))
 
 
-def validate_outbound_url(url: Any, settings: Settings, *, resolve: bool = True, allow_http: bool = False, label: str = 'url') -> str:
+def validate_outbound_url(url: Any, settings: Settings, *, resolve: bool = True, allow_http: bool = False,
+                          require_resolvable: bool = False, label: str = 'url') -> str:
     """Return the URL when it may be contacted; raise EgressDenied otherwise.
 
     Rules: http(s) only (https unless allow_http); no embedded credentials; no loopback, link-local,
     multicast, unspecified or private hosts (private ranges only when ALLOW_PRIVATE_TARGETS lists them);
     no cloud metadata or cluster-internal names. With resolve=True every address the hostname
-    resolves to must pass as well; names that cannot be resolved are left to the connection to fail.
+    resolves to must pass as well; unresolvable hosts are rejected when require_resolvable=True
+    or in production.
     """
     if not isinstance(url, str) or not url.strip():
         raise EgressDenied(f'{label} is required')
@@ -74,19 +76,43 @@ def validate_outbound_url(url: Any, settings: Settings, *, resolve: bool = True,
         if not allowed_ip(str(literal), settings):
             raise EgressDenied(f'{label} points at a private, loopback or link-local address')
         return text
-    if resolve and not _unresolvable_by_design(hostname):
+    if resolve and (require_resolvable or not _unresolvable_by_design(hostname)):
         try:
             results = socket.getaddrinfo(hostname, parts.port or (443 if scheme == 'https' else 80), type=socket.SOCK_STREAM)
         except (socket.gaierror, OSError, UnicodeError):
             results = []
         addresses = {str(entry[4][0]) for entry in results}
+        if not addresses and (require_resolvable or getattr(settings, 'is_production', False)):
+            raise EgressDenied(f'{label} host {hostname!r} could not be resolved')
         if addresses and any(not allowed_ip(ip, settings) for ip in addresses):
             raise EgressDenied(f'{label} resolves to a private, loopback or link-local address')
     return text
 
 
+def resolve_pinned_outbound(url: str, settings: Settings, *, allow_http: bool = False, label: str = 'url') -> tuple[str, str]:
+    """Validate and resolve `url` at send time. Returns (validated_url, pinned_ip_or_host)."""
+    validated = validate_outbound_url(url, settings, resolve=True, allow_http=allow_http, label=label)
+    parts = urlsplit(validated)
+    hostname = (parts.hostname or '').strip().strip('.').lower()
+    try:
+        ipaddress.ip_address(hostname)
+        return validated, hostname
+    except ValueError:
+        pass
+    try:
+        results = socket.getaddrinfo(hostname, parts.port or (443 if parts.scheme == 'https' else 80), type=socket.SOCK_STREAM)
+        valid_ips = sorted({str(entry[4][0]) for entry in results if allowed_ip(str(entry[4][0]), settings)})
+        if valid_ips:
+            return validated, valid_ips[0]
+    except (socket.gaierror, OSError, UnicodeError):
+        pass
+    if getattr(settings, 'is_production', False) and not _unresolvable_by_design(hostname):
+        raise EgressDenied(f'{label} host {hostname!r} could not be resolved at send time')
+    return validated, hostname
+
+
 def check_url_config(config: dict[str, Any], settings: Settings, *, keys: Iterable[str] = URL_CONFIG_KEYS, resolve: bool = True,
-                     allow_http: bool = False) -> list[str]:
+                     allow_http: bool = False, require_resolvable: bool = False) -> list[str]:
     """Validate every URL-bearing key present in an integration/collector config. Returns error strings."""
     errors: list[str] = []
     for key in keys:
@@ -94,19 +120,20 @@ def check_url_config(config: dict[str, Any], settings: Settings, *, keys: Iterab
         if value in (None, ''):
             continue
         try:
-            validate_outbound_url(value, settings, resolve=resolve, allow_http=allow_http, label=key)
+            validate_outbound_url(value, settings, resolve=resolve, allow_http=allow_http,
+                                  require_resolvable=require_resolvable, label=key)
         except EgressDenied as exc:
             errors.append(exc.message)
     return errors
 
 
 def egress_ok(url: Any, settings: Settings, *, allow_http: bool = False) -> str:
-    """Send-time guard: '' when the URL may be contacted, otherwise the reason it may not."""
+    """Send-time guard: '' when the URL may be contacted (including DNS resolution), otherwise the reason it may not."""
     try:
-        validate_outbound_url(url, settings, resolve=False, allow_http=allow_http)
+        validate_outbound_url(url, settings, resolve=True, allow_http=allow_http)
     except EgressDenied as exc:
         return exc.message
     return ''
 
 
-__all__ = ['EgressDenied', 'validate_outbound_url', 'check_url_config', 'egress_ok', 'URL_CONFIG_KEYS']
+__all__ = ['EgressDenied', 'validate_outbound_url', 'resolve_pinned_outbound', 'check_url_config', 'egress_ok', 'URL_CONFIG_KEYS']

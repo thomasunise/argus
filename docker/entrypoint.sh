@@ -19,14 +19,12 @@ run_migrations() {
 case "$ROLE" in
   api)
     run_migrations
-    # --proxy-headers trusts X-Forwarded-* only from FORWARDED_ALLOW_IPS (the TLS proxy),
-    # so COOKIE_SECURE=true and base_url work behind Caddy/Traefik/ALB/Front Door.
+    # Client IP resolution from X-Forwarded-For is handled inside the app by TRUSTED_PROXY_HOPS
+    # (taking the Nth address from the right). Do not let uvicorn take the leftmost X-Forwarded-For.
     exec uvicorn app.main:app \
       --host "${UVICORN_HOST:-0.0.0.0}" \
       --port "${UVICORN_PORT:-8080}" \
       --workers "${UVICORN_WORKERS:-1}" \
-      --proxy-headers \
-      --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-127.0.0.1}" \
       --no-server-header \
       --timeout-graceful-shutdown "${UVICORN_GRACEFUL_TIMEOUT:-25}"
     ;;

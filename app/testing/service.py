@@ -81,7 +81,7 @@ async def _enqueue_run(app, tenant_id: str, *, adapter_name: str, asset_id: str,
     job = await app.state.queue.enqueue('testing.run', {'run_id': run_id}, tenant_id=tenant_id,
                                         lease_seconds=_lease_seconds(settings))
     with session_scope(app.state.db_factory) as db:
-        run = db.get(TestRun, run_id)
+        run = db.get(TestRun, run_id)  # type: ignore[assignment]
         if run is not None:
             run.job_id = job.id
     return {'id': run_id, 'adapter': adapter_name, 'asset_id': asset_id, 'tier': tier, 'status': 'queued', 'job_id': job.id}
@@ -100,7 +100,7 @@ async def launch_scan(app, principal: Principal, *, asset_id: str, adapter_name:
         scope = get_scoped(db, TestScope, principal, scope_id)
         if scope is None:
             raise NotFound('test scope not found')
-        harness.precheck(db, adapter, asset, scope, settings, tier=tier)  # raises ScopeDenied
+        harness.precheck(db, adapter, asset, scope, settings, tier=tier)  # type: ignore[arg-type]
     return await _enqueue_run(app, tenant_id, adapter_name=adapter_name, asset_id=asset_id, scope_id=scope_id,
                               tier=tier, plan_id=None, triggered_by=triggered_by, principal=principal, params=params)
 

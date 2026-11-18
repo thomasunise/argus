@@ -29,6 +29,7 @@ from .core.db import (
 from .core.errors import install_error_handlers
 from .core.login_limiter import LoginFailureLimiter
 from .core.queue import JobQueue
+from .core.sessions import ServerSessionStore
 from .core.telemetry import (
     BodySizeLimitMiddleware,
     RequestContextMiddleware,
@@ -43,6 +44,7 @@ VERSION = '1.0.0'
 
 # Packages that may expose setup(app). Order matters: tools before specialists, catalogs before brokers.
 PACKAGES = ['app.graph', 'app.detections', 'app.collectors', 'app.integrations', 'app.testing', 'app.pentest', 'app.discovery', 'app.actions', 'app.exploit', 'app.agents', 'app.reports', 'app.intel', 'app.simulator', 'app.ai', 'app.ops']
+OFFENSIVE_PACKAGES = {'app.pentest', 'app.discovery', 'app.exploit'}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     assert_safe_config(settings)
     configure_logging(settings)
     audit_module.configure(settings)
-    crypto.configure(settings.data_encryption_keys, settings.data_encryption_key)
+    crypto.configure(settings.data_encryption_keys, settings.data_encryption_key, refuse_plaintext=settings.is_production)
 
     engine = make_engine(settings)
     if settings.is_production:
@@ -89,12 +91,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             events.unsubscribe_app(app)
             engine.dispose()
 
-    app = FastAPI(title=settings.app_name, version=VERSION, lifespan=lifespan, docs_url='/api/docs', openapi_url='/api/openapi.json')
+    app = FastAPI(
+        title=settings.app_name,
+        version=VERSION,
+        lifespan=lifespan,
+        docs_url=None if settings.is_production else '/api/docs',
+        openapi_url=None if settings.is_production else '/api/openapi.json',
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.db_factory = factory
     app.state.login_limiter = LoginFailureLimiter(redis_url=settings.redis_url)
     app.state.rate_limiter = RateLimiter(redis_url=settings.redis_url)
+    app.state.session_store = ServerSessionStore(redis_url=settings.redis_url, ttl_seconds=settings.session_absolute_max_age)
     app.state.queue = JobQueue(settings, db_factory=factory, app=app)
     app.state.startup_hooks = []
     app.state.shutdown_hooks = []
@@ -116,17 +125,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Otherwise each TestClient lifetime leaves subscribers retaining old engines.
     with events.registration_scope(app):
         for package in PACKAGES:
+            if settings.core_only_build and package in OFFENSIVE_PACKAGES:
+                continue
             try:
                 module = importlib.import_module(package)
             except ModuleNotFoundError as exc:
-                if exc.name == package:
+                if exc.name == package or (exc.name and exc.name.startswith(package + '.')):
                     continue
                 raise
             setup = getattr(module, 'setup', None)
             if setup:
                 setup(app)
 
-    for router in discover_routers():
+    for router in discover_routers(core_only=settings.core_only_build):
         app.include_router(router)
 
     @app.get('/', include_in_schema=False)
@@ -143,6 +154,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get('/health', include_in_schema=False)
     def health():
+        if app.state.settings.is_production:
+            return {'status': 'healthy'}
         return {'status': 'healthy', 'version': VERSION, 'env': settings.app_env, 'pool': pool_stats(engine)}
 
     @app.get('/ready', include_in_schema=False)

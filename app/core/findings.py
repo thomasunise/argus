@@ -131,7 +131,7 @@ def refresh_open_metrics(db: Session, tenant_id: str) -> dict[str, int]:
         n = db.scalar(select(func.count()).select_from(Finding).where(Finding.tenant_id == tenant_id, Finding.severity == level,
                                                                        Finding.status.in_(['open', 'investigating']))) or 0
         counts[level] = n
-        FINDINGS_OPEN.labels(tenant_id, level).set(n)
+        FINDINGS_OPEN.labels(level).set(n)
     return counts
 
 

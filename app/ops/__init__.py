@@ -64,7 +64,7 @@ def run_backup(db_factory, engine, settings, *, trigger: str = 'manual', request
             pruned[store.name] = store.prune(settings.backup_keep)
     except Exception as exc:
         with session_scope(db_factory) as db:
-            record = db.get(BackupRecord, record_id)
+            record = db.get(BackupRecord, record_id)  # type: ignore[assignment]
             assert record is not None
             record.status, record.error, record.finished_at = 'failed', f'{type(exc).__name__}: {exc}'[:2000], utcnow()
             record.stores_json = dumps(landed)
@@ -74,7 +74,7 @@ def run_backup(db_factory, engine, settings, *, trigger: str = 'manual', request
                 record_audit(db, system_principal(tenant_id), 'ops.backup.failed', record_id, {'error': record.error[:500], 'trigger': trigger})
         raise
     with session_scope(db_factory) as db:
-        record = db.get(BackupRecord, record_id)
+        record = db.get(BackupRecord, record_id)  # type: ignore[assignment]
         assert record is not None
         record.status, record.finished_at = 'completed', utcnow()
         record.name, record.size_bytes, record.sha256 = result.name, result.size_bytes, result.sha256

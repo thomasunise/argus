@@ -87,7 +87,7 @@ def upsert_node(db: Session, tenant_id: str, kind: str, key: str, props: dict[st
         if label:
             node.label = redact(label)[:240]
         if _criticality(criticality):
-            node.criticality = _criticality(criticality)
+            node.criticality = _criticality(criticality)  # type: ignore[assignment]
         if source:
             node.source = source[:40]
         node.last_seen_at = now
@@ -169,7 +169,7 @@ def apply(db: Session, tenant_id: str, result: GraphResult, source: str) -> dict
 
     asserted: set[tuple[str, str, str]] = set()
     for edraft in result.edges:
-        src_id, dst_id = resolve(tuple(edraft.src)), resolve(tuple(edraft.dst))
+        src_id, dst_id = resolve(tuple(edraft.src)), resolve(tuple(edraft.dst))  # type: ignore[arg-type]
         if not src_id or not dst_id:
             stats['edges_skipped'] += 1
             continue

@@ -15,14 +15,16 @@ from typing import Any
 from ..core.security import redact
 
 SECRET_TYPES = ('aws_access_key', 'private_key', 'api_key', 'jwt', 'credential_assignment', 'secret_other')
-PII_TYPES = ('credit_card', 'us_ssn', 'email', 'iban')
+PHI_TYPES = ('medical_record_number', 'date_of_birth', 'patient_name')
+PII_TYPES = ('credit_card', 'us_ssn', 'email', 'iban') + PHI_TYPES
 ALL_TYPES = SECRET_TYPES + PII_TYPES
 DEFAULT_ENFORCED = ('aws_access_key', 'private_key', 'api_key', 'jwt', 'credential_assignment', 'secret_other', 'credit_card', 'us_ssn')
 
 # JSON keys whose values are protocol structure, not user content.
+# Note: 'data' and 'image_url' are intentionally NOT excluded so attachments and image payloads are scanned.
 STRUCTURAL_KEYS = {'model', 'role', 'type', 'id', 'tool_call_id', 'tool_use_id', 'stop', 'stop_sequences', 'tool_choice', 'response_format',
                    'encoding_format', 'media_type', 'detail', 'finish_reason', 'stream', 'user', 'service_tier', 'reasoning_effort',
-                   'data', 'image_url', 'signature', 'cache_control'}
+                   'signature', 'cache_control'}
 MAX_SCAN_CHARS = 1_000_000
 
 
@@ -63,17 +65,19 @@ PATTERNS: list[tuple[str, re.Pattern, Callable[[re.Match], bool] | None]] = [
     ('us_ssn', re.compile(r'(?<!\d)(\d{3})-(\d{2})-(\d{4})(?!\d)'), _ssn_ok),
     ('email', re.compile(r'(?i)\b[a-z0-9._%+\-]{1,64}@[a-z0-9.\-]{1,253}\.[a-z]{2,24}\b'), None),
     ('iban', re.compile(r'\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b'), None),
+    ('medical_record_number', re.compile(r'(?i)\b(?:MRN|Medical\s+Record(?:\s+Number)?)\s*[:#=-]?\s*[A-Z0-9-]{6,14}\b'), None),
+    ('date_of_birth', re.compile(r'(?i)\b(?:DOB|Date\s+of\s+Birth)\s*[:#=-]?\s*(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})\b'), None),
+    ('patient_name', re.compile(r'\b(?:Patient(?:\s+Name)?)\s*[:#=-]\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b'), None),
 ]
 
 
 def texts(value: Any, *, skip_roles: tuple[str, ...] = (), depth: int = 0) -> Iterable[str]:
-    """Free-text strings in a JSON request body. `skip_roles` drops whole messages by role (used for
+    """Free-text strings in a JSON request or response body. `skip_roles` drops whole messages by role (used for
     prompt-injection checks, where operator-authored system prompts are trusted)."""
     if depth > 12:
         return
     if isinstance(value, str):
-        if not value.startswith('data:'):
-            yield value
+        yield value
     elif isinstance(value, dict):
         if skip_roles and value.get('role') in skip_roles:
             return
@@ -113,7 +117,11 @@ def redact_text(text: str, types: Iterable[str]) -> str:
     for name, pattern, check in PATTERNS:
         if name not in wanted:
             continue
-        out = pattern.sub(lambda m, n=name, c=check: f'[REDACTED:{n}]' if c is None or c(m) else m.group(0), out)
+
+        def _repl(m: re.Match, n: str = name, c: Callable[[re.Match], bool] | None = check) -> str:
+            return f'[REDACTED:{n}]' if c is None or c(m) else m.group(0)
+
+        out = pattern.sub(_repl, out)
     if 'secret_other' in wanted:
         out = redact(out)
     return out
@@ -124,7 +132,7 @@ def redact_value(value: Any, types: Iterable[str], depth: int = 0) -> Any:
     if depth > 12:
         return value
     if isinstance(value, str):
-        return value if value.startswith('data:') else redact_text(value, types)
+        return redact_text(value, types)
     if isinstance(value, dict):
         return {k: (v if k in STRUCTURAL_KEYS else redact_value(v, types, depth + 1)) for k, v in value.items()}
     if isinstance(value, list):

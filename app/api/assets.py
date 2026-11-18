@@ -151,10 +151,10 @@ def _last_runs(db: Session, tenant_id: str, asset_id: str, limit: int = 5) -> di
     rows = db.execute(select(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.asset_id == asset_id)
                       .order_by(TestRun.created_at.desc()).limit(limit)).scalars().all()
     out['test_runs'] = [run_to_dict(r) for r in rows]
-    rows = db.execute(select(ScanRun).where(ScanRun.tenant_id == tenant_id, ScanRun.asset_id == asset_id)
+    rows = db.execute(select(ScanRun).where(ScanRun.tenant_id == tenant_id, ScanRun.asset_id == asset_id)  # type: ignore[assignment]
                       .order_by(ScanRun.created_at.desc()).limit(limit)).scalars().all()
-    out['scan_runs'] = [{'id': r.id, 'scanner': r.scanner, 'status': r.status, 'result_count': r.result_count, 'error': r.error,
-                         'created_at': r.created_at, 'completed_at': r.completed_at} for r in rows]
+    out['scan_runs'] = [{'id': r.id, 'scanner': r.scanner, 'status': r.status, 'result_count': r.result_count, 'error': r.error,  # type: ignore[attr-defined]
+                         'created_at': r.created_at, 'completed_at': r.completed_at} for r in rows]  # type: ignore[attr-defined]
     return out
 
 
@@ -207,7 +207,7 @@ def import_assets(rows: list[Any] = Body(...), db: Session = Depends(get_db), se
     are created, invalid rows are reported with their error, duplicates (same kind and target) are skipped."""
     if len(rows) > MAX_IMPORT_ROWS:
         raise BadRequest(f'At most {MAX_IMPORT_ROWS} rows per import', code='too_many_rows')
-    existing = {(a.kind, a.target): a.id for a in db.execute(scoped(Asset, principal)).scalars()}
+    existing = {(a.kind, a.target): a.id for a in db.execute(scoped(Asset, principal)).scalars()}  # type: ignore[var-annotated]
     results: list[dict[str, Any]] = []
     created_ids: list[str] = []
     for index, raw in enumerate(rows):
@@ -294,9 +294,9 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), principal: Princi
     detached = 0
     for model in (Finding, SecurityEvent):
         for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
-            row.asset_id = None
+            row.asset_id = None  # type: ignore[attr-defined]
             detached += 1
-    for model in (AssetAuthorization, AssetCredential, OobToken, Discovery, RequestCapture):
+    for model in (AssetAuthorization, AssetCredential, OobToken, Discovery, RequestCapture):  # type: ignore[assignment]
         for row in db.execute(select(model).where(model.tenant_id == principal.tenant_id, model.asset_id == asset.id)).scalars():
             db.delete(row)
     record_audit(db, principal, 'assets.deleted', asset.id, {'name': asset.name, 'kind': asset.kind, 'target': asset.target, 'detached': detached})
@@ -341,7 +341,7 @@ def authorize_asset(asset_id: str, body: AuthorizeBody, db: Session = Depends(ge
     record_audit(db, principal, 'assets.authorized', asset.id, {'authorization_id': auth.id, 'attestation': attestation,
                                                                 'allow_active': body.allow_active, 'allow_intrusive': body.allow_intrusive,
                                                                 'allow_exploit': body.allow_exploit,
-                                                                'expires_at': auth.expires_at.isoformat(), 'scope_document_ref': auth.scope_document_ref,
+                                                                'expires_at': auth.expires_at.isoformat(), 'scope_document_ref': auth.scope_document_ref,  # type: ignore[union-attr]
                                                                 'superseded': superseded})
     return {**asset_to_dict(asset), 'authorization': authorization_to_dict(auth, now)}
 

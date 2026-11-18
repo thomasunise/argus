@@ -94,10 +94,10 @@ def _target_ip(target: str) -> tuple[str, int]:
     port = 8443 if target.endswith(':8443') else 443
     host = target.split('://', 1)[-1].split('/', 1)[0].split(':')[0]
     infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    ips = sorted({info[4][0] for info in infos if ':' not in info[4][0]})
+    ips = sorted({info[4][0] for info in infos if ':' not in info[4][0]})  # type: ignore[operator]
     if not ips:
         raise ScopeDenied('the target resolved to no permitted IPv4 address')
-    return ips[0], port
+    return ips[0], port  # type: ignore[return-value]
 
 
 def _upsert_fact(db, tenant_id: str, asset_id: str, run_id: str, fact: dict[str, str]) -> tuple[Discovery, bool]:
@@ -249,7 +249,7 @@ async def execute_run(app, run_id: str, *, client=None, launcher: Callable[..., 
             continue
         follow_ups += 1
         with session_scope(app.state.db_factory) as db:
-            row = db.get(Discovery, discovery_id)
+            row = db.get(Discovery, discovery_id)  # type: ignore[assignment]
             if row is not None:
                 row.status = 'queued_for_test'
                 row.test_run_id = str(launched.get('id') or '')

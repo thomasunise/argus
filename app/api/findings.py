@@ -198,7 +198,7 @@ def finding_stats(db: Session = Depends(get_db), principal: Principal = Depends(
 
     def group(column, *where) -> dict[str, int]:
         rows = db.execute(select(column, func.count()).where(Finding.tenant_id == tenant_id, *where).group_by(column)).all()
-        return {str(key): int(n) for key, n in rows}
+        return {str(key): int(n) for key, n in rows}  # type: ignore[call-overload]
 
     by_severity_open = group(Finding.severity, Finding.status.in_(open_states))
     by_status = group(Finding.status)
@@ -234,6 +234,7 @@ def finding_stats(db: Session = Depends(get_db), principal: Principal = Depends(
 @router.get('/{finding_id}')
 def get_finding(finding_id: str, db: Session = Depends(get_db), principal: Principal = Depends(require('findings:read'))):
     finding = _get_finding(db, principal, finding_id)
+    record_audit(db, principal, 'findings.viewed', finding.id, {'severity': finding.severity, 'rule': finding.rule})
     data = finding_to_dict(finding)
     asset = get_scoped(db, Asset, principal, finding.asset_id) if finding.asset_id else None
     data['asset'] = asset_to_dict(asset) if asset else None

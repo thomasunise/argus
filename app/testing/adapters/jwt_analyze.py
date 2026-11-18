@@ -57,7 +57,7 @@ def analyze(token: str, *, now: float | None = None) -> list[NormalizedFinding]:
     current = time.time() if now is None else now
     if isinstance(exp, (int, float)):
         remaining = float(exp) - current
-        evidence['expires_in_days'] = round(remaining / 86400, 1)
+        evidence['expires_in_days'] = round(remaining / 86400, 1)  # type: ignore[assignment]
         if remaining < 0:
             findings.append(NormalizedFinding(
                 rule='jwt:expired-issued', title='Expired JWT issued to a client',

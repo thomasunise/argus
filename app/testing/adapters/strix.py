@@ -45,14 +45,14 @@ def parse_findings(text: str) -> list[NormalizedFinding]:
         evidence = item.get('evidence') if isinstance(item.get('evidence'), dict) else {}
         poc = item.get('poc') or item.get('proof_of_concept') or ''
         if poc:
-            evidence = {**evidence, 'poc': str(poc)[:4000]}
+            evidence = {**evidence, 'poc': str(poc)[:4000]}  # type: ignore[dict-item]
         findings.append(NormalizedFinding(
             rule=f"strix:{str(item.get('rule') or item.get('id') or item.get('category') or 'finding')[:120]}",
             title=title[:240],
             description=str(item.get('description') or item.get('details') or title)[:4000],
             severity=severity if severity in _SEVERITIES else 'medium',
             remediation=str(item.get('remediation') or item.get('fix') or 'Review the Strix PoC and remediate.')[:4000],
-            evidence={**evidence, 'url': str(item.get('url') or '')[:500]},
+            evidence={**evidence, 'url': str(item.get('url') or '')[:500]},  # type: ignore[dict-item]
             cve_ids=[c for c in (item.get('cve_ids') or []) if isinstance(c, str)][:10],
             cvss=float(item['cvss']) if isinstance(item.get('cvss'), (int, float)) else None,
         ))
@@ -82,7 +82,7 @@ def _ips(hosts: list[str], port: int, *, max_per_host: int = 3) -> list[tuple[st
             raise ScopeDenied(f'could not resolve {host!r}: {exc}') from exc
         added = 0
         for info in infos:
-            ip = info[4][0]
+            ip = str(info[4][0])
             if ':' in ip:  # the engine profile is IPv4-only for now
                 continue
             pair = (ip, port)

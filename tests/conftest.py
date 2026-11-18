@@ -75,7 +75,7 @@ def settings(tmp_path) -> Settings:
                     audit_jsonl_path=str(tmp_path / 'audit.jsonl'), audit_signing_keys='k2=test-signing-key-2,k1=test-signing-key',
                     data_encryption_key='test-data-encryption-key', app_env='development', secret_env_allowlist='*', secrets_dir=tmp_path / 'secrets',
                     workers_inprocess=True, worker_concurrency=2, actions_kill_switch=False,
-                    intel_enrichment_enabled=False, intel_cache_dir=tmp_path / 'intel')
+                    intel_enrichment_enabled=False, intel_cache_dir=tmp_path / 'intel', password_scrypt_n=2 ** 14)
 
 
 @pytest.fixture

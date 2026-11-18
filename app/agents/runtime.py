@@ -138,12 +138,10 @@ class AgentRuntime:
             provider.model = spec.model
         return provider
 
-    async def run(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, *,
-                  run_id: str | None = None, finding_id: str | None = None, parent_run_id: str | None = None,
-                  job_id: str = '', heartbeat=None, scratch: dict | None = None) -> RunResult:
+    def _init_or_load_run(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory,
+                          run_id: str | None, finding_id: str | None, parent_run_id: str | None, job_id: str) -> str:
         from ..core.db import session_scope
 
-        # Create or load the run row.
         with session_scope(db_factory) as db:
             if run_id:
                 run = db.get(AgentRun, run_id)
@@ -155,21 +153,37 @@ class AgentRuntime:
                 db.add(run)
                 db.flush()
             run.status, run.started_at = 'running', utcnow()
-            run_id = run.id
+            return run.id
+
+    def _finalize_run(self, db_factory, run_id: str, spec: AgentSpec, provider: Provider, status: str, error: str,
+                      steps: int, total_in: int, total_out: int, output: dict | None) -> RunResult:
+        from ..core.db import session_scope
+
+        if output is None and status == 'completed':
+            status, error = 'failed', error or 'no result submitted'
+        with session_scope(db_factory) as db:
+            run = db.get(AgentRun, run_id)
+            assert run is not None
+            run.status, run.error, run.finished_at = status, error, utcnow()
+            run.provider, run.model = provider.name, provider.model
+            run.steps_count, run.input_tokens, run.output_tokens = steps, total_in, total_out
+            run.cost_estimate_usd = round(provider.cost(_usage(total_in, total_out)), 6)
+            run.output_json = dumps(output or {}, limit=60000)
+        AGENT_RUNS.labels(spec.name, status).inc()
+        return RunResult(run_id=run_id, status=status, output=output or {}, error=error, steps=steps,
+                         usage={'input_tokens': total_in, 'output_tokens': total_out})
+
+    async def run(self, spec: AgentSpec, task: str, inputs: dict, principal: Principal, db_factory, *,
+                  run_id: str | None = None, finding_id: str | None = None, parent_run_id: str | None = None,
+                  job_id: str = '', heartbeat=None, scratch: dict | None = None) -> RunResult:
+        run_id = self._init_or_load_run(spec, task, inputs, principal, db_factory, run_id, finding_id, parent_run_id, job_id)
         provider = self.provider_for(spec)
         if provider.name == 'none':
             return await self._fallback(spec, task, inputs, principal, db_factory, run_id, scratch=scratch)
         if provider.price() is None:
             if getattr(self.settings, 'agent_require_known_price', False) and self.settings.agent_cost_ceiling_usd > 0:
-                status = 'budget_exhausted'
                 error = f'no price configured for {provider.name} model {provider.model!r}; set AGENT_MODEL_PRICES'
-                with session_scope(db_factory) as db:
-                    run = db.get(AgentRun, run_id)
-                    assert run is not None
-                    run.status, run.error, run.finished_at = status, error, utcnow()
-                    run.provider, run.model = provider.name, provider.model
-                AGENT_RUNS.labels(spec.name, status).inc()
-                return RunResult(run_id=run_id, status=status, output={}, error=error)
+                return self._finalize_run(db_factory, run_id, spec, provider, 'budget_exhausted', error, 0, 0, 0, {})
             log.warning('agent run %s: no price for %s model %r, so AGENT_COST_CEILING_USD is not enforced; '
                         'set AGENT_MODEL_PRICES', run_id, provider.name, provider.model)
         tools = self.registry.resolve(spec.tools)
@@ -197,8 +211,7 @@ class AgentRuntime:
                 if total_in + total_out > max_tokens:
                     status, error = 'budget_exhausted', f'token budget of {max_tokens} exceeded'
                     break
-                cost_so_far = provider.cost(_usage(total_in, total_out))
-                if cost_so_far > self.settings.agent_cost_ceiling_usd:
+                if provider.cost(_usage(total_in, total_out)) > self.settings.agent_cost_ceiling_usd:
                     status, error = 'budget_exhausted', f'cost ceiling ${self.settings.agent_cost_ceiling_usd} exceeded'
                     break
                 t0 = time.perf_counter()
@@ -213,18 +226,15 @@ class AgentRuntime:
                 self._persist_step(db_factory, run_id, steps, 'model', provider.model, {'messages': len(messages)},
                                    {'text': turn.text[:4000], 'tool_calls': [{'name': c.name, 'args': c.args} for c in turn.tool_calls], 'stop': turn.stop_reason},
                                    turn.usage.input_tokens, turn.usage.output_tokens, latency, _hash(messages))
-                if turn.stop_reason == 'error':
-                    status, error = 'failed', f'provider error: {str(turn.raw)[:500]}'
-                    break
-                if turn.stop_reason == 'refusal':
-                    status, error = 'refused', f'model declined ({turn.refusal_category or "unspecified"})'
+                if turn.stop_reason in ('error', 'refusal'):
+                    status = 'failed' if turn.stop_reason == 'error' else 'refused'
+                    error = f'provider error: {str(turn.raw)[:500]}' if turn.stop_reason == 'error' else f'model declined ({turn.refusal_category or "unspecified"})'
                     break
                 messages.append({'role': 'assistant', 'content': turn.text, 'tool_calls': [{'id': c.id, 'name': c.name, 'args': c.args} for c in turn.tool_calls], 'raw': turn.raw})
                 if not turn.tool_calls:
                     if turn.stop_reason == 'max_tokens':
                         messages.append({'role': 'user', 'content': 'Your previous output was cut off. Continue, and finish by calling submit_result.'})
                         continue
-                    # Ended without submitting. Try to salvage JSON from the text, else nudge once.
                     salvaged = _extract_json(turn.text)
                     if salvaged is not None and not submit.validate(salvaged):
                         output = salvaged
@@ -251,19 +261,8 @@ class AgentRuntime:
             log.exception('agent run %s crashed', run_id)
             status, error = 'failed', f'{type(exc).__name__}: {exc}'[:1000]
         finally:
-            if output is None and status == 'completed':
-                status, error = 'failed', error or 'no result submitted'
-            with session_scope(db_factory) as db:
-                run = db.get(AgentRun, run_id)
-                assert run is not None
-                run.status, run.error, run.finished_at = status, error, utcnow()
-                run.provider, run.model = provider.name, provider.model
-                run.steps_count, run.input_tokens, run.output_tokens = steps, total_in, total_out
-                run.cost_estimate_usd = round(provider.cost(_usage(total_in, total_out)), 6)
-                run.output_json = dumps(output or {}, limit=60000)
-            AGENT_RUNS.labels(spec.name, status).inc()
-        return RunResult(run_id=run_id, status=status, output=output or {}, error=error, steps=steps,
-                         usage={'input_tokens': total_in, 'output_tokens': total_out})
+            result = self._finalize_run(db_factory, run_id, spec, provider, status, error, steps, total_in, total_out, output)
+        return result
 
     async def _execute_tools(self, turn: ModelTurn, tool_map: dict[str, Tool], principal: Principal, db_factory, run_id: str,
                              spec: AgentSpec, step_base: int, scratch: dict | None = None) -> tuple[list[dict], dict | None]:
@@ -277,7 +276,7 @@ class AgentRuntime:
             tool = tool_map.get(call.name)
             t0 = time.perf_counter()
             if tool is None:
-                content, is_error, out = f'Unknown tool {call.name!r}', True, {}
+                content, is_error, out = f'Unknown tool {call.name!r}', True, {}  # type: ignore[var-annotated]
             else:
                 problems = tool.validate(call.args)
                 if problems:

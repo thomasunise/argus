@@ -1,6 +1,7 @@
 """Structured logging, Prometheus metrics and optional OpenTelemetry tracing."""
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import time
@@ -49,7 +50,7 @@ try:
     JOBS = Counter('argus_jobs_total', 'Queue jobs', ['kind', 'status'])
     AGENT_TOKENS = Counter('argus_agent_tokens_total', 'Agent tokens', ['provider', 'direction'])
     AGENT_RUNS = Counter('argus_agent_runs_total', 'Agent runs', ['spec', 'status'])
-    FINDINGS_OPEN = Gauge('argus_findings_open', 'Open findings', ['tenant', 'severity'])
+    FINDINGS_OPEN = Gauge('argus_findings_open', 'Open findings', ['severity'])
     ACTIONS = Counter('argus_actions_total', 'Broker actions', ['action', 'status'])
     DETECTIONS = Counter('argus_detections_total', 'Detections', ['rule', 'severity'])
     INGEST_EVENTS = Counter('argus_ingest_events_total', 'Ingested security events', ['status'])
@@ -128,22 +129,58 @@ class _BodyTooLarge(Exception):
     pass
 
 
+def resolve_client_ip(request: Request, settings: Settings | None = None) -> str:
+    """Resolve the client IP using TRUSTED_PROXY_HOPS from the right of X-Forwarded-For.
+    When trusted_proxy_hops <= 0, X-Forwarded-For is ignored and the direct socket peer is returned."""
+    app_obj = request.scope.get('app')
+    state = getattr(app_obj, 'state', None) if app_obj is not None else None
+    cfg = settings or (getattr(state, 'settings', None) if state is not None else None)
+    hops = int(getattr(cfg, 'trusted_proxy_hops', 0) or 0) if cfg is not None else 0
+    peer = request.scope.get('_peer_client') if '_peer_client' in request.scope else request.scope.get('client')
+    peer_ip = (peer[0] if peer else '') or (request.client.host if request.client else '') or 'unknown'
+    if hops <= 0:
+        return peer_ip[:64]
+    raw_headers = request.headers.getlist('x-forwarded-for') if hasattr(request.headers, 'getlist') else [request.headers.get('x-forwarded-for', '')]
+    xff = ', '.join(h for h in raw_headers if h)
+    if not xff:
+        return peer_ip[:64]
+    addrs = [a.strip() for a in xff.split(',') if a.strip()]
+    if len(addrs) < hops:
+        return peer_ip[:64]
+    return addrs[-hops][:64]
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Adds a request id, timing, security headers and metrics to each request."""
+    """Adds a request id, timing, security headers, trusted-proxy client IP resolution, and metrics to each request."""
 
     def __init__(self, app, settings: Settings):
         super().__init__(app)
         self.settings = settings
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if '_peer_client' not in request.scope:
+            request.scope['_peer_client'] = request.scope.get('client')
+        peer = request.scope.get('_peer_client')
+        port = peer[1] if peer and len(peer) > 1 else 0
+        if self.settings.trusted_proxy_hops > 0:
+            request.scope['client'] = (resolve_client_ip(request, self.settings), port)
+        elif peer is not None:
+            request.scope['client'] = peer
         request_id = request.headers.get(self.settings.request_id_header) or uuid.uuid4().hex
         request.state.request_id = request_id
+        from .audit import reset_audit_request_context, set_audit_request_context
+
+        client_ip_str = resolve_client_ip(request, self.settings)
+        ua_str = (request.headers.get('user-agent') or '')[:256]
+        ctx_token = set_audit_request_context(source_ip=client_ip_str, user_agent=ua_str, request_id=request_id)
         start = time.perf_counter()
         try:
             response = await call_next(request)
         except Exception:
             HTTP_REQUESTS.labels(request.method, _route(request), '500').inc()
             raise
+        finally:
+            reset_audit_request_context(ctx_token)
         elapsed = time.perf_counter() - start
         route = _route(request)
         HTTP_REQUESTS.labels(request.method, route, str(response.status_code)).inc()
@@ -153,7 +190,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault('X-Frame-Options', 'DENY')
         response.headers.setdefault('Referrer-Policy', 'no-referrer')
         response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-        response.headers.setdefault('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'")
+        response.headers.setdefault(
+            'Content-Security-Policy',
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+            "connect-src 'self'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types argus-html default",
+        )
         if self.settings.cookie_secure:
             response.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains')
         return response
@@ -165,11 +206,25 @@ def _route(request: Request) -> str:
 
 
 def install_metrics_endpoint(app: FastAPI, settings: Settings) -> None:
-    if not (settings.metrics_enabled and METRICS_AVAILABLE):
+    if not METRICS_AVAILABLE:
         return
 
     @app.get('/metrics', include_in_schema=False)
-    def metrics():
+    def metrics(request: Request):
+        cfg = getattr(getattr(request, 'app', None), 'state', None)
+        live = getattr(cfg, 'settings', settings) if cfg is not None else settings
+        if not getattr(live, 'metrics_enabled', True):
+            from .errors import NotFound
+
+            raise NotFound('Metrics endpoint is disabled')
+        expected = getattr(live, 'metrics_bearer_token', '') or ''
+        if expected or getattr(live, 'is_production', False):
+            auth = request.headers.get('authorization', '')
+            token = auth[7:].strip() if auth.lower().startswith('bearer ') else ''
+            if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
+                from .errors import Unauthorized
+
+                raise Unauthorized('Bearer token required for /metrics')
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

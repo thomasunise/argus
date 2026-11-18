@@ -19,7 +19,7 @@ locals {
     AUDIT_AZURE_CONTAINER    = azurerm_storage_container.audit.name
     ACTIONS_KILL_SWITCH      = "false"
     ACTIONS_AUTO_APPROVE_LOW = "false"
-    FORWARDED_ALLOW_IPS      = "*" # Container Apps ingress is the only client
+    TRUSTED_PROXY_HOPS       = "1" # Container Apps ingress appends one hop to X-Forwarded-For
   }, var.extra_environment)
 }
 

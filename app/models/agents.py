@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 
 class AgentRun(TenantMixin, Base):
@@ -40,8 +40,8 @@ class AgentStep(Base):
     index: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(12))  # model or tool
     name: Mapped[str] = mapped_column(String(80), default='')
-    input_json: Mapped[str] = mapped_column(Text, default='{}')
-    output_json: Mapped[str] = mapped_column(Text, default='{}')
+    input_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
+    output_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
     input_hash: Mapped[str] = mapped_column(String(64), default='')
     tokens_in: Mapped[int] = mapped_column(Integer, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)

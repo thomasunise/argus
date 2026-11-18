@@ -4,11 +4,27 @@ This page states the security model as implemented in this repository, what depl
 add, and how to report a vulnerability. The threat analysis is in `docs/THREAT-MODEL.md`;
 procedures are in `docs/RUNBOOKS.md`.
 
-## Reporting a vulnerability
+## Reporting a vulnerability & Vulnerability Disclosure Program (VDP)
+
+Argus is developed and supported by **eeko systems** (`security@eeko.systems`).
 
 Use GitHub private vulnerability reporting on this repository (Security tab, "Report a
-vulnerability") with steps to reproduce. Do not open a public issue for an unpatched
-vulnerability. Expect an acknowledgement within three business days.
+vulnerability") or email `security@eeko.systems` with steps to reproduce. Do not open a
+public issue for an unpatched vulnerability.
+
+### Disclosure & Patch Timeline
+
+| Severity (CVSS v3.1 / v4.0) | Acknowledgement | Triage & Reproduction | Target Patch Release | Coordinated Public Disclosure |
+|---|---|---|---|---|
+| **Critical** (9.0–10.0) | Within 24 hours | Within 2 business days | Within 7 calendar days | 30 days after patch (or by mutual agreement) |
+| **High** (7.0–8.9) | Within 3 business days | Within 5 business days | Within 14 calendar days | 45 days after patch |
+| **Medium** (4.0–6.9) | Within 3 business days | Within 7 business days | Within 30 calendar days | 60 days after patch |
+| **Low** (0.1–3.9) | Within 3 business days | Within 10 business days | Within 90 calendar days | Next scheduled release |
+
+### Safe Harbor & Scope
+
+- **In scope**: The Argus core application (`app/`), sandbox runner & executor (`sandbox/`), container manifests (`Dockerfile*`, `compose*.yaml`), Helm chart (`infra/helm/argus`), and Terraform modules (`infra/terraform*`).
+- **Safe harbor**: Good-faith security research conducted against your own self-hosted Argus instance or designated test environments that avoids privacy violations, service disruption, and data destruction is authorized by eeko systems. We will not initiate legal action against researchers who follow this policy.
 
 ## Principles
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 from .actions import ActionApproval, ActionRequest, ActionRun  # noqa: F401
 from .agents import AgentRun, AgentStep, EvalRun  # noqa: F401
 from .ai import AIDiscoveryState, AIGatewayRequest, AIService  # noqa: F401
-from .audit import AuditEntry  # noqa: F401
+from .audit import AuditEntry, AuditOutbox  # noqa: F401
 from .autoresponse import AutoresponseExecution, ResponsePlaybook  # noqa: F401
 from .base import Base, TenantMixin, dumps, loads, uid, utcnow  # noqa: F401
 from .collectors import CollectorConfig, CollectorRun  # noqa: F401
@@ -13,7 +13,7 @@ from .discovery import Discovery, DiscoveryRun, RequestCapture  # noqa: F401
 from .exploit import PocArtifact, PocRequest  # noqa: F401
 from .findings import Approval, Finding, Investigation, ScanRun, SecurityEvent  # noqa: F401
 from .graph import AttackPath, GraphEdge, GraphNode  # noqa: F401
-from .identity import ApiKey, Membership, OidcIdentity, Tenant, User  # noqa: F401
+from .identity import ApiKey, Membership, OidcIdentity, Tenant, User, WebAuthnCredential  # noqa: F401
 from .integrations import IngestBatch, IntegrationConfig, WebhookDelivery  # noqa: F401
 from .inventory import Asset, AssetAuthorization, AssetCredential  # noqa: F401
 from .oob import OobToken  # noqa: F401

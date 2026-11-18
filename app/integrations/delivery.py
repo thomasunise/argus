@@ -96,7 +96,7 @@ def build_event(db: Session, tenant_id: str, topic: str, payload: dict, delivery
         try:
             from ..models.detections import Detection  # detections package model; optional
         except Exception:  # pragma: no cover - detections package absent
-            Detection = None  # type: ignore[assignment]
+            Detection = None  # type: ignore[assignment, misc]
         if Detection is not None:
             detection = db.get(Detection, event.subject_id)
             if detection and getattr(detection, 'tenant_id', None) == tenant_id:
@@ -218,6 +218,79 @@ def delivery_to_dict(delivery: WebhookDelivery) -> dict[str, Any]:
 # ---------------------------------------------------------------- queue wiring
 
 
+async def _fanout_job(queue, job, ctx) -> dict[str, Any]:
+    topic = str(job.payload.get('topic') or '')
+    payload = job.payload.get('payload') if isinstance(job.payload.get('payload'), dict) else {}
+    if payload.get('tenant_id') and str(payload['tenant_id']) != job.tenant_id:
+        raise PermissionError('job tenant does not match payload tenant')
+
+    def _create() -> list[str] | None:
+        with session_scope(ctx.db_factory) as db:
+            tenant = db.get(Tenant, job.tenant_id)
+            if not tenant or not tenant.is_active:
+                return None
+            return [d.id for d in create_deliveries(db, job.tenant_id, topic, payload, payload.get('severity'))]
+
+    ids = await asyncio.to_thread(_create)
+    if ids is None:
+        return {'deliveries': 0, 'reason': 'tenant inactive'}
+    for delivery_id in ids:
+        child = await queue.enqueue('integrations.deliver', {'delivery_id': delivery_id}, tenant_id=job.tenant_id, idempotency_key=f'deliver:{delivery_id}:1')
+
+        def _link(delivery_id=delivery_id, job_id=child.id) -> None:
+            with session_scope(ctx.db_factory) as db:
+                row = db.get(WebhookDelivery, delivery_id)
+                if row:
+                    row.job_id = job_id
+
+        await asyncio.to_thread(_link)
+    return {'deliveries': len(ids), 'topic': topic}
+
+
+async def _deliver_job(queue, settings: Settings, job, ctx) -> dict[str, Any]:
+    delivery_id = str(job.payload.get('delivery_id') or '')
+
+    def _load() -> tuple[str, Prepared | None]:
+        with session_scope(ctx.db_factory) as db:
+            delivery = db.get(WebhookDelivery, delivery_id)
+            if delivery is None or delivery.tenant_id != job.tenant_id:
+                raise PermissionError('delivery not found for this tenant')
+            if delivery.status in {'sent', 'skipped'}:
+                return 'already', None
+            integration = db.get(IntegrationConfig, delivery.integration_id)
+            if integration is None or integration.tenant_id != job.tenant_id:
+                raise PermissionError('integration not found for this tenant')
+            if not integration.enabled:
+                delivery.status, delivery.last_error = 'skipped', 'integration disabled'
+                return 'disabled', None
+            return 'ok', prepare_delivery(db, delivery, integration, settings)
+
+    state, prepared = await asyncio.to_thread(_load)
+    if state == 'already':
+        return {'status': 'sent', 'reason': 'already delivered'}
+    if state == 'disabled' or prepared is None:
+        return {'status': 'skipped', 'reason': 'integration disabled'}
+    result = await invoke(prepared)
+    await ctx.heartbeat()
+
+    def _store() -> tuple[str, int, datetime | None]:
+        with session_scope(ctx.db_factory) as db:
+            delivery = db.get(WebhookDelivery, delivery_id)
+            integration = db.get(IntegrationConfig, delivery.integration_id) if delivery else None
+            if delivery is None or integration is None:
+                raise PermissionError('delivery vanished during send')
+            record_result(db, delivery, integration, result)
+            return delivery.status, delivery.attempts, delivery.next_attempt_at
+
+    status, attempts, next_at = await asyncio.to_thread(_store)
+    retry_in = None
+    if status == 'failed' and next_at is not None:
+        retry_in = max(0.0, (_aware(next_at) - utcnow()).total_seconds())  # type: ignore[operator]
+        await queue.enqueue('integrations.deliver', {'delivery_id': delivery_id}, tenant_id=job.tenant_id, delay_seconds=retry_in,
+                            idempotency_key=f'deliver:{delivery_id}:{attempts + 1}')
+    return {'status': status, 'attempts': attempts, 'ok': result.ok, 'error': result.error[:200], 'retry_in': None if retry_in is None else int(retry_in)}
+
+
 def install(app) -> None:
     queue = app.state.queue
     settings: Settings = app.state.settings
@@ -239,73 +312,8 @@ def install(app) -> None:
 
     @queue.handler('integrations.fanout')
     async def fanout(job, ctx):
-        topic = str(job.payload.get('topic') or '')
-        payload = job.payload.get('payload') if isinstance(job.payload.get('payload'), dict) else {}
-        if payload.get('tenant_id') and str(payload['tenant_id']) != job.tenant_id:
-            raise PermissionError('job tenant does not match payload tenant')
-
-        def _create() -> list[str] | None:
-            with session_scope(ctx.db_factory) as db:
-                tenant = db.get(Tenant, job.tenant_id)
-                if not tenant or not tenant.is_active:
-                    return None
-                return [d.id for d in create_deliveries(db, job.tenant_id, topic, payload, payload.get('severity'))]
-
-        ids = await asyncio.to_thread(_create)
-        if ids is None:
-            return {'deliveries': 0, 'reason': 'tenant inactive'}
-        for delivery_id in ids:
-            child = await queue.enqueue('integrations.deliver', {'delivery_id': delivery_id}, tenant_id=job.tenant_id, idempotency_key=f'deliver:{delivery_id}:1')
-
-            def _link(delivery_id=delivery_id, job_id=child.id) -> None:
-                with session_scope(ctx.db_factory) as db:
-                    row = db.get(WebhookDelivery, delivery_id)
-                    if row:
-                        row.job_id = job_id
-
-            await asyncio.to_thread(_link)
-        return {'deliveries': len(ids), 'topic': topic}
+        return await _fanout_job(queue, job, ctx)
 
     @queue.handler('integrations.deliver')
     async def deliver(job, ctx):
-        delivery_id = str(job.payload.get('delivery_id') or '')
-
-        def _load() -> tuple[str, Prepared | None]:
-            with session_scope(ctx.db_factory) as db:
-                delivery = db.get(WebhookDelivery, delivery_id)
-                if delivery is None or delivery.tenant_id != job.tenant_id:
-                    raise PermissionError('delivery not found for this tenant')
-                if delivery.status in {'sent', 'skipped'}:
-                    return 'already', None
-                integration = db.get(IntegrationConfig, delivery.integration_id)
-                if integration is None or integration.tenant_id != job.tenant_id:
-                    raise PermissionError('integration not found for this tenant')
-                if not integration.enabled:
-                    delivery.status, delivery.last_error = 'skipped', 'integration disabled'
-                    return 'disabled', None
-                return 'ok', prepare_delivery(db, delivery, integration, settings)
-
-        state, prepared = await asyncio.to_thread(_load)
-        if state == 'already':
-            return {'status': 'sent', 'reason': 'already delivered'}
-        if state == 'disabled' or prepared is None:
-            return {'status': 'skipped', 'reason': 'integration disabled'}
-        result = await invoke(prepared)
-        await ctx.heartbeat()
-
-        def _store() -> tuple[str, int, datetime | None]:
-            with session_scope(ctx.db_factory) as db:
-                delivery = db.get(WebhookDelivery, delivery_id)
-                integration = db.get(IntegrationConfig, delivery.integration_id) if delivery else None
-                if delivery is None or integration is None:
-                    raise PermissionError('delivery vanished during send')
-                record_result(db, delivery, integration, result)
-                return delivery.status, delivery.attempts, delivery.next_attempt_at
-
-        status, attempts, next_at = await asyncio.to_thread(_store)
-        retry_in = None
-        if status == 'failed' and next_at is not None:
-            retry_in = max(0.0, (_aware(next_at) - utcnow()).total_seconds())  # type: ignore[operator]
-            await queue.enqueue('integrations.deliver', {'delivery_id': delivery_id}, tenant_id=job.tenant_id, delay_seconds=retry_in,
-                                idempotency_key=f'deliver:{delivery_id}:{attempts + 1}')
-        return {'status': status, 'attempts': attempts, 'ok': result.ok, 'error': result.error[:200], 'retry_in': None if retry_in is None else int(retry_in)}
+        return await _deliver_job(queue, settings, job, ctx)

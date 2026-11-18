@@ -1,14 +1,16 @@
 """Actor identity, separation-of-duty helpers, and serializers for the action broker."""
 from __future__ import annotations
 
+from datetime import UTC, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.db import scoped
 from ..core.rbac import Principal
 from ..core.security import redact
-from ..models import ApiKey, loads
+from ..models import ApiKey, Membership, User, loads, utcnow
 from ..models.actions import ActionApproval, ActionRequest, ActionRun
 from . import policy
 
@@ -21,23 +23,64 @@ def actor_id(principal: Principal) -> str:
     return principal.user_id or principal.email or 'unknown'
 
 
-def identity_of(db: Session | None, actor: str) -> str:
+def identity_of(db: Session | None, actor: str | Principal) -> str:
     """Canonical human identity behind an actor id. An API key acts on behalf of the user who minted it, so a
     request made through a key and an approval made by that user (or another of their keys) are the SAME actor
-    for separation-of-duty purposes. Unknown keys and 'system' stay as they are."""
+    for separation-of-duty purposes. Keys with no creator return '' so they cannot approve requests."""
+    if isinstance(actor, Principal):
+        actor = actor_id(actor)
     actor = actor or ''
-    if actor.startswith('api_key:') and db is not None:
+    if actor.startswith('api_key:'):
+        if db is None:
+            return ''
         key = db.get(ApiKey, actor[len('api_key:'):])
         if key is not None and key.created_by:
             return f'user:{key.created_by}'
-        return actor
+        return ''
     if not actor or actor == 'system':
         return actor
     return f'user:{actor}'
 
 
-def same_identity(db: Session | None, a: str, b: str) -> bool:
-    return bool(a) and bool(b) and (policy.same_actor(a, b) or identity_of(db, a) == identity_of(db, b))
+def same_identity(db: Session | None, a: str | Principal, b: str | Principal) -> bool:
+    a_id = actor_id(a) if isinstance(a, Principal) else (a or '')
+    b_id = actor_id(b) if isinstance(b, Principal) else (b or '')
+    if not a_id or not b_id:
+        return False
+    if policy.same_actor(a_id, b_id):
+        return True
+    ia, ib = identity_of(db, a_id), identity_of(db, b_id)
+    return bool(ia) and bool(ib) and ia == ib
+
+
+def cooling_off_reason(db: Session | None, approver_actor: str, requester_actor: str, tenant_id: str) -> str:
+    """Cooling-off and creator-separation rule: an account or key created by the requester,
+    or created in the last 24 hours, cannot approve that requester's actions."""
+    if db is None or not approver_actor:
+        return ''
+    req_ident = identity_of(db, requester_actor)
+    req_uid = req_ident[len('user:'):] if req_ident.startswith('user:') else ''
+    app_ident = identity_of(db, approver_actor)
+    app_uid = app_ident[len('user:'):] if app_ident.startswith('user:') else ''
+    now = utcnow()
+    if approver_actor.startswith('api_key:'):
+        key = db.get(ApiKey, approver_actor[len('api_key:'):])
+        if key is not None and req_uid and key.created_by == req_uid:
+            return 'an API key created by the requester cannot approve their actions'
+    if app_uid:
+        user = db.get(User, app_uid)
+        membership = db.execute(select(Membership).where(Membership.user_id == app_uid,
+                                                         Membership.tenant_id == tenant_id)).scalar_one_or_none()
+        creator = (membership.created_by if membership else '') or (user.created_by if user else '')
+        if req_uid and creator and creator == req_uid:
+            return 'an account created by the requester cannot approve their actions'
+        if creator:
+            created_at = (membership.created_at if membership and membership.created_by else None) or (user.created_at if user else None)
+            if created_at is not None:
+                aware_ts = created_at if created_at.tzinfo else created_at.replace(tzinfo=UTC)
+                if now - aware_ts < timedelta(hours=24):
+                    return 'cooling-off rule: accounts created in the last 24 hours cannot approve actions'
+    return ''
 
 
 def _redacted(value: Any, depth: int = 0) -> Any:
@@ -69,7 +112,7 @@ def approvals_satisfied(req: ActionRequest, approvals: list[ActionApproval], db:
         return True
     requester = identity_of(db, req.requested_by)
     approving = [a for a in approvals if a.decision == 'approve' and a.approver_id != req.requested_by
-                 and identity_of(db, a.approver_id) != requester]
+                 and (ident := identity_of(db, a.approver_id)) and (not requester or ident != requester)]
     distinct = {identity_of(db, a.approver_id) for a in approving}
     owner_ok = (not req.owner_approval_required) or any(a.can_approve_critical for a in approving)
     return len(distinct) >= req.required_approvals and owner_ok

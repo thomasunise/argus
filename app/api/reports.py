@@ -9,7 +9,7 @@ from ..core.config import Settings
 from ..core.errors import NotFound
 from ..core.rbac import Principal
 from ..reports import FRAMEWORKS, compliance, onboarding, posture, summary, trends
-from ..reports.controls import catalog
+from ..reports.controls import ALL_FRAMEWORKS, SECTOR_FRAMEWORKS, catalog
 from .deps import get_db, get_settings, require
 
 router = APIRouter(prefix='/api/v1/reports', tags=['reports'])
@@ -31,17 +31,20 @@ def get_posture(db: Session = Depends(get_db), settings: Settings = Depends(get_
 
 
 @router.get('/compliance')
-def list_frameworks(principal: Principal = Depends(require('reports:read'))):
-    return {'items': [{'framework': key, 'name': value['name'], 'controls': len(value['controls'])} for key, value in FRAMEWORKS.items()],
-            'catalog': catalog()}
+def list_frameworks(include_sector: bool = False, principal: Principal = Depends(require('reports:read'))):
+    source = ALL_FRAMEWORKS if include_sector else FRAMEWORKS
+    return {'items': [{'framework': key, 'name': value['name'], 'controls': len(value['controls'])} for key, value in source.items()],
+            'sector_items': [{'framework': key, 'name': value['name'], 'sector': value.get('sector', ''), 'controls': len(value['controls'])}
+                             for key, value in SECTOR_FRAMEWORKS.items()],
+            'catalog': catalog(include_sector=include_sector)}
 
 
 @router.get('/compliance/{framework}')
 def get_compliance(framework: str, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
                    principal: Principal = Depends(require('reports:read'))):
     key = framework.lower()
-    if key not in FRAMEWORKS:
-        raise NotFound(f'Unknown framework {framework!r}; one of {sorted(FRAMEWORKS)}')
+    if key not in ALL_FRAMEWORKS:
+        raise NotFound(f'Unknown framework {framework!r}; one of {sorted(ALL_FRAMEWORKS)}')
     report = compliance(db, principal.tenant_id, key, settings)
     record_audit(db, principal, 'reports.compliance_generated', key, {'totals': report['totals']})
     return report

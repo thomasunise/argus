@@ -21,7 +21,7 @@ locals {
     AUDIT_S3_PREFIX          = "argus-audit/"
     ACTIONS_KILL_SWITCH      = "false"
     ACTIONS_AUTO_APPROVE_LOW = "false"
-    FORWARDED_ALLOW_IPS      = "*" # the ALB is the only client of the task ENI (security group)
+    TRUSTED_PROXY_HOPS       = "1" # the ALB appends one hop to X-Forwarded-For
   }, var.extra_environment)
 }
 

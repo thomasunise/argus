@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-AI_PROVIDERS = {'none', 'anthropic', 'openai', 'ollama'}
+AI_PROVIDERS = {'none', 'anthropic', 'openai', 'ollama', 'bedrock', 'azure_openai'}
 
 
 class Settings(BaseSettings):
@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     db_auto_create: bool = True
     request_id_header: str = 'X-Request-ID'
+    trusted_proxy_hops: int = 0  # number of trusted reverse-proxy hops appending to X-Forwarded-For (0 = ignore XFF)
+    core_only_build: bool = False  # true: exclude offensive modules (pentest, exploit, discovery, strix) from the app
 
     # --- database / queue ---
     database_url: str = 'sqlite:///./data/argus.db'
@@ -38,6 +40,12 @@ class Settings(BaseSettings):
     default_tenant_name: str = 'Default'
     ingest_api_key: str = ''  # bootstrap ingest key for the default tenant
     totp_required: bool = False
+    totp_require_enrollment_code: bool = False  # require admin-issued one-time enrollment token for first-time TOTP enrollment
+    local_login_disabled: bool = False  # disable password login except for break_glass_email
+    break_glass_email: str = ''  # single break-glass local account allowed when local_login_disabled=true
+    password_hash_scheme: str = 'scrypt'  # noqa: S105 - scrypt, pbkdf2
+    password_scrypt_n: int = 2 ** 17  # N=2^17 default cost; rehashes N=2^14 on login
+    fips_mode: bool = False  # enforce FIPS-approved algorithms (PBKDF2-HMAC-SHA256, AES-256-GCM, SHA-256)
     oidc_issuer: str = ''
     oidc_client_id: str = ''
     oidc_client_secret: str = ''
@@ -45,6 +53,13 @@ class Settings(BaseSettings):
     oidc_allowed_domains: str = ''  # comma separated email domains
     oidc_auto_provision: bool = True
     oidc_trust_email: bool = False  # link an existing local account to an SSO identity even when the IdP does not assert email_verified
+    oidc_required_acr: str = ''  # comma-separated required acr or amr claim values to satisfy MFA
+    oidc_group_claim: str = 'groups'  # claim carrying directory group names
+    oidc_group_role_map: str = ''  # 'group=tenant_slug:role,group2=role'
+    saml_idp_entity_id: str = ''
+    saml_idp_sso_url: str = ''
+    saml_signing_secret: str = ''
+    scim_bearer_token: str = ''
     login_max_attempts: int = 8
     login_window_seconds: int = 300
 
@@ -56,11 +71,17 @@ class Settings(BaseSettings):
     audit_s3_prefix: str = 'argus-audit/'
     audit_azure_container: str = ''
     audit_azure_connection_string: str = ''
+    audit_siem_url: str = ''  # HTTPS SIEM webhook/HEC endpoint for forwarding audit entries
+    audit_siem_token: str = ''
+    audit_syslog_host: str = ''  # UDP/TCP syslog target host
+    audit_syslog_port: int = 514
+    audit_reads_enabled: bool = False  # log audit entries on list_audit reads too
 
     # --- telemetry ---
     log_json: bool = False
     log_level: str = 'INFO'
     metrics_enabled: bool = True
+    metrics_bearer_token: str = ''  # bearer token required on /metrics when set (always required in production)
     otel_exporter_otlp_endpoint: str = ''
     otel_service_name: str = 'argus'
 
@@ -73,6 +94,13 @@ class Settings(BaseSettings):
     openai_model: str = 'gpt-4.1'
     ollama_url: str = 'http://127.0.0.1:11434'
     ollama_model: str = 'gpt-oss:20b'
+    bedrock_region: str = ''
+    bedrock_model: str = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+    bedrock_model_id: str = ''
+    azure_openai_endpoint: str = ''
+    azure_openai_api_key: str = ''
+    azure_openai_deployment: str = ''
+    azure_openai_api_version: str = '2024-10-21'
     agent_max_steps: int = 12
     agent_max_tokens: int = 150_000
     agent_max_seconds: int = 300
@@ -170,6 +198,7 @@ class Settings(BaseSettings):
     actions_require_two_for_high: bool = True
     actions_maintenance_window: str = ''  # e.g. "02:00-04:00" UTC
     allow_env_action_credentials: bool = True  # allow fallback to global ACTIONS_* env vars when tenant override is absent
+    autonomy_hard_disabled: bool = False  # regulated build flag: autonomous response and auto-approve cannot be enabled
 
     # --- threat intel enrichment (CISA KEV / FIRST EPSS) ---
     intel_enrichment_enabled: bool = True
@@ -273,6 +302,11 @@ class Settings(BaseSettings):
     def _autoscan(cls, value: int) -> int:
         return max(15, int(value))
 
+    @field_validator('trusted_proxy_hops')
+    @classmethod
+    def _trusted_proxy_hops(cls, value: int) -> int:
+        return max(0, int(value))
+
     @property
     def is_production(self) -> bool:
         return self.app_env == 'production'
@@ -375,8 +409,14 @@ def assert_safe_config(settings: Settings) -> None:
 
         if not parse_api_key(settings.ingest_api_key):
             raise RuntimeError('INGEST_API_KEY must have the argus_<prefix>_<secret> form; generate one with scripts/generate_secrets.py')
-    if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'admin', 'owner'}:
+    if settings.oidc_default_role not in {'viewer', 'analyst', 'operator', 'user_admin', 'approver', 'admin', 'owner'}:
         raise RuntimeError(f'OIDC_DEFAULT_ROLE {settings.oidc_default_role!r} is not a role')
+    if settings.password_hash_scheme not in {'scrypt', 'pbkdf2'}:
+        raise RuntimeError(f'PASSWORD_HASH_SCHEME {settings.password_hash_scheme!r} must be scrypt or pbkdf2')
+    if settings.fips_mode and settings.password_hash_scheme != 'pbkdf2':  # noqa: S105
+        raise RuntimeError('FIPS_MODE=true requires PASSWORD_HASH_SCHEME=pbkdf2 (scrypt is not a FIPS 140-3 approved KDF)')
+    if settings.autonomy_hard_disabled and (settings.autoresponse_enabled or settings.autopentest_enabled or settings.pentest_enabled or settings.actions_auto_approve_low):
+        raise RuntimeError('AUTONOMY_HARD_DISABLED=true forbids enabling autoresponse, autopentest, pentest or actions_auto_approve_low')
     if settings.is_production:
         _assert_production(settings)
     _assert_exploit_family(settings)

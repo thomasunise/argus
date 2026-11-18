@@ -90,7 +90,7 @@ class CloudTrailParser(Parser):
         params = as_dict(item.get('requestParameters'))
         resources = item.get('resources') if isinstance(item.get('resources'), list) else []
         actor = _actor(identity)
-        entity = _entity(params, resources, item)
+        entity = _entity(params, resources, item)  # type: ignore[arg-type]
         markers = scan_markers(params) if action in _EXPOSURE or service in {'s3', 'ec2', 'iam', 'kms', 'lambda', 'sns', 'sqs'} else []
         read_only = item.get('readOnly')
         if read_only is None:
@@ -116,7 +116,7 @@ class CloudTrailParser(Parser):
             'identity_type': identity.get('type') or '', 'principal_id': identity.get('principalId') or '', 'user_name': identity.get('userName') or '',
             'role': dig(session_ctx, 'sessionIssuer', 'arn') or '', 'mfa': dig(session_ctx, 'attributes', 'mfaAuthenticated') or '',
             'error_code': item.get('errorCode') or '', 'error_message': item.get('errorMessage') or '', 'request_parameters': params,
-            'resources': [str(r.get('ARN')) for r in resources if isinstance(r, dict) and r.get('ARN')][:10], 'markers': markers,
+            'resources': [str(r.get('ARN')) for r in resources if isinstance(r, dict) and r.get('ARN')][:10], 'markers': markers,  # type: ignore[union-attr]
             'tls': dig(item, 'tlsDetails', 'tlsVersion') or '', 'management_event': item.get('managementEvent'),
         }
         if markers:

@@ -88,11 +88,16 @@ def _from_tenant(platform: str, key: str, settings: Settings, tenant_settings: d
         ref = overrides.get(f'{platform}_{key}', '')
     if not isinstance(ref, str) or ref.startswith('literal:') or not ref.startswith(_REF_PREFIXES):
         return ''  # refs only; a literal secret in tenant settings is ignored on purpose (never resolved, whatever the setting)
-    return resolve_secret(ref, settings)
+    tenant_slug = str((tenant_settings or {}).get('_tenant_slug') or '')
+    enforce_prefix = bool((tenant_settings or {}).get('enforce_tenant_secret_prefix'))
+    return resolve_secret(ref, settings, tenant_slug=tenant_slug, enforce_tenant_prefix=enforce_prefix)
 
 
-def _env_fallback_allowed(settings: Settings, tenant_settings: dict | None) -> bool:
+def _env_fallback_allowed(settings: Settings, tenant_settings: dict | None, *, tenant_count: int = 1) -> bool:
     if not bool(getattr(settings, 'allow_env_action_credentials', True)):
+        return False
+    explicit = 'allow_env_action_credentials' in getattr(settings, 'model_fields_set', set())
+    if (tenant_count > 1 or (isinstance(tenant_settings, dict) and tenant_settings.get('_multi_tenant') is True)) and not explicit:
         return False
     if isinstance(tenant_settings, dict):
         if tenant_settings.get('isolate_action_credentials') is True:
@@ -103,13 +108,13 @@ def _env_fallback_allowed(settings: Settings, tenant_settings: dict | None) -> b
     return True
 
 
-def resolve(platform: str, key: str, settings: Settings, tenant_settings: dict | None = None) -> str:
-    """Tenant override (secret ref) first, then ACTIONS_* environment (unless isolated), then the fallback platform."""
+def resolve(platform: str, key: str, settings: Settings, tenant_settings: dict | None = None, *, tenant_count: int = 1) -> str:
+    """Tenant override (secret ref) first, then ACTIONS_* environment (unless isolated or multi-tenant), then the fallback platform."""
     value = _from_tenant(platform, key, settings, tenant_settings)
-    if not value and _env_fallback_allowed(settings, tenant_settings):
+    if not value and _env_fallback_allowed(settings, tenant_settings, tenant_count=tenant_count):
         value = _from_env(platform, key, settings)
     if not value and platform in FALLBACK:
-        value = resolve(FALLBACK[platform], key, settings, tenant_settings)
+        value = resolve(FALLBACK[platform], key, settings, tenant_settings, tenant_count=tenant_count)
     return value
 
 

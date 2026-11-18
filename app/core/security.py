@@ -21,21 +21,34 @@ import httpx
 
 from .config import Settings
 
-# ---------------------------------------------------------------- passwords (scrypt)
+# ---------------------------------------------------------------- passwords (scrypt / pbkdf2)
 
-_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2 ** 14, 8, 1
-_SCRYPT_MAXMEM = 64 * 1024 * 1024
+_SCRYPT_N_FAST, _SCRYPT_N_STRONG = 2 ** 14, 2 ** 17
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = _SCRYPT_N_FAST, 8, 1
+_SCRYPT_MAXMEM = 256 * 1024 * 1024
+_PBKDF2_ITERATIONS = 600_000
 
 
-def hash_password(password: str) -> str:
+def hash_password(password: str, *, scheme: str = '', scrypt_n: int | None = None) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32, maxmem=_SCRYPT_MAXMEM)
-    return f'scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}'
+    chosen_scheme = (scheme or ('pbkdf2' if os.getenv('FIPS_MODE', '').lower() == 'true' else 'scrypt')).lower()
+    if chosen_scheme == 'pbkdf2':
+        digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, _PBKDF2_ITERATIONS, dklen=32)
+        return f'pbkdf2_sha256${_PBKDF2_ITERATIONS}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}'
+    n = int(scrypt_n if scrypt_n is not None else _SCRYPT_N)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=n, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32, maxmem=_SCRYPT_MAXMEM)
+    return f'scrypt${n}${_SCRYPT_R}${_SCRYPT_P}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}'
 
 
 def verify_password(password: str, stored: str) -> bool:
     try:
-        algo, n, r, p, salt_b64, digest_b64 = stored.split('$')
+        parts = stored.split('$')
+        if parts[0] == 'pbkdf2_sha256' and len(parts) == 4:
+            _, iters, salt_b64, digest_b64 = parts
+            salt, expected = base64.b64decode(salt_b64), base64.b64decode(digest_b64)
+            digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, int(iters), dklen=len(expected))
+            return hmac.compare_digest(digest, expected)
+        algo, n, r, p, salt_b64, digest_b64 = parts
         if algo != 'scrypt':
             return False
         salt, expected = base64.b64decode(salt_b64), base64.b64decode(digest_b64)
@@ -43,6 +56,20 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(digest, expected)
     except (ValueError, TypeError):
         return False
+
+
+def password_needs_rehash(stored: str, *, scheme: str = 'scrypt', min_scrypt_n: int = _SCRYPT_N_STRONG) -> bool:
+    if not stored:
+        return True
+    parts = stored.split('$')
+    if scheme == 'pbkdf2':
+        return parts[0] != 'pbkdf2_sha256'
+    if parts[0] != 'scrypt' or len(parts) != 6:
+        return True
+    try:
+        return int(parts[1]) < min_scrypt_n
+    except ValueError:
+        return True
 
 
 # ---------------------------------------------------------------- API keys
@@ -201,14 +228,21 @@ async def oidc_exchange_code(doc: OidcDiscovery, settings: Settings, code: str, 
 _SECRET_LOG = __import__('logging').getLogger('argus.secrets')
 
 
-def secret_ref_allowed(ref: str, settings: Settings) -> tuple[bool, str]:
+def secret_ref_allowed(ref: str, settings: Settings, *, tenant_slug: str = '',
+                       enforce_tenant_prefix: bool = False) -> tuple[bool, str]:
     """Policy for secret references. env: names must carry SECRET_ENV_PREFIX or be allowlisted
     (so an admin cannot point an integration at SESSION_SECRET or DATABASE_URL); file: paths must
-    resolve under SECRETS_DIR; literal: requires ALLOW_LITERAL_SECRET_REFS."""
+    resolve under SECRETS_DIR; literal: requires ALLOW_LITERAL_SECRET_REFS. When tenant_slug and
+    enforce_tenant_prefix are set, env: and secrets: references must be namespaced to that tenant."""
     if not ref:
         return True, ''
     kind, _, value = ref.partition(':')
+    norm_slug = tenant_slug.strip().lower().replace('-', '_') if tenant_slug else ''
     if kind == 'env':
+        if norm_slug and enforce_tenant_prefix:
+            expected_prefixes = (f'{settings.secret_env_prefix}{norm_slug.upper()}_', f'{norm_slug.upper()}_')
+            if not value.upper().startswith(expected_prefixes):
+                return False, f'env:{value} must carry tenant prefix {expected_prefixes[0]}'
         allow = {x.strip() for x in settings.secret_env_allowlist.split(',') if x.strip()}
         if '*' in allow or value in allow or (settings.secret_env_prefix and value.startswith(settings.secret_env_prefix)):
             return True, ''
@@ -225,15 +259,19 @@ def secret_ref_allowed(ref: str, settings: Settings) -> tuple[bool, str]:
     if kind == 'literal':
         return (True, '') if settings.allow_literal_secret_refs else (False, 'literal: secret references are disabled on this deployment')
     if kind == 'secrets':
+        if norm_slug and enforce_tenant_prefix:
+            slug_raw = tenant_slug.strip().lower()
+            if not value.lower().startswith((f'{slug_raw}/', f'{slug_raw}:', f'{slug_raw}_', f'{norm_slug}/', f'{norm_slug}:', f'{norm_slug}_')):
+                return False, f'secrets:{value} must be namespaced with tenant prefix {slug_raw}/'
         return True, ''
     return False, 'unknown secret reference scheme'
 
 
-def resolve_secret(ref: str, settings: Settings) -> str:
+def resolve_secret(ref: str, settings: Settings, *, tenant_slug: str = '', enforce_tenant_prefix: bool = False) -> str:
     """Resolve 'env:NAME', 'file:/path', 'secrets:KEY' or 'literal:value' subject to secret_ref_allowed(). Empty ref returns ''."""
     if not ref:
         return ''
-    allowed, reason = secret_ref_allowed(ref, settings)
+    allowed, reason = secret_ref_allowed(ref, settings, tenant_slug=tenant_slug, enforce_tenant_prefix=enforce_tenant_prefix)
     if not allowed:
         _SECRET_LOG.warning('refused secret reference: %s', reason)
         return ''

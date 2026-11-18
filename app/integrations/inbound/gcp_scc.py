@@ -78,7 +78,7 @@ class GcpSccParser(Parser):
 
     def parse_item(self, item: dict, ctx: ParseContext) -> list[EventDraft]:
         if isinstance(item.get('finding'), dict):
-            return [self._finding(item['finding'], item.get('resource') if isinstance(item.get('resource'), dict) else {})]
+            return [self._finding(item['finding'], item.get('resource') if isinstance(item.get('resource'), dict) else {})]  # type: ignore[arg-type]
         if isinstance(item.get('protoPayload'), dict):
             return [self._audit(item)]
         if 'category' in item and ('resourceName' in item or 'parent' in item):

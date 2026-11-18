@@ -211,6 +211,45 @@ class OpenAIProvider(Provider):
         return ModelTurn(text=choice.message.content or '', tool_calls=calls, stop_reason=stop, usage=usage, model=self.model)
 
 
+# ---------------------------------------------------------------- Azure OpenAI & AWS Bedrock (BAA-covered)
+
+
+class AzureOpenAIProvider(OpenAIProvider):
+    """HIPAA / regulated BAA-covered Azure OpenAI provider."""
+
+    name = 'azure_openai'
+
+    def __init__(self, settings: Settings):
+        from openai import AsyncAzureOpenAI
+
+        self.model = settings.azure_openai_deployment or settings.openai_model
+        self.client = AsyncAzureOpenAI(
+            api_key=settings.azure_openai_api_key or settings.openai_api_key or 'unconfigured',
+            azure_endpoint=settings.azure_openai_endpoint or 'https://localhost',
+            api_version=settings.azure_openai_api_version,
+            max_retries=3,
+            timeout=600,
+        )
+
+
+class BedrockProvider(AnthropicProvider):
+    """HIPAA / regulated BAA-covered AWS Bedrock Anthropic provider."""
+
+    name = 'bedrock'
+
+    def __init__(self, settings: Settings):
+        import anthropic
+
+        self.model = settings.bedrock_model_id or settings.anthropic_model
+        self.effort = settings.anthropic_effort
+        self._anthropic = anthropic
+        bedrock_cls = getattr(anthropic, 'AsyncAnthropicBedrock', None)
+        if bedrock_cls is not None:
+            self.client = bedrock_cls(aws_region=settings.bedrock_region, max_retries=3, timeout=600)
+        else:
+            self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or 'bedrock-compat', max_retries=3, timeout=600)
+
+
 # ---------------------------------------------------------------- Ollama
 
 
@@ -284,6 +323,10 @@ def get_provider(settings: Settings, override: str | None = None) -> Provider:
         provider = AnthropicProvider(settings)
     elif name == 'openai':
         provider = OpenAIProvider(settings)
+    elif name in ('azure_openai', 'azure'):
+        provider = AzureOpenAIProvider(settings)
+    elif name == 'bedrock':
+        provider = BedrockProvider(settings)
     elif name == 'ollama':
         provider = OllamaProvider(settings)
     else:

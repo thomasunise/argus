@@ -8,23 +8,28 @@ references, and request-size bounds.
 from __future__ import annotations
 
 import logging
+import time
 import types
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import respx
 from app.actions import broker, catalog, credentials
+from app.actions.identity import approvals_satisfied, identity_of
+from app.core.audit import _entry_hash, _sign, record_audit, verify_chain
 from app.core.errors import ScopeDenied, Unavailable
+from app.core.security import _totp_code, generate_api_key
 from app.integrations.egress import EgressDenied, validate_outbound_url
 from app.integrations.outbound import registry as outbound_registry
 from app.integrations.wazuh_sync import WazuhSyncError, fetch_alerts
-from app.models import Asset, AssetAuthorization, dumps
-from app.models.actions import ActionRequest
+from app.models import ApiKey, Asset, AssetAuthorization, AuditEntry, dumps
+from app.models.actions import ActionApproval, ActionRequest
 from app.models.testing import TestRun, TestScope
 from app.testing import harness
 from app.testing.adapters import nuclei, semgrep, zap
 from app.testing.ratelimit import RateLimiter
-from tests.test_actions import PW, FakeAction, FakeMedium, as_user, enable_actions, make_request
+from tests.test_actions import PW, FakeAction, FakeCritical, FakeMedium, as_user, enable_actions, make_request
 from tests.test_api_findings import make_finding
 from tests.test_detections_api import seed_detection
 from tests.test_integrations_outbound import make_event
@@ -34,7 +39,7 @@ METADATA = 'https://169.254.169.254/latest/meta-data/'
 
 @pytest.fixture
 def fakes():
-    instances = {cls.name: cls() for cls in (FakeAction, FakeMedium)}
+    instances = {cls.name: cls() for cls in (FakeAction, FakeMedium, FakeCritical)}
     for inst in instances.values():
         catalog.register(inst)
     yield instances
@@ -291,3 +296,170 @@ async def test_sec_literal_secret_refs_rejected_for_test_adapters(settings, monk
     asset = types.SimpleNamespace(id='a', name='web', kind='web', target='https://app.example.test', environment='staging', criticality='medium')
     with pytest.raises(Unavailable):
         await zap.ZapAdapter().run({}, asset, types.SimpleNamespace(max_rps=10), _ctx(settings, 'active', 'https://app.example.test'))
+
+
+# ---------------------------------------------------------------- Phase 0 regression tests
+
+
+def test_phase0_api_key_approval_bypass(app, owner, make_user, fakes, db, default_tenant_id):
+    """One owner plus two key-minted keys must not get a critical request to approved; keys with no creator are refused."""
+    client, headers = owner
+    enable_actions(client, headers)
+    root_key = client.post('/api/v1/auth/api-keys', json={'name': 'root-owner', 'role': 'owner'}, headers=headers).json()['key']
+    k1 = client.post('/api/v1/auth/api-keys', json={'name': 'minted-1', 'role': 'owner'}, headers={'X-API-Key': root_key}).json()
+    k2 = client.post('/api/v1/auth/api-keys', json={'name': 'minted-2', 'role': 'owner'}, headers={'X-API-Key': root_key}).json()
+
+    rid = make_request(client, headers, action_type='test.fake.critical', target='srv-crit')['id']
+    r1 = client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers={'X-API-Key': k1['key']})
+    r2 = client.post(f'/api/v1/actions/requests/{rid}/approve', json={'decision': 'approve'}, headers={'X-API-Key': k2['key']})
+    assert r1.status_code == 403
+    assert r2.status_code == 403
+    assert client.get(f'/api/v1/actions/requests/{rid}', headers=headers).json()['status'] == 'pending'
+
+    # Even if another user creates the request, owner + key-minted keys still represent only one human identity.
+    make_user('op-req@test.local', PW, 'operator')
+    op_client, op_headers = as_user(app, 'op-req@test.local', PW)
+    rid2 = make_request(op_client, op_headers, action_type='test.fake.critical', target='srv-crit-2')['id']
+    assert client.post(f'/api/v1/actions/requests/{rid2}/approve', json={'decision': 'approve'}, headers=headers).status_code == 200
+    assert client.post(f'/api/v1/actions/requests/{rid2}/approve', json={'decision': 'approve'}, headers={'X-API-Key': k1['key']}).status_code == 409
+    assert client.get(f'/api/v1/actions/requests/{rid2}', headers=headers).json()['status'] == 'pending'
+
+    # A key with no recorded creator in the database must be refused by identity_of and broker.approve.
+    plaintext, prefix, key_hash = generate_api_key()
+    unowned = ApiKey(tenant_id=default_tenant_id, name='legacy-unowned', prefix=prefix, key_hash=key_hash, role='owner', created_by='')
+    db.add(unowned)
+    db.commit()
+    assert identity_of(db, f'api_key:{unowned.id}') == ''
+    assert client.post(f'/api/v1/actions/requests/{rid2}/approve', json={'decision': 'approve'}, headers={'X-API-Key': plaintext}).status_code == 403
+    req_row = db.get(ActionRequest, rid2)
+    fake_approval = ActionApproval(tenant_id=default_tenant_id, request_id=rid2, approver_id=f'api_key:{unowned.id}',
+                                   approver_role='owner', can_approve_critical=True, decision='approve')
+    assert approvals_satisfied(req_row, [fake_approval], db) is False
+
+
+def test_phase0_stale_session_mfa_bypass(owner):
+    """Enabling TOTP invalidates pre-enrolment cookies, re-issues the enrolling session, and ignores pending_totp_secret once enabled."""
+    client, headers = owner
+    pre_enroll_cookie = client.cookies.get('argus_session')
+    pre_enroll_headers = dict(headers)
+    assert pre_enroll_cookie
+
+    # Start a first enrollment to capture a cookie containing a stale pending_totp_secret.
+    enroll_1 = client.post('/api/v1/auth/totp/enroll', headers=headers)
+    assert enroll_1.status_code == 200
+    secret_1 = enroll_1.json()['secret']
+    stale_pending_cookie = client.cookies.get('argus_session')
+    stale_pending_headers = dict(headers)
+
+    # Start a second enrollment and confirm it.
+    enroll_2 = client.post('/api/v1/auth/totp/enroll', headers=headers)
+    assert enroll_2.status_code == 200
+    secret_2 = enroll_2.json()['secret']
+    assert secret_2 != secret_1
+    step = int(time.time()) // 30
+    verify_resp = client.post('/api/v1/auth/totp/verify', json={'code': _totp_code(secret_2, step)}, headers=headers)
+    assert verify_resp.status_code == 200
+    new_cookie = client.cookies.get('argus_session')
+    new_headers = {'X-CSRF-Token': verify_resp.json()['csrf']}
+    assert new_cookie and new_cookie != pre_enroll_cookie
+
+    # The re-issued session after enrolment works.
+    assert client.get('/api/v1/assets', headers=new_headers).status_code == 200
+
+    # Replaying the cookie from before enrolment must return 401.
+    client.cookies.clear()
+    client.cookies.set('argus_session', pre_enroll_cookie)
+    assert client.get('/api/v1/assets', headers=pre_enroll_headers).status_code == 401
+    assert client.post('/api/v1/auth/api-keys', json={'name': 'replay', 'role': 'viewer'}, headers=pre_enroll_headers).status_code == 401
+
+    # Replaying the stale cookie that held secret_1 as pending_totp_secret must also return 401.
+    client.cookies.clear()
+    client.cookies.set('argus_session', stale_pending_cookie)
+    assert client.post('/api/v1/auth/totp/verify', json={'code': _totp_code(secret_1, step + 1)}, headers=stale_pending_headers).status_code == 401
+
+
+def test_phase0_audit_hash_truncation_versioning_and_multi_break(db, default_tenant_id):
+    """Overlong fields truncate before hashing; actor_kind and request_id are length-prefixed into v2 hash; v1 still verifies; all breaks reported."""
+    # 1. Overlong actor, action, subject, and request_id must verify after storage truncation.
+    long_actor = 'u' * 250
+    long_action = 'a' * 150
+    long_subject = 's' * 250
+    long_req_id = 'r' * 90
+    e_long = record_audit(db, long_actor, long_action, long_subject, {'k': 'v'}, tenant_id=default_tenant_id,
+                          actor_kind='user', request_id=long_req_id)
+    db.commit()
+    assert len(e_long.actor) == 200 and len(e_long.action) == 100 and len(e_long.subject) == 200 and len(e_long.request_id) == 64
+    assert verify_chain(db, default_tenant_id)['valid'] is True
+
+    # 2. Length-prefixing prevents pipe-delimiter boundary collisions, and includes actor_kind and request_id.
+    h1 = _entry_hash(default_tenant_id, '0' * 64, 'alice|admin', 'read', 'subj', '{}', '2026-01-01T00:00:00.000000',
+                     actor_kind='user', request_id='req-1')
+    h2 = _entry_hash(default_tenant_id, '0' * 64, 'alice', 'admin|read', 'subj', '{}', '2026-01-01T00:00:00.000000',
+                     actor_kind='user', request_id='req-1')
+    h3 = _entry_hash(default_tenant_id, '0' * 64, 'alice|admin', 'read', 'subj', '{}', '2026-01-01T00:00:00.000000',
+                     actor_kind='system', request_id='req-1')
+    h4 = _entry_hash(default_tenant_id, '0' * 64, 'alice|admin', 'read', 'subj', '{}', '2026-01-01T00:00:00.000000',
+                     actor_kind='user', request_id='req-2')
+    assert len({h1, h2, h3, h4}) == 4
+
+    # 3. Legacy v1 entries still verify in a mixed v1 -> v2 chain.
+    legacy_tenant = 'tenant-legacy-v1'
+    ts = datetime(2026, 1, 1, 0, 0, 0)
+    v1_hash = _entry_hash(legacy_tenant, '0' * 64, 'legacy@test', 'legacy.act', 'sub', '{}', '2026-01-01T00:00:00.000000', version=1)
+    v1_entry = AuditEntry(tenant_id=legacy_tenant, actor='legacy@test', actor_kind='user', action='legacy.act', subject='sub',
+                          detail='{}', request_id='', previous_hash='0' * 64, entry_hash=v1_hash, signature=_sign(v1_hash), created_at=ts)
+    db.add(v1_entry)
+    db.flush()
+    e2 = record_audit(db, 'admin@test', 'v2.one', 'sub2', {'x': 1}, tenant_id=legacy_tenant, actor_kind='user', request_id='req-a')
+    e3 = record_audit(db, 'admin@test', 'v2.two', 'sub3', {'x': 2}, tenant_id=legacy_tenant, actor_kind='user', request_id='req-b')
+    e4 = record_audit(db, 'admin@test', 'v2.three', 'sub4', {'x': 3}, tenant_id=legacy_tenant, actor_kind='user', request_id='req-c')
+    db.commit()
+    assert verify_chain(db, legacy_tenant)['valid'] is True
+
+    # 4. Tampering with actor_kind on e2 and request_id on e4 must both be reported by verify_chain.
+    e2.actor_kind = 'system'
+    e4.request_id = 'tampered-req'
+    db.commit()
+    res = verify_chain(db, legacy_tenant)
+    assert res['valid'] is False
+    assert res['broken_at'] == e2.id
+    assert res['broken_ids'] == [e2.id, e4.id]
+    assert [b['id'] for b in res['breaks']] == [e2.id, e4.id]
+    assert e3.id not in res['broken_ids']
+
+
+def test_phase0_lockfile_opentelemetry_api_version():
+    """requirements.lock.txt pins opentelemetry-api to at least 1.45.2."""
+    lock_path = Path(__file__).resolve().parents[1] / 'requirements.lock.txt'
+    lines = [line.strip() for line in lock_path.read_text(encoding='utf-8').splitlines() if line.strip() and not line.startswith('#')]
+    otel_lines = [line for line in lines if line.startswith('opentelemetry-api==')]
+    assert otel_lines == ['opentelemetry-api==1.45.2']
+
+
+def test_phase0_trusted_proxy_hops_ignores_spoofed_xff(app, client, owner, monkeypatch):
+    """TRUSTED_PROXY_HOPS takes the address N hops from the right of X-Forwarded-For, ignoring client-spoofed leftmost entries."""
+    _, headers = owner
+    assert app.state.settings.trusted_proxy_hops == 0
+
+    # With trusted_proxy_hops=1 (e.g. behind 1 ALB), rotating spoofed leftmost XFF IPs cannot bypass IP login throttling.
+    monkeypatch.setattr(app.state.settings, 'trusted_proxy_hops', 1)
+    for i in range(app.state.settings.login_max_attempts):
+        r = client.post('/api/v1/auth/login', json={'email': f'user{i}@test.local', 'password': 'wrong-password-long'},
+                        headers={'X-Forwarded-For': f'10.0.0.{i}, 198.51.100.77'})
+        assert r.status_code == 401
+    throttled = client.post('/api/v1/auth/login', json={'email': 'fresh@test.local', 'password': 'wrong-password-long'},
+                            headers={'X-Forwarded-For': '203.0.113.99, 198.51.100.77'})
+    assert throttled.status_code == 429
+    other_ip = client.post('/api/v1/auth/login', json={'email': 'fresh@test.local', 'password': 'wrong-password-long'},
+                           headers={'X-Forwarded-For': '203.0.113.99, 198.51.100.88'})
+    assert other_ip.status_code == 401
+
+    # With trusted_proxy_hops=2, canary hits record the address 2 hops from the right.
+    monkeypatch.setattr(app.state.settings, 'trusted_proxy_hops', 2)
+    canary = client.post('/api/v1/canaries', json={'kind': 'url', 'label': 'xff-hop-test'}, headers=headers).json()
+    hit = client.post(f"/api/v1/canaries/{canary['token']}/hit", content=b'{}',
+                      headers={'Content-Type': 'application/json', 'X-Forwarded-For': '1.2.3.4, 198.51.100.55, 10.0.1.2'})
+    assert hit.status_code == 204
+    hits = client.get(f"/api/v1/canaries/{canary['id']}/hits", headers=headers).json()['items']
+    assert hits[0]['source_ip'] == '198.51.100.55'
+

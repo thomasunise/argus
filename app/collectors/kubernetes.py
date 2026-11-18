@@ -290,7 +290,7 @@ def _api_clients(config: dict[str, Any]) -> dict[str, Any]:
         api_client = client.ApiClient(configuration)
         cluster = cluster or config['api_url'].split('//', 1)[-1].split('/', 1)[0]
     elif config.get('kubeconfig'):
-        import yaml  # lazy; PyYAML is a core dependency
+        import yaml  # type: ignore[import-untyped]
 
         doc = yaml.safe_load(config['kubeconfig'])
         api_client = kube_config.new_client_from_config_dict(doc, context=config.get('context'))

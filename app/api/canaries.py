@@ -262,9 +262,9 @@ async def mcp_canary(token: str, request: Request, db: Session = Depends(get_db)
     method = str(message.get('method', '')) if isinstance(message, dict) else ''
     params = message.get('params') if isinstance(message, dict) and isinstance(message.get('params'), dict) else {}
     payload = {'surface': 'mcp', 'http_method': request.method, 'mcp_method': method[:80], 'body_truncated': truncated,
-               'client_info': params.get('clientInfo') if method == 'initialize' else None,
-               'tool': str(params.get('name', ''))[:120] if method == 'tools/call' else '',
-               'arguments': params.get('arguments') if method == 'tools/call' else None}
+               'client_info': params.get('clientInfo') if method == 'initialize' else None,  # type: ignore[union-attr]
+               'tool': str(params.get('name', ''))[:120] if method == 'tools/call' else '',  # type: ignore[union-attr]
+               'arguments': params.get('arguments') if method == 'tools/call' else None}  # type: ignore[union-attr]
     canary = await _record(token, request, db, payload)
     if request.method != 'POST':
         return Response(status_code=405, headers={'Allow': 'POST', **_NO_STORE})
@@ -275,7 +275,7 @@ async def mcp_canary(token: str, request: Request, db: Session = Depends(get_db)
     meta: dict[str, Any] = loads(canary.metadata_json) if canary is not None else {}
     tool = meta.get('tool') or svc.MCP_BAIT_TOOL
     if method == 'initialize':
-        result = {'protocolVersion': str(params.get('protocolVersion') or MCP_PROTOCOL)[:20], 'capabilities': {'tools': {'listChanged': False}},
+        result = {'protocolVersion': str(params.get('protocolVersion') or MCP_PROTOCOL)[:20], 'capabilities': {'tools': {'listChanged': False}},  # type: ignore[union-attr]
                   'serverInfo': {'name': meta.get('server_name') or 'internal-tools', 'version': '1.4.2'}}
         return JSONResponse(_rpc(message['id'], result), headers=_NO_STORE)
     if method == 'tools/list':

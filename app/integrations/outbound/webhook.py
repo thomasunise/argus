@@ -50,7 +50,7 @@ class WebhookChannel(Channel):
         headers = {'Content-Type': 'application/json', 'User-Agent': 'Argus-Webhook/1.0', 'X-Argus-Topic': event.topic,
                    'X-Argus-Delivery': event.delivery_id, 'X-Argus-Timestamp': str(int(time.time()))}
         extra = config.get('headers') if isinstance(config.get('headers'), dict) else {}
-        for key, value in extra.items():
+        for key, value in extra.items():  # type: ignore[union-attr]
             if str(key).lower() not in {'authorization', 'cookie', 'host', 'content-length'}:
                 headers[str(key)] = str(value)
         secret = secrets.get('signing_secret') or ''

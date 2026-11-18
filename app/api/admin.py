@@ -64,6 +64,7 @@ class UserBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     display_name: str = Field(default='', max_length=120)
     role: Role = Role.viewer
+    permissions: list[str] = []
     password: str | None = Field(default=None, min_length=MIN_PASSWORD, max_length=512)
     invite: bool = False
 
@@ -80,6 +81,7 @@ class ResetBody(BaseModel):
 class MembershipBody(BaseModel):
     user_id: str = Field(min_length=1, max_length=36)
     role: Role
+    permissions: list[str] | None = None
 
 
 # ---------------------------------------------------------------- helpers
@@ -94,8 +96,20 @@ def _tenant_dict(t: Tenant, role: str | None = None) -> dict:
 
 def _member_dict(user: User, membership: Membership) -> dict:
     return {'id': user.id, 'email': user.email, 'display_name': user.display_name, 'is_active': user.is_active, 'totp_enabled': user.totp_enabled,
-            'has_password': bool(user.password_hash), 'role': membership.role, 'membership_id': membership.id, 'member_since': membership.created_at,
+            'has_password': bool(user.password_hash), 'must_change_password': bool(getattr(user, 'must_change_password', False)),
+            'role': membership.role, 'permissions': loads(getattr(membership, 'permissions_json', '[]'), []),
+            'created_by': getattr(membership, 'created_by', '') or getattr(user, 'created_by', ''),
+            'membership_id': membership.id, 'member_since': membership.created_at,
             'created_at': user.created_at, 'last_login_at': user.last_login_at}
+
+
+def _revoke_user_api_keys(db: Session, tenant_id: str, user_id: str) -> int:
+    keys = db.execute(select(ApiKey).where(ApiKey.tenant_id == tenant_id, ApiKey.created_by == user_id,
+                                           ApiKey.revoked_at.is_(None))).scalars().all()
+    now = utcnow()
+    for key in keys:
+        key.revoked_at = now
+    return len(keys)
 
 
 def _membership(db: Session, tenant_id: str, user_id: str) -> Membership | None:
@@ -229,19 +243,25 @@ def create_user(body: UserBody, db: Session = Depends(get_db), principal: Princi
         raise Conflict('A user with this email already exists')
     else:
         temporary = None
+        must_change = False
         if body.invite:
             password_hash = ''  # sign in through OIDC or after an admin password reset
         else:
             temporary = body.password or _temp_password()
             password_hash = hash_password(temporary)
-        user = User(email=email, display_name=body.display_name.strip() or email.split('@')[0], password_hash=password_hash)
+            must_change = not bool(body.password)
+        creator = (principal.user_id or principal.actor)[:36]
+        user = User(email=email, display_name=body.display_name.strip() or email.split('@')[0],
+                    password_hash=password_hash, must_change_password=must_change, created_by=creator)
         db.add(user)
         db.flush()
         created = True
         if temporary and not body.password:
             response['temporary_password'] = temporary
         record_audit(db, principal, 'admin.user_created', user.id, {'email': email, 'invite': body.invite, 'password_set': bool(password_hash)})
-    membership = Membership(user_id=user.id, tenant_id=principal.tenant_id, role=body.role.value)
+    creator = (principal.user_id or principal.actor)[:36]
+    membership = Membership(user_id=user.id, tenant_id=principal.tenant_id, role=body.role.value,
+                            permissions_json=dumps(sorted(set(body.permissions))), created_by=creator)
     db.add(membership)
     db.flush()
     record_audit(db, principal, 'admin.membership_created', user.id, {'email': email, 'role': body.role.value, 'new_user': created})
@@ -269,6 +289,9 @@ def patch_user(user_id: str, body: UserPatch, db: Session = Depends(get_db), pri
             _assert_not_last_owner(db, principal.tenant_id, user_id)
         changes['is_active'] = {'from': user.is_active, 'to': body.is_active}
         user.is_active = body.is_active
+        if not body.is_active:
+            user.sessions_invalidated_at = utcnow()
+            _revoke_user_api_keys(db, principal.tenant_id, user.id)
     if changes:
         record_audit(db, principal, 'admin.user_updated', user.id, {'email': user.email, 'changes': changes})
     return _member_dict(user, membership)
@@ -286,12 +309,28 @@ def reset_password(user_id: str, body: ResetBody | None = None, db: Session = De
     supplied = body.password if body else None
     temporary = supplied or _temp_password()
     user.password_hash = hash_password(temporary)
+    user.must_change_password = supplied is None
     user.sessions_invalidated_at = utcnow()
     record_audit(db, principal, 'admin.password_reset', user.id, {'email': user.email, 'generated': supplied is None})
-    out: dict[str, Any] = {'ok': True, 'user_id': user.id}
+    out: dict[str, Any] = {'ok': True, 'user_id': user.id, 'must_change_password': user.must_change_password}
     if supplied is None:
         out['temporary_password'] = temporary
     return out
+
+
+@router.post('/users/{user_id}/totp-enrollment-token')
+def issue_totp_enrollment_token(user_id: str, db: Session = Depends(get_db), principal: Principal = Depends(require('admin:users'))):
+    """Issue a one-time code required for first-time TOTP authenticator enrollment."""
+    import hashlib
+
+    membership = _membership(db, principal.tenant_id, user_id)
+    user = db.get(User, user_id) if membership else None
+    if membership is None or user is None:
+        raise NotFound('User not found in this tenant')
+    code = secrets.token_urlsafe(16)
+    user.totp_enrollment_token_hash = hashlib.sha256(code.encode()).hexdigest()
+    record_audit(db, principal, 'admin.totp_enrollment_token_issued', user.id, {'email': user.email})
+    return {'user_id': user.id, 'enrollment_code': code}
 
 
 @router.post('/users/{user_id}/revoke-sessions')
@@ -319,9 +358,13 @@ def remove_member(user_id: str, db: Session = Depends(get_db), principal: Princi
         raise Forbidden('Only owners can remove an owner')
     _assert_not_last_owner(db, principal.tenant_id, user_id)
     user = db.get(User, user_id)
+    revoked_keys = _revoke_user_api_keys(db, principal.tenant_id, user_id)
+    if user is not None:
+        user.sessions_invalidated_at = utcnow()
     db.delete(membership)
-    record_audit(db, principal, 'admin.membership_removed', user_id, {'email': user.email if user else '', 'role': membership.role})
-    return {'ok': True}
+    record_audit(db, principal, 'admin.membership_removed', user_id,
+                 {'email': user.email if user else '', 'role': membership.role, 'revoked_api_keys': revoked_keys})
+    return {'ok': True, 'revoked_api_keys': revoked_keys}
 
 
 # ---------------------------------------------------------------- memberships
@@ -336,6 +379,8 @@ def set_role(body: MembershipBody, db: Session = Depends(get_db), principal: Pri
     if membership is None:
         raise NotFound('User not found in this tenant')  # memberships are created through POST /admin/users only
     _assert_can_assign(principal, body.role, membership.role)
+    if body.permissions is not None:
+        membership.permissions_json = dumps(sorted(set(body.permissions)))
     if membership.role == body.role.value:
         return _member_dict(user, membership)
     if membership.role == Role.owner.value:
@@ -360,6 +405,54 @@ def _settings_view(tenant: Tenant, settings: Settings) -> dict[str, Any]:
             'available_providers': sorted(AI_PROVIDERS), 'kill_switch': settings.actions_kill_switch}
 
 
+def _validate_action_credentials(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or len(value) > 50:
+        raise BadRequest('action_credentials must be an object of at most 50 entries', code='invalid_setting')
+    cleaned: dict[str, Any] = {}
+    for name, ref in value.items():
+        if not isinstance(name, str) or not SETTING_KEY_RE.match(name):
+            raise BadRequest(f'action_credentials key {name!r} is not a valid identifier', code='invalid_setting')
+        if isinstance(ref, dict):
+            sub_cleaned: dict[str, str] = {}
+            for sub_key, sub_ref in ref.items():
+                if not isinstance(sub_key, str) or not SETTING_KEY_RE.match(sub_key):
+                    raise BadRequest(f'action_credentials[{name}][{sub_key!r}] is not a valid identifier', code='invalid_setting')
+                if not isinstance(sub_ref, str) or not sub_ref.startswith(SECRET_REF_PREFIXES):
+                    raise BadRequest(f'action_credentials[{name}][{sub_key}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
+                                     'inline secrets are not stored', code='inline_secret')
+                sub_cleaned[sub_key] = sub_ref
+            cleaned[name] = sub_cleaned
+            continue
+        if not isinstance(ref, str) or not ref.startswith(SECRET_REF_PREFIXES):
+            raise BadRequest(f'action_credentials[{name}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
+                             'inline secrets are not stored', code='inline_secret')
+        cleaned[name] = ref
+    return cleaned
+
+
+def _validate_toggle_module(key: str, value: Any) -> dict[str, Any]:
+    if isinstance(value, bool):
+        return {'enabled': value}
+    if not isinstance(value, dict):
+        raise BadRequest(f'{key} must be an object or boolean', code='invalid_setting')
+    enabled = value.get('enabled', False)
+    if not isinstance(enabled, bool):
+        raise BadRequest(f'{key}.enabled must be a boolean', code='invalid_setting')
+    out: dict[str, Any] = {'enabled': enabled}
+    if key == 'autopentest':
+        if 'max_tier' in value and value['max_tier'] is not None:
+            if value['max_tier'] not in ('passive', 'active', 'intrusive', 'exploit'):
+                raise BadRequest('autopentest.max_tier is invalid', code='invalid_setting')
+            out['max_tier'] = value['max_tier']
+        for int_key, hi in (('max_rounds', 5), ('max_test_runs', 500)):
+            if int_key in value and value[int_key] is not None:
+                v = value[int_key]
+                if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= hi):
+                    raise BadRequest(f'autopentest.{int_key} must be an integer between 1 and {hi}', code='invalid_setting')
+                out[int_key] = v
+    return out
+
+
 def _validate_setting(key: str, value: Any) -> Any:
     if key == 'ai_provider':
         if value in (None, ''):
@@ -382,49 +475,9 @@ def _validate_setting(key: str, value: Any) -> Any:
             raise BadRequest(f'retention_days must be an integer between {RETENTION_RANGE[0]} and {RETENTION_RANGE[1]}', code='invalid_setting')
         return value
     if key == 'action_credentials':
-        if not isinstance(value, dict) or len(value) > 50:
-            raise BadRequest('action_credentials must be an object of at most 50 entries', code='invalid_setting')
-        cleaned: dict[str, Any] = {}
-        for name, ref in value.items():
-            if not isinstance(name, str) or not SETTING_KEY_RE.match(name):
-                raise BadRequest(f'action_credentials key {name!r} is not a valid identifier', code='invalid_setting')
-            if isinstance(ref, dict):
-                sub_cleaned: dict[str, str] = {}
-                for sub_key, sub_ref in ref.items():
-                    if not isinstance(sub_key, str) or not SETTING_KEY_RE.match(sub_key):
-                        raise BadRequest(f'action_credentials[{name}][{sub_key!r}] is not a valid identifier', code='invalid_setting')
-                    if not isinstance(sub_ref, str) or not sub_ref.startswith(SECRET_REF_PREFIXES):
-                        raise BadRequest(f'action_credentials[{name}][{sub_key}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
-                                         'inline secrets are not stored', code='inline_secret')
-                    sub_cleaned[sub_key] = sub_ref
-                cleaned[name] = sub_cleaned
-                continue
-            if not isinstance(ref, str) or not ref.startswith(SECRET_REF_PREFIXES):
-                raise BadRequest(f'action_credentials[{name}] must be a secret reference starting with one of {SECRET_REF_PREFIXES}; '
-                                 'inline secrets are not stored', code='inline_secret')
-            cleaned[name] = ref
-        return cleaned
+        return _validate_action_credentials(value)
     if key in ('autopentest', 'discovery', 'exploit'):
-        if isinstance(value, bool):
-            return {'enabled': value}
-        if not isinstance(value, dict):
-            raise BadRequest(f'{key} must be an object or boolean', code='invalid_setting')
-        enabled = value.get('enabled', False)
-        if not isinstance(enabled, bool):
-            raise BadRequest(f'{key}.enabled must be a boolean', code='invalid_setting')
-        out: dict[str, Any] = {'enabled': enabled}
-        if key == 'autopentest':
-            if 'max_tier' in value and value['max_tier'] is not None:
-                if value['max_tier'] not in ('passive', 'active', 'intrusive', 'exploit'):
-                    raise BadRequest('autopentest.max_tier is invalid', code='invalid_setting')
-                out['max_tier'] = value['max_tier']
-            for int_key, hi in (('max_rounds', 5), ('max_test_runs', 500)):
-                if int_key in value and value[int_key] is not None:
-                    v = value[int_key]
-                    if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= hi):
-                        raise BadRequest(f'autopentest.{int_key} must be an integer between 1 and {hi}', code='invalid_setting')
-                    out[int_key] = v
-        return out
+        return _validate_toggle_module(key, value)
     raise BadRequest(f'Unknown setting {key!r}', code='unknown_setting')
 
 

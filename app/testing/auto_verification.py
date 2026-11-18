@@ -113,9 +113,9 @@ def report_retest(db_factory, tenant_id: str, run_id: str) -> dict | None:
             after = set(db.execute(select(TestResult.rule).where(TestResult.tenant_id == tenant_id,
                                                                  TestResult.run_id == run.id)).scalars().all())
             verdict = {'status': 'compared', 'baseline_run_id': baseline.id,
-                       'not_reproduced': sorted(before - after), 'still_detected': sorted(before & after),
-                       'newly_detected': sorted(after - before),
-                       'remediation_confirmed': False}
+                       'not_reproduced': sorted(before - after), 'still_detected': sorted(before & after),  # type: ignore[dict-item]
+                       'newly_detected': sorted(after - before),  # type: ignore[dict-item]
+                       'remediation_confirmed': False}  # type: ignore[dict-item]
         stats = loads(run.stats_json, {})
         stats['auto_verification'] = verdict
         run.stats_json = dumps(stats)

@@ -1,0 +1,8 @@
+# Two-maintainer review ownership for regulated change control.
+* @thomasunise @eeko-systems/security-maintainers
+/app/core/ @thomasunise @eeko-systems/security-maintainers
+/app/actions/ @thomasunise @eeko-systems/security-maintainers
+/app/api/auth.py @thomasunise @eeko-systems/security-maintainers
+/alembic/ @thomasunise @eeko-systems/security-maintainers
+/.github/ @thomasunise @eeko-systems/security-maintainers
+/infra/ @thomasunise @eeko-systems/security-maintainers

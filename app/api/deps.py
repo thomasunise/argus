@@ -2,21 +2,25 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import secrets
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterator, Sequence
+from datetime import UTC
 
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..core.audit import record_audit, set_audit_request_context
 from ..core.config import Settings
 from ..core.db import set_tenant_context
 from ..core.errors import Forbidden, RateLimited, Unauthorized
 from ..core.rbac import Principal, Role, has
 from ..core.security import hash_api_key, parse_api_key
-from ..models import ApiKey, Membership, Tenant, User, utcnow
+from ..core.telemetry import resolve_client_ip
+from ..models import ApiKey, Membership, Tenant, User, loads, utcnow
 
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
 
@@ -117,12 +121,38 @@ return n + 1
         bucket.append(now)
 
 
+def _ip_allowed(client_ip: str, allowed_ips_csv: str) -> bool:
+    specs = [s.strip() for s in (allowed_ips_csv or '').split(',') if s.strip()]
+    if not specs:
+        return True
+    try:
+        addr = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return client_ip in specs
+    for spec in specs:
+        try:
+            if '/' in spec and addr in ipaddress.ip_network(spec, strict=False):
+                return True
+            if addr == ipaddress.ip_address(spec):
+                return True
+        except ValueError:
+            if client_ip == spec:
+                return True
+    return False
+
+
 def _principal_from_api_key(db: Session, raw: str, request: Request) -> Principal | None:
     prefix = parse_api_key(raw)
     if not prefix:
         return None
     key = db.execute(select(ApiKey).where(ApiKey.prefix == prefix, ApiKey.revoked_at.is_(None))).scalar_one_or_none()
     if not key or not secrets.compare_digest(key.key_hash, hash_api_key(raw)):
+        return None
+    if key.expires_at is not None:
+        exp = key.expires_at if key.expires_at.tzinfo else key.expires_at.replace(tzinfo=UTC)
+        if exp <= utcnow():
+            return None
+    if key.allowed_ips and not _ip_allowed(resolve_client_ip(request), key.allowed_ips):
         return None
     tenant = db.get(Tenant, key.tenant_id)
     if not tenant or not tenant.is_active:
@@ -135,6 +165,14 @@ def _principal_from_api_key(db: Session, raw: str, request: Request) -> Principa
 
 def _principal_from_session(db: Session, request: Request, settings: Settings) -> Principal | None:
     session = request.session
+    sid = str(session.get('sid') or '')
+    store = getattr(request.app.state, 'session_store', None)
+    if sid and store is not None:
+        if store.is_revoked(sid):
+            return None
+        server_data = store.get(sid)
+        if server_data is not None:
+            session = {**session, **server_data}
     user_id, tenant_id = session.get('user_id'), session.get('tenant_id')
     if not user_id or not tenant_id or session.get('authed') is not True:
         return None
@@ -146,6 +184,8 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
     user = db.get(User, user_id)
     if not user or not user.is_active:
         return None
+    if user.totp_enabled and not session.get('mfa'):
+        return None
     if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
         return None
     tenant = db.get(Tenant, tenant_id)
@@ -154,8 +194,17 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
     membership = db.execute(select(Membership).where(Membership.user_id == user_id, Membership.tenant_id == tenant_id)).scalar_one_or_none()
     if not membership:
         return None
+    if sid:
+        set_audit_request_context(
+            source_ip=resolve_client_ip(request, settings),
+            user_agent=(request.headers.get('user-agent') or '')[:256],
+            session_id=sid,
+            request_id=getattr(request.state, 'request_id', ''),
+        )
+    raw_perms = loads(getattr(membership, 'permissions_json', '[]'), [])
+    custom_perms = frozenset(str(p) for p in raw_perms if isinstance(p, str)) if isinstance(raw_perms, list) else frozenset()
     return Principal(tenant_id=tenant_id, role=Role(membership.role), auth='session', user_id=user.id, email=user.email,
-                     request_id=getattr(request.state, 'request_id', ''))
+                     request_id=getattr(request.state, 'request_id', ''), custom_permissions=custom_perms)
 
 
 def current_principal(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
@@ -183,12 +232,19 @@ def require(*perms: str):
         if principal is None:
             raise Unauthorized('Authentication required')
         if principal.auth == 'session' and request.method not in SAFE_METHODS:
+            sid = str(request.session.get('sid') or '')
+            store = getattr(request.app.state, 'session_store', None)
+            server_csrf = (store.get(sid) or {}).get('csrf', '') if (sid and store is not None) else ''
             given = request.headers.get('x-csrf-token', '')
-            expected = request.session.get('csrf', '')
+            expected = request.session.get('csrf', '') or server_csrf
             if not expected or not secrets.compare_digest(given, expected):
                 raise Forbidden('CSRF validation failed')
         for perm in perms:
             if not has(principal, perm):
+                db_sess = getattr(request.state, 'db', None)
+                if db_sess is not None:
+                    record_audit(db_sess, principal, 'auth.permission_denied', perm, {'path': request.url.path, 'method': request.method})
+                    db_sess.commit()
                 raise Forbidden(f'Missing permission {perm}')
         limiter: RateLimiter = request.app.state.rate_limiter
         limiter.check(f'api:{principal.tenant_id}:{principal.user_id or principal.api_key_id}', settings.api_rate_limit_per_minute)

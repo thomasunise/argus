@@ -279,7 +279,7 @@ def _sqlite_snapshot(engine: Engine, workdir: Path) -> tuple[Engine, Path]:
     try:
         target = sqlite3.connect(str(copy))
         try:
-            raw.driver_connection.backup(target)
+            raw.driver_connection.backup(target)  # type: ignore[union-attr]
         finally:
             target.close()
     finally:
@@ -467,7 +467,7 @@ def restore(path: Path, target_url: str, settings: Settings, *, key_override: st
 
             def flush() -> None:
                 if batch:
-                    conn.execute(table.insert(), batch)
+                    conn.execute(table.insert(), batch)  # type: ignore[attr-defined]
                     batch.clear()
 
             for record in iter_records(path, settings, key_override):
@@ -484,7 +484,7 @@ def restore(path: Path, target_url: str, settings: Settings, *, key_override: st
                     counts[name] = 0
                 elif 'v' in record:
                     batch.append({c: _decode(v) for c, v in zip(columns, record['v'], strict=False)})
-                    counts[table.name] += 1
+                    counts[table.name] += 1  # type: ignore[union-attr]
                     if len(batch) >= INSERT_BATCH:
                         flush()
             flush()

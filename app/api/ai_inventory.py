@@ -64,7 +64,7 @@ def list_services(status: str | None = None, channel: str | None = None, provide
 def service_stats(db: Session = Depends(get_db), principal: Principal = Depends(require('ai:read'))):
     def grouped(column) -> dict:
         rows = db.execute(select(column, func.count()).where(AIService.tenant_id == principal.tenant_id).group_by(column)).all()
-        return {str(k or ''): int(n) for k, n in rows}
+        return {str(k or ''): int(n) for k, n in rows}  # type: ignore[call-overload]
 
     services = db.execute(select(AIService.service_key, AIService.service, AIService.status, func.count(), func.sum(AIService.event_count),
                                  func.max(AIService.last_seen_at))

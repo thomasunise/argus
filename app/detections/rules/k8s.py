@@ -27,7 +27,7 @@ class PrivilegedWorkload(DetectionRule):
                 continue
             data = meta(event)
             raw_meta = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
-            namespace = str(data.get('namespace') or raw_meta.get('namespace') or '')[:120]
+            namespace = str(data.get('namespace') or raw_meta.get('namespace') or '')[:120]  # type: ignore[union-attr]
             if namespace in ignored:
                 continue
             found = deep_find_truthy(data, flags)
@@ -43,7 +43,7 @@ class PrivilegedWorkload(DetectionRule):
                 entity=str(workload), entity_kind='asset', asset_id=event.asset_id, fingerprint_parts=[str(workload), namespace],
                 window_bucket=window_bucket(when, bucket_minutes), first_seen_at=when, last_seen_at=when,
                 evidence={'workload': str(workload), 'namespace': namespace, 'flags': found, 'action': event.action, 'actor': event.actor,
-                          'cluster': data.get('cluster') or '', 'images': sample(str(i) for i in images if i), 'event_ids': [event.id]}))
+                          'cluster': data.get('cluster') or '', 'images': sample(str(i) for i in images if i), 'event_ids': [event.id]}))  # type: ignore[union-attr]
         return drafts
 
 

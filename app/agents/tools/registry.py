@@ -82,7 +82,7 @@ def _type_ok(value: Any, expected: str | list[str]) -> bool:
             return True
         if t == 'integer' and isinstance(value, bool):
             continue
-        if isinstance(value, py):
+        if isinstance(value, py):  # type: ignore[arg-type]
             return True
     return False
 

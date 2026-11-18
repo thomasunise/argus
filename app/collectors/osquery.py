@@ -297,7 +297,7 @@ async def _fetch_fleet(ctx: CollectorContext) -> dict[str, Any]:
                 warnings.append(f'query report {key}: HTTP {response.status_code}')
                 continue
             for row in response.json().get('results', []):
-                host = by_id.get(row.get('host_id')) or by_hostname.get(row.get('host_name'))
+                host = by_id.get(row.get('host_id')) or by_hostname.get(row.get('host_name'))  # type: ignore[assignment]
                 if host is None:
                     continue
                 columns = row.get('columns') or {}

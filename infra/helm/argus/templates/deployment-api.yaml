@@ -55,8 +55,8 @@ spec:
               value: {{ .Values.api.runMigrations | quote }}
             - name: UVICORN_WORKERS
               value: {{ .Values.api.uvicornWorkers | quote }}
-            - name: FORWARDED_ALLOW_IPS
-              value: {{ .Values.api.forwardedAllowIps | quote }}
+            - name: TRUSTED_PROXY_HOPS
+              value: {{ .Values.api.trustedProxyHops | default 1 | quote }}
             - name: WORKERS_INPROCESS
               value: {{ if .Values.worker.enabled }}"false"{{ else }}"true"{{ end }}
             {{- if .Values.sandbox.enabled }}

@@ -4,7 +4,7 @@
 #     'python -m venv /v && /v/bin/pip install -q --upgrade pip wheel && /v/bin/pip install -q -r /src/requirements.txt && /v/bin/pip freeze --all --exclude setuptools --exclude wheel'
 # The Dockerfile installs requirements.txt constrained by this file (pip -c), so every build resolves
 # to exactly these versions. Regenerate after editing requirements.txt and re-run pip-audit against it.
-# Generated: 2026-10-23T18:55:17Z
+# Generated: 2026-11-17T18:00:00Z
 alembic==1.20.1
 annotated-doc==0.0.5
 annotated-types==0.8.0
@@ -30,7 +30,7 @@ jiter==0.18.0
 Mako==1.4.3
 MarkupSafe==3.0.4
 openai==2.54.0
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
 packaging==26.3
 pip==26.2.2
 prometheus_client==0.26.0

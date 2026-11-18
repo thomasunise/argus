@@ -78,7 +78,7 @@ class IsolatePod(ActionType):
         manifest = {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy',
                     'metadata': {'name': _policy_name(pod), 'namespace': namespace, 'labels': dict(MANAGED_BY)},
                     'spec': {'podSelector': {'matchLabels': {LABEL_KEY: label_value}}, 'policyTypes': ['Ingress', 'Egress']}}
-        return {'policy_name': manifest['metadata']['name'], 'label_key': LABEL_KEY, 'label_value': label_value, 'manifest': manifest,
+        return {'policy_name': manifest['metadata']['name'], 'label_key': LABEL_KEY, 'label_value': label_value, 'manifest': manifest,  # type: ignore[index]
                 'label_patch': {'metadata': {'labels': {LABEL_KEY: label_value}}}, 'blast_radius': entities(1, 'pod', [f'{namespace}/{pod}'])}
 
     async def dry_run(self, params: dict, ctx: ExecContext) -> DryRunResult:

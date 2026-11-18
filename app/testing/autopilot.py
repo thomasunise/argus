@@ -96,7 +96,7 @@ def preflight(db, settings, principal: Principal, scope_id: str, asset_ids: list
     if scope is not None and scope.tenant_id != principal.tenant_id:
         scope = None
     _gate(settings, tenant, scope)
-    in_scope = loads(scope.asset_ids_json, [])
+    in_scope = loads(scope.asset_ids_json, [])  # type: ignore[union-attr]
     if in_scope:
         chosen = [a for a in dict.fromkeys(asset_ids)] if asset_ids else list(in_scope)
         outside = [a for a in chosen if a not in set(in_scope)]
@@ -113,7 +113,7 @@ def preflight(db, settings, principal: Principal, scope_id: str, asset_ids: list
             chosen = list(db.execute(select(Asset.id).where(Asset.tenant_id == principal.tenant_id, Asset.approved.is_(True))).scalars().all())
     if not chosen:
         raise AutopilotDenied('the scope lists no assets to test')
-    return scope, chosen
+    return scope, chosen  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------- planning
@@ -261,7 +261,7 @@ async def execute(app, db_factory, settings, tenant_id: str, run_id: str, heartb
                          reason=launched.get('reason', 'scope check denied'))
                 continue
             run_db_id = launched.get('id')
-            launched_run_ids.append(run_db_id)
+            launched_run_ids.append(run_db_id)  # type: ignore[arg-type]
             launched_total += 1
             add_step(phase='launched', round=round_index + 1, asset_id=asset_id, adapter=adapter, tier=tier, test_run_id=run_db_id)
         if stopped_reason:

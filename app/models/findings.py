@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TenantMixin, UTCDateTime, uid, utcnow
+from .base import Base, EncryptedText, TenantMixin, UTCDateTime, uid, utcnow
 
 SEVERITIES = ('critical', 'high', 'medium', 'low', 'informational')
 FINDING_STATUSES = ('open', 'investigating', 'resolved', 'accepted', 'false_positive')
@@ -23,7 +23,7 @@ class Finding(TenantMixin, Base):
     title: Mapped[str] = mapped_column(String(240))
     description: Mapped[str] = mapped_column(Text)
     remediation: Mapped[str] = mapped_column(Text, default='')
-    evidence: Mapped[str] = mapped_column(Text, default='{}')
+    evidence: Mapped[str] = mapped_column(EncryptedText(), default='{}')
     severity: Mapped[str] = mapped_column(String(16), default='medium')
     status: Mapped[str] = mapped_column(String(18), default='open')
     source: Mapped[str] = mapped_column(String(40))
@@ -56,7 +56,7 @@ class SecurityEvent(TenantMixin, Base):
     entity: Mapped[str] = mapped_column(String(200), default='')    # thing acted upon
     action: Mapped[str] = mapped_column(String(120), default='')
     title: Mapped[str] = mapped_column(String(300))
-    metadata_json: Mapped[str] = mapped_column(Text, default='{}')
+    metadata_json: Mapped[str] = mapped_column(EncryptedText(), default='{}')
     occurred_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     received_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 

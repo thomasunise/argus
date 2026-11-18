@@ -75,7 +75,7 @@ class GenericParser(Parser):
         meta: dict[str, Any] = {
             'ip': first(item, 'ip', 'src_ip', 'source_ip', 'client_ip', 'remote_addr') or src.get('ip') or '',
             'user_agent': first(item, 'user_agent', 'userAgent') or http.get('user_agent') or '',
-            'geo': geo(first(location, 'lat', 'latitude'), first(location, 'lon', 'long', 'longitude'), first(location, 'country', 'country_code'), location.get('city')),
+            'geo': geo(first(location, 'lat', 'latitude'), first(location, 'lon', 'long', 'longitude'), first(location, 'country', 'country_code'), location.get('city')),  # type: ignore[union-attr]
             'service': first(item, 'service') or product or source_label or '', 'product': product or '', 'region': first(item, 'region') or '',
             'account': first(item, 'account', 'account_id') or dig(item, 'cloud', 'account', 'uid') or '', 'namespace': first(item, 'namespace') or '',
             'repo': first(item, 'repo', 'repository') or '', 'host': dig(item, 'device', 'hostname') or first(item, 'host', 'hostname') or '',

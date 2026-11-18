@@ -120,9 +120,9 @@ def main(argv: list[str] | None = None) -> int:
                     with session_scope(factory) as db:
                         from ..models import Tenant
 
-                        out[slug] = retention.preview(db, settings, db.get(Tenant, tenant_id))
+                        out[slug] = retention.preview(db, settings, db.get(Tenant, tenant_id))  # type: ignore[arg-type]
                 else:
-                    out[slug] = run_retention(factory, settings, tenant_id, record_empty=True)
+                    out[slug] = run_retention(factory, settings, tenant_id, record_empty=True)  # type: ignore[assignment]
             _print(out)
     except backup_mod.BackupError as exc:
         print(f'error: {exc}', file=sys.stderr)

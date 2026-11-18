@@ -75,13 +75,13 @@ class ServiceNowChannel(Channel):
             patch: dict[str, Any] = {'work_notes': f'Argus update ({event.topic}): {event.title}' + (f' - status {event.status}' if event.status else '')}
             if event.is_resolution:
                 patch.update({'state': STATE_RESOLVED, 'close_code': 'Solved (Permanently)', 'close_notes': f'Resolved in Argus: {event.title}'[:4000]})
-            response, error = await request_with_retry(lambda c: c.patch(f'{base}/api/now/table/{table}/{sys_id}', json=patch, headers=headers, auth=auth),
+            response, error = await request_with_retry(lambda c: c.patch(f'{base}/api/now/table/{table}/{sys_id}', json=patch, headers=headers, auth=auth),  # type: ignore[arg-type]
                                                        attempts=2, timeout=timeout)
             return result_from_response(response, error, external_ref=number or sys_id)
         if event.is_resolution:
             return DeliveryResult(ok=True, skipped=True, detail={'reason': 'no incident to resolve'})
         body = build_incident(event, config)
-        response, error = await request_with_retry(lambda c: c.post(f'{base}/api/now/table/{table}', json=body, headers=headers, auth=auth), attempts=2, timeout=timeout)
+        response, error = await request_with_retry(lambda c: c.post(f'{base}/api/now/table/{table}', json=body, headers=headers, auth=auth), attempts=2, timeout=timeout)  # type: ignore[arg-type]
         result = result_from_response(response, error, ok_codes=(200, 201))
         if result.ok and response is not None:
             try:

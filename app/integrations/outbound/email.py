@@ -45,7 +45,7 @@ def _send_sync(message: EmailMessage, config: dict[str, Any], secrets: dict[str,
     starttls = config.get('use_starttls', True) is not False
     context = ssl.create_default_context()
     smtp_cls = smtplib.SMTP_SSL if use_tls else smtplib.SMTP
-    with (smtp_cls(host, port, timeout=timeout, context=context) if use_tls else smtp_cls(host, port, timeout=timeout)) as smtp:
+    with (smtp_cls(host, port, timeout=timeout, context=context) if use_tls else smtp_cls(host, port, timeout=timeout)) as smtp:  # type: ignore[call-arg]
         smtp.ehlo()
         if starttls and not use_tls:
             smtp.starttls(context=context)

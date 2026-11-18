@@ -3,9 +3,48 @@ export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ 
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-export function el(html) {
+class SafeHtml {
+  constructor(value) { this.__html = String(value ?? ''); }
+  toString() { return this.__html; }
+}
+
+export const rawHtml = (value) => new SafeHtml(value);
+
+/** Escaping tagged template helper: interpolates SafeHtml verbatim and auto-escapes all other values. */
+export function html(strings, ...values) {
+  let out = strings[0] || '';
+  for (let i = 0; i < values.length; i += 1) {
+    const val = values[i];
+    if (val instanceof SafeHtml) out += val.__html;
+    else if (Array.isArray(val)) out += val.map((item) => (item instanceof SafeHtml ? item.__html : esc(item))).join('');
+    else out += esc(val);
+    out += strings[i + 1] || '';
+  }
+  return new SafeHtml(out);
+}
+
+const TRUSTED_POLICY = (() => {
+  if (typeof window !== 'undefined' && window.trustedTypes && window.trustedTypes.createPolicy) {
+    try {
+      return window.trustedTypes.createPolicy('default', {
+        createHTML: (input) => String(input ?? '').replace(/<script\b[\s\S]*?>[\s\S]*?<\/script>/gi, ''),
+      });
+    } catch {
+      return null;
+    }
+  }
+  return null;
+})();
+
+export function setHtml(node, content) {
+  if (!node) return;
+  const str = content instanceof SafeHtml ? content.__html : String(content ?? '');
+  node.innerHTML = TRUSTED_POLICY ? TRUSTED_POLICY.createHTML(str) : str;
+}
+
+export function el(htmlStr) {
   const template = document.createElement('template');
-  template.innerHTML = html.trim();
+  setHtml(template, String(htmlStr ?? '').trim());
   return template.content.firstElementChild;
 }
 

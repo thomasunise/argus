@@ -299,11 +299,30 @@ def inspect(provider: str, endpoint: str, body: dict, policy: GatewayPolicy) -> 
     if signals and policy.block_prompt_injection and not reason:
         reason = 'prompt injection suspected: ' + '; '.join(signals[:3])
     if stream and provider == 'openai' and endpoint == 'chat.completions' and not reason:
-        options = result_body.get('stream_options') if isinstance(result_body.get('stream_options'), dict) else {}
+        raw_opts = result_body.get('stream_options')
+        options: dict[str, Any] = dict(raw_opts) if isinstance(raw_opts, dict) else {}
         if options.get('include_usage') is not True:
             result_body = {**result_body, 'stream_options': {**options, 'include_usage': True}}  # mandatory for metering
     return Inspection(body=result_body, model=model, stream=stream, dlp_hits=hits, dlp_action=action, prompt_injection=bool(signals),
                       injection_signals=signals, block_reason=reason)
+
+
+def inspect_response(body: Any, policy: GatewayPolicy) -> tuple[Any, dict[str, int], str, str]:
+    """Scan a model response payload for sensitive data and apply DLP mode (block / redact / log)."""
+    if not isinstance(body, dict):
+        return body, {}, '', ''
+    try:
+        hits = dlp.scan(dlp.texts(body))
+    except dlp.DLPScanLimitExceeded:
+        return body, {}, 'blocked', 'DLP scanning limit exceeded on response'
+    if not hits:
+        return body, {}, '', ''
+    enforced = {k: v for k, v in hits.items() if k in set(policy.dlp_types)}
+    if enforced and policy.dlp_mode == 'block':
+        return body, hits, 'blocked', 'sensitive data in response: ' + ', '.join(sorted(enforced))
+    if enforced and policy.dlp_mode == 'redact':
+        return dlp.redact_value(body, policy.dlp_types), hits, 'redacted', ''
+    return body, hits, 'logged', ''
 
 
 def request_to_dict(row: AIGatewayRequest) -> dict:

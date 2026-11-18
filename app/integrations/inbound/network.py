@@ -28,7 +28,7 @@ class SuricataParser(Parser):
         dst = str(item.get('dest_ip') or '')
         modbus = as_dict(item.get('modbus'))
         try:
-            fc = int(modbus.get('function_code')) if modbus.get('function_code') is not None else 0
+            fc = int(modbus.get('function_code')) if modbus.get('function_code') is not None else 0  # type: ignore[arg-type]
         except (ValueError, TypeError):
             fc = 0
         is_write = str(item.get('app_proto') or '').lower() == 'modbus' and fc in {5, 6, 15, 16}

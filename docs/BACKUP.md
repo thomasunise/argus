@@ -138,3 +138,13 @@ worker, which needs `BACKUP_DIR` on a volume it can write to (`argus-data` in th
 For very large databases (hundreds of GB), pair this with your database platform's own physical backups and
 point-in-time recovery (RDS, Azure Flexible Server, or `pg_basebackup` with WAL archiving). Logical backups stay
 useful there for portable, verifiable copies and for restoring into a different environment.
+
+## Production Recovery Objectives (RPO / RTO) & Managed PostgreSQL PITR
+
+> **Important:** `compose.prod.yaml` is a **pilot-only** single-host deployment profile. Enterprise and regulated production deployments must run on Kubernetes (`infra/helm/argus`) or managed cloud infrastructure (`infra/terraform`, `infra/terraform-azure`) with managed Multi-AZ PostgreSQL and continuous WAL archiving.
+
+| Tier / Mechanism | Target RPO (Recovery Point Objective) | Target RTO (Recovery Time Objective) | Verification Cadence |
+|---|---|---|---|
+| **Managed PostgreSQL Multi-AZ + Continuous WAL Archiving (PITR)** | **< 5 minutes** (continuous WAL shipping to S3 / Azure Blob) | **< 15 minutes** (automated Multi-AZ failover) / **< 45 minutes** (PITR restore) | Monthly automated PITR restore drill |
+| **External WORM Audit Sink (`AUDIT_S3_BUCKET` / `AUDIT_AZURE_CONTAINER` + `audit_outbox`)** | **0 entries lost** for committed transactions (transactional outbox + scheduled chain-head anchor) | Immediate query availability in S3 / Azure / SIEM | Continuous hash-chain + HMAC verification |
+| **Argus Logical Encrypted Snapshot (`app.ops backup`)** | **24 hours** (configurable down to 1 hour via `BACKUP_INTERVAL_HOURS`) | **< 30 minutes** into a clean PostgreSQL instance (`test_postgres_backup_and_restore_drill`) | Every CI push + quarterly operator drill |

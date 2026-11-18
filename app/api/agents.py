@@ -103,8 +103,9 @@ def get_run(run_id: str, db: Session = Depends(get_db), principal: Principal = D
     run = get_scoped(db, AgentRun, principal, run_id)
     if run is None:
         raise NotFound('Agent run not found')
+    record_audit(db, principal, 'agents.transcript_viewed', run.id, {'spec': run.spec})
     steps = db.execute(select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.index.asc(), AgentStep.created_at.asc())).scalars().all()
-    return {**run_to_dict(run, steps), 'job_id': run.job_id}
+    return {**run_to_dict(run, steps), 'job_id': run.job_id}  # type: ignore[arg-type]
 
 
 @router.post('/runs/{run_id}/cancel')

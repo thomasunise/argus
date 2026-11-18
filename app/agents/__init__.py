@@ -12,19 +12,27 @@ from .tools.registry import registry  # noqa: F401
 log = logging.getLogger('argus.agents')
 
 
-def _import_all(package_name: str) -> None:
+OFFENSIVE_TOOLS = {'exploit', 'pentest_tool'}
+OFFENSIVE_SPECIALISTS = {'redteam_plan', 'poc_author', 'offensive_pentest'}
+
+
+def _import_all(package_name: str, *, skip: set[str] | None = None) -> None:
     try:
         package = importlib.import_module(package_name)
     except ModuleNotFoundError:
         return
     for module in pkgutil.iter_modules(package.__path__):
-        if not module.name.startswith('_'):
-            importlib.import_module(f'{package_name}.{module.name}')
+        if not module.name.startswith('_') and (not skip or module.name not in skip):
+            try:
+                importlib.import_module(f'{package_name}.{module.name}')
+            except ModuleNotFoundError:
+                continue
 
 
 def setup(app) -> None:
-    _import_all('app.agents.tools')
-    _import_all('app.agents.specialists')
+    core_only = bool(getattr(app.state.settings, 'core_only_build', False))
+    _import_all('app.agents.tools', skip=OFFENSIVE_TOOLS if core_only else None)
+    _import_all('app.agents.specialists', skip=OFFENSIVE_SPECIALISTS if core_only else None)
     from .evals import register as register_evals
 
     register_evals(app)

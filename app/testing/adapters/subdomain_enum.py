@@ -36,7 +36,7 @@ def resolve(host: str) -> list[str]:
         infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError):
         return []
-    return sorted({info[4][0] for info in infos if ':' not in info[4][0]})
+    return sorted({info[4][0] for info in infos if ':' not in info[4][0]})  # type: ignore[misc, operator]
 
 
 class SubdomainEnumAdapter(TestAdapter):
