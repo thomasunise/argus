@@ -4,7 +4,7 @@
 # The pod the executor creates is the sandbox (gVisor, read-only root, pinned egress). Strix's own
 # nested Docker sandbox is not available inside it; set ARGUS_STRIX_EXTRA_ARGS if your Strix
 # version needs flags for single-container operation.
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN pip install "strix-agent>=0.6,<1"

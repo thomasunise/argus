@@ -8,7 +8,7 @@
 #   APP_VERSION    OCI version label
 
 ARG PYTHON_VERSION=3.12
-ARG PYTHON_DIGEST=sha256:6b2152a5c30cb97e3f98f09c3b82d5e8780992f3194e1c4a98f462739dc4c109
+ARG PYTHON_DIGEST=sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # ---------------------------------------------------------------- build stage
 FROM python:${PYTHON_VERSION}-slim@${PYTHON_DIGEST} AS build
@@ -25,7 +25,7 @@ COPY requirements.txt requirements.lock.txt requirements-optional.txt ./
 # its header). Installing requirements.txt under that constraint makes every build resolve to the
 # same audited set (pip-audit runs against the lock in CI). Test tooling lives in
 # requirements-dev.txt and is never installed in the image.
-RUN pip install --upgrade "pip==$(sed -n 's/^pip==//p' requirements.lock.txt)" wheel \
+RUN pip install --upgrade "pip==$(sed -n 's/^pip==//p' requirements.lock.txt | tr -d '\r')" setuptools wheel \
  && pip install -r requirements.txt -c requirements.lock.txt \
  && if [ "$EXTRAS" = "1" ]; then pip install -r requirements-optional.txt -c requirements.lock.txt; fi
 
@@ -44,6 +44,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH=/opt/venv/bin:$PATH \
     RUN_MIGRATIONS=false UVICORN_WORKERS=1 TRUSTED_PROXY_HOPS=0 \
     CORE_ONLY_BUILD=true
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends libpq5 ca-certificates tini curl \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r -g 10001 argus \

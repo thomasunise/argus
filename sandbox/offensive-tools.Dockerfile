@@ -9,7 +9,7 @@
 
 ARG BASE_IMAGE=argus:local
 
-FROM debian:bookworm-slim AS tools-fetch
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS tools-fetch
 SHELL ["/bin/bash", "-euo pipefail", "-c"]
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl tar unzip \

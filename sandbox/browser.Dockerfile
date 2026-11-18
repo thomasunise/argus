@@ -1,7 +1,7 @@
 # Browser discovery image: headless Chromium + the request-capturing runner.
 # Build from the repository root:  docker build -f sandbox/browser.Dockerfile -t argus-browser .
 # Expect ~1.2 GB: Chromium and its libraries are not small.
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN pip install "playwright>=1.45,<2" \

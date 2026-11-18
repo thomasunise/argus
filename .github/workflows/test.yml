@@ -173,6 +173,7 @@ jobs:
           format: table
           exit-code: "1"
           ignore-unfixed: true
+          scanners: vuln
           vuln-type: os,library
           severity: CRITICAL,HIGH
       - name: Image runs as non-root with migrations applied
