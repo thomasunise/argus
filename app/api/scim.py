@@ -6,24 +6,27 @@ deactivates the user, removes/disables their membership, and revokes all of thei
 from __future__ import annotations
 
 import hmac
+import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.audit import record_audit
 from ..core.config import Settings
 from ..core.db import set_tenant_context
-from ..core.errors import Conflict, Forbidden, NotFound, Unauthorized
-from ..core.rbac import Principal, Role, has
+from ..core.errors import Conflict, NotFound, Unauthorized
+from ..core.rbac import Principal, Role
 from ..models import ApiKey, Membership, Tenant, User, utcnow
-from .deps import current_principal, get_db, get_settings
+from ._common import BadRequest
+from .deps import get_db, get_settings
 
 router = APIRouter(prefix='/api/v1/scim/v2', tags=['scim'])
 SCIM_SCHEMA_USER = 'urn:ietf:params:scim:schemas:core:2.0:User'
 SCIM_SCHEMA_LIST = 'urn:ietf:params:scim:api:messages:2.0:ListResponse'
+SCIM_MAX_PAGE = 200
 
 
 class ScimCreateUserBody(BaseModel):
@@ -38,20 +41,19 @@ class ScimPatchBody(BaseModel):
     active: bool | None = None
 
 
-def _scim_principal(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+def _scim_principal(db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
                     authorization: str = Header(default='')) -> Principal:
-    token = authorization[7:].strip() if authorization.lower().startswith('bearer ') else ''
+    """SCIM is the identity provider's interface, so it authenticates with the provisioning token and nothing else.
+    People administer users through /admin/users, where role and permission ceilings apply to them."""
     expected = (settings.scim_bearer_token or '').strip()
-    if expected and token and hmac.compare_digest(token.encode(), expected.encode()):
-        tenant = db.execute(select(Tenant).where(Tenant.slug == settings.default_tenant_slug)).scalar_one()
-        set_tenant_context(db, tenant.id)
-        return Principal(tenant_id=tenant.id, role=Role.admin, auth='system', email='scim-provisioner')
-    principal = current_principal(request, db, settings)
-    if principal is not None:
-        if not has(principal, 'admin:users'):
-            raise Forbidden('Missing permission admin:users for SCIM')
-        return principal
-    raise Unauthorized('Valid SCIM authentication required')
+    if not expected:
+        raise NotFound('SCIM is not configured')
+    token = authorization[7:].strip() if authorization.lower().startswith('bearer ') else ''
+    if not token or not hmac.compare_digest(token.encode(), expected.encode()):
+        raise Unauthorized('Valid SCIM authentication required')
+    tenant = db.execute(select(Tenant).where(Tenant.slug == settings.default_tenant_slug)).scalar_one()
+    set_tenant_context(db, tenant.id)
+    return Principal(tenant_id=tenant.id, role=Role.admin, auth='system', email='scim-provisioner')
 
 
 def _scim_resource(user: User, membership: Membership | None) -> dict[str, Any]:
@@ -66,30 +68,67 @@ def _scim_resource(user: User, membership: Membership | None) -> dict[str, Any]:
 
 
 def _deprovision_user(db: Session, tenant_id: str, user: User) -> int:
-    user.is_active = False
+    membership = db.execute(select(Membership).where(Membership.tenant_id == tenant_id,
+                                                     Membership.user_id == user.id)).scalar_one_or_none()
+    if membership is not None and membership.role == Role.owner.value:
+        other_owners = db.execute(select(func.count()).select_from(Membership).where(
+            Membership.tenant_id == tenant_id, Membership.role == Role.owner.value, Membership.user_id != user.id)).scalar_one()
+        if not other_owners:
+            raise Conflict('Refusing to deprovision the last owner of the tenant')
+    elsewhere = db.execute(select(func.count()).select_from(Membership).where(
+        Membership.user_id == user.id, Membership.tenant_id != tenant_id)).scalar_one()
+    if not elsewhere:
+        user.is_active = False  # the account is global; only switch it off when no other tenant still relies on it
     user.sessions_invalidated_at = utcnow()
     keys = db.execute(select(ApiKey).where(ApiKey.tenant_id == tenant_id, ApiKey.created_by == user.id,
                                            ApiKey.revoked_at.is_(None))).scalars().all()
     now = utcnow()
     for k in keys:
         k.revoked_at = now
-    membership = db.execute(select(Membership).where(Membership.tenant_id == tenant_id,
-                                                     Membership.user_id == user.id)).scalar_one_or_none()
     if membership is not None:
         db.delete(membership)
     return len(keys)
 
 
+_FILTER_RE = re.compile(r'^\s*userName\s+eq\s+"([^"]{1,254})"\s*$', re.IGNORECASE)
+
+
+@router.get('/ServiceProviderConfig')
+def service_provider_config(principal: Principal = Depends(_scim_principal)):
+    off = {'supported': False}
+    return {'schemas': ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'], 'patch': {'supported': True},
+            'bulk': {**off, 'maxOperations': 0, 'maxPayloadSize': 0}, 'filter': {'supported': True, 'maxResults': SCIM_MAX_PAGE},
+            'changePassword': off, 'sort': off, 'etag': off,
+            'authenticationSchemes': [{'type': 'oauthbearertoken', 'name': 'Bearer token', 'description': 'SCIM provisioning token'}]}
+
+
 @router.get('/Users')
-def list_scim_users(db: Session = Depends(get_db), principal: Principal = Depends(_scim_principal)):
-    rows = db.execute(
-        select(User, Membership)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.tenant_id == principal.tenant_id)
-        .order_by(User.email.asc())
-    ).all()
+def list_scim_users(filter: str = Query(default='', max_length=400), startIndex: int = Query(default=1, ge=1),  # noqa: A002, N803
+                    count: int = Query(default=100, ge=0, le=SCIM_MAX_PAGE),
+                    db: Session = Depends(get_db), principal: Principal = Depends(_scim_principal)):
+    """Identity providers look a user up with `filter=userName eq "..."` before every create or update."""
+    stmt = (select(User, Membership).join(Membership, Membership.user_id == User.id)
+            .where(Membership.tenant_id == principal.tenant_id))
+    if filter:
+        match = _FILTER_RE.match(filter)
+        if not match:
+            raise BadRequest('Only the filter `userName eq "value"` is supported', code='invalidFilter')
+        stmt = stmt.where(User.email == match.group(1).strip().lower())
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = db.execute(stmt.order_by(User.email.asc()).offset(startIndex - 1).limit(count)).all()
     resources = [_scim_resource(u, m) for u, m in rows]
-    return {'schemas': [SCIM_SCHEMA_LIST], 'totalResults': len(resources), 'Resources': resources}
+    return {'schemas': [SCIM_SCHEMA_LIST], 'totalResults': total, 'startIndex': startIndex, 'itemsPerPage': len(resources),
+            'Resources': resources}
+
+
+@router.get('/Users/{user_id}')
+def get_scim_user(user_id: str, db: Session = Depends(get_db), principal: Principal = Depends(_scim_principal)):
+    membership = db.execute(select(Membership).where(Membership.tenant_id == principal.tenant_id,
+                                                     Membership.user_id == user_id)).scalar_one_or_none()
+    user = db.get(User, user_id) if membership else None
+    if user is None or membership is None:
+        raise NotFound('SCIM user not found')
+    return _scim_resource(user, membership)
 
 
 @router.post('/Users', status_code=201)
@@ -135,8 +174,13 @@ def patch_scim_user(user_id: str, body: ScimPatchBody, db: Session = Depends(get
         revoked = _deprovision_user(db, principal.tenant_id, user)
         record_audit(db, principal, 'scim.user_deprovisioned', user.id, {'email': user.email, 'revoked_api_keys': revoked})
         return _scim_resource(user, None)
-    if active is True:
+    if active is True and not user.is_active:
+        elsewhere = db.execute(select(func.count()).select_from(Membership).where(
+            Membership.user_id == user.id, Membership.tenant_id != principal.tenant_id)).scalar_one()
+        if elsewhere:
+            raise Conflict('This account was disabled outside this tenant and cannot be re-enabled from here')
         user.is_active = True
+        record_audit(db, principal, 'scim.user_reactivated', user.id, {'email': user.email})
     return _scim_resource(user, membership)
 
 

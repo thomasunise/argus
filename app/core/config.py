@@ -53,13 +53,20 @@ class Settings(BaseSettings):
     oidc_allowed_domains: str = ''  # comma separated email domains
     oidc_auto_provision: bool = True
     oidc_trust_email: bool = False  # link an existing local account to an SSO identity even when the IdP does not assert email_verified
+    # Approvals count only from accounts linked to the identity provider, so an administrator cannot staff the approver
+    # pool with local accounts they created themselves. Unset = on in production when an IdP is configured.
+    approvers_must_be_federated: bool | None = None
     oidc_required_acr: str = ''  # comma-separated required acr or amr claim values to satisfy MFA
     oidc_group_claim: str = 'groups'  # claim carrying directory group names
     oidc_group_role_map: str = ''  # 'group=tenant_slug:role,group2=role'
     saml_idp_entity_id: str = ''
     saml_idp_sso_url: str = ''
-    saml_signing_secret: str = ''
-    saml_idp_cert_pem: str = ''  # PEM X.509 IdP certificate for RSA-SHA256 SAML signature verification
+    saml_idp_cert_pem: str = ''  # the IdP's X.509 signing certificate (PEM); assertions must be signed by it
+    saml_group_attribute: str = 'groups'  # assertion attribute holding group names for OIDC_GROUP_ROLE_MAP
+    saml_required_authn_context: str = ''  # comma-separated AuthnContextClassRef values, one of which must be asserted
+    # Secret references a tenant configures (integrations, collectors, action credentials) must be namespaced to that
+    # tenant, so one tenant cannot point a webhook at another tenant's secret. Unset = on once a second tenant exists.
+    tenant_secret_isolation: bool | None = None
     scim_bearer_token: str = ''
     login_max_attempts: int = 8
     login_window_seconds: int = 300
@@ -317,6 +324,12 @@ class Settings(BaseSettings):
         return self.app_env == 'production'
 
     @property
+    def federated_approvers_required(self) -> bool:
+        if self.approvers_must_be_federated is not None:
+            return self.approvers_must_be_federated
+        return self.is_production and bool(self.oidc_issuer)
+
+    @property
     def sqlite(self) -> bool:
         return self.database_url.startswith('sqlite')
 
@@ -398,6 +411,13 @@ def _assert_exploit_family(settings: Settings) -> None:
             raise RuntimeError('STRIX_MAX_BUDGET_USD must be > 0 and STRIX_MAX_WALL_SECONDS >= 60')
 
 
+def _assert_identity_config(settings: Settings) -> None:
+    if settings.scim_bearer_token and len(settings.scim_bearer_token.strip()) < 32:
+        raise RuntimeError('SCIM_BEARER_TOKEN must be at least 32 random characters; it can create and disable accounts')
+    if settings.saml_idp_entity_id and not (settings.saml_idp_sso_url and settings.saml_idp_cert_pem):
+        raise RuntimeError('SAML needs SAML_IDP_SSO_URL and SAML_IDP_CERT_PEM alongside SAML_IDP_ENTITY_ID')
+
+
 def assert_safe_config(settings: Settings) -> None:
     try:
         parse_model_prices(settings.agent_model_prices)
@@ -422,6 +442,7 @@ def assert_safe_config(settings: Settings) -> None:
         raise RuntimeError('FIPS_MODE=true requires PASSWORD_HASH_SCHEME=pbkdf2 (scrypt is not a FIPS 140-3 approved KDF)')
     if settings.autonomy_hard_disabled and (settings.autoresponse_enabled or settings.autopentest_enabled or settings.pentest_enabled or settings.actions_auto_approve_low):
         raise RuntimeError('AUTONOMY_HARD_DISABLED=true forbids enabling autoresponse, autopentest, pentest or actions_auto_approve_low')
+    _assert_identity_config(settings)
     if settings.is_production:
         _assert_production(settings)
     _assert_exploit_family(settings)

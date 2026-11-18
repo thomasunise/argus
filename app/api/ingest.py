@@ -101,7 +101,7 @@ async def ingest_verified(source: str, request: Request, integration: str = '', 
     request.app.state.rate_limiter.check(f'ingest:webhook:{row.id}', settings.ingest_rate_limit_per_minute)
     body = await _read_body(request)
     config = loads(row.config_json, {})
-    secrets = resolve_secrets(loads(row.secret_refs_json, {}), settings)
+    secrets = resolve_secrets(loads(row.secret_refs_json, {}), settings, db, row.tenant_id)
     secret = next((secrets[f] for f in parser.secret_fields if secrets.get(f)), '')
     ctx = ParseContext(tenant_id=row.tenant_id, source=parser.name, headers=dict(request.headers), extra=config)
     if not secret or not parser.verify(ctx, body, secret):

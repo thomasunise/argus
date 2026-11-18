@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import Select
 
 from ..models import Base
+from . import crypto
 from .config import Settings
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,22 @@ def _rls_transaction_context(db: Session, transaction, connection) -> None:
     tenant_id = db.info.get('tenant_id') or _active_tenant.get()
     if tenant_id:
         connection.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {'tid': tenant_id})
+
+
+@event.listens_for(Session, 'before_flush')
+def _seal_under_tenant(db: Session, flush_context, instances) -> None:
+    # Encrypted columns written by this flush are sealed under the session's tenant (see models.base.EncryptedText).
+    crypto.flush_tenant.set(str(db.info.get('tenant_id') or _active_tenant.get() or ''))
+
+
+@event.listens_for(Session, 'after_flush_postexec')
+def _unseal_after_flush(db: Session, flush_context) -> None:
+    crypto.flush_tenant.set('')
+
+
+@event.listens_for(Session, 'after_rollback')
+def _unseal_after_rollback(db: Session) -> None:
+    crypto.flush_tenant.set('')
 
 
 def assert_restricted_runtime_role(engine: Engine) -> None:

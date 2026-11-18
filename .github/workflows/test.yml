@@ -142,6 +142,8 @@ jobs:
           python -m venv /tmp/lockcheck
           /tmp/lockcheck/bin/pip install -q --dry-run --no-deps --ignore-installed -r requirements.lock.txt >/dev/null
           /tmp/lockcheck/bin/pip install -q --dry-run --ignore-installed -r requirements.txt -c requirements.lock.txt >/dev/null
+      - name: Hash file matches the lock
+        run: python scripts/lock_hashes.py --check
       - name: bandit (medium+ severity, medium+ confidence, baseline of reviewed findings)
         run: bandit -r app -ll -ii -q -b bandit-baseline.json
       - name: pip-audit (locked runtime set shipped in the image)

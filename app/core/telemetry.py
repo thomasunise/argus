@@ -56,6 +56,7 @@ try:
     INGEST_EVENTS = Counter('argus_ingest_events_total', 'Ingested security events', ['status'])
     QUEUE_DELAY = Histogram('argus_queue_delay_seconds', 'Queue wait time from enqueue to execution start', ['kind'])
     COLLECTOR_RUNS = Counter('argus_collector_runs_total', 'Collector runs', ['collector', 'status'])
+    AUDIT_OUTBOX_BACKLOG = Gauge('argus_audit_outbox_backlog', 'Audit entries committed but not yet delivered to the external sink')
     METRICS_AVAILABLE = True
 except ImportError:  # pragma: no cover
     METRICS_AVAILABLE = False
@@ -77,7 +78,7 @@ class _Noop:
 
 if not METRICS_AVAILABLE:  # pragma: no cover
     HTTP_REQUESTS = HTTP_LATENCY = JOBS = AGENT_TOKENS = AGENT_RUNS = FINDINGS_OPEN = ACTIONS = DETECTIONS = _Noop()  # type: ignore[assignment]
-    INGEST_EVENTS = QUEUE_DELAY = COLLECTOR_RUNS = _Noop()  # type: ignore[assignment]
+    INGEST_EVENTS = QUEUE_DELAY = COLLECTOR_RUNS = AUDIT_OUTBOX_BACKLOG = _Noop()  # type: ignore[assignment]
 
 
 class BodySizeLimitMiddleware:
@@ -195,7 +196,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault(
             'Content-Security-Policy',
             "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
-            "connect-src 'self'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types argus-html default",
+            "connect-src 'self'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types argus-html argus-parse default",
         )
         if self.settings.cookie_secure:
             response.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains')

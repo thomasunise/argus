@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings
 from ..core.db import session_scope
-from ..core.security import resolve_secret
+from ..core.security import resolve_secret, tenant_secret_scope
 from ..models import Finding, Tenant, dumps, loads, utcnow
 from ..models.integrations import IntegrationConfig, WebhookDelivery
 from .outbound import Channel, DeliveryResult, OutboundEvent, registry
@@ -42,10 +42,13 @@ def payload_hash(topic: str, payload: dict) -> str:
     return hashlib.sha256(f'{topic}|{dumps(payload)}'.encode()).hexdigest()
 
 
-def resolve_secrets(refs: dict[str, Any], settings: Settings) -> dict[str, str]:
+def resolve_secrets(refs: dict[str, Any], settings: Settings, db: Session | None = None, tenant_id: str = '') -> dict[str, str]:
+    """Resolve an integration's secret references. They were written by a tenant administrator, so when a tenant is
+    given they are resolved inside that tenant's namespace (see security.tenant_secret_scope)."""
+    slug, enforce = tenant_secret_scope(db, settings, tenant_id) if tenant_id else ('', False)
     out: dict[str, str] = {}
     for key, ref in (refs or {}).items():
-        value = resolve_secret(str(ref), settings) if isinstance(ref, str) else ''
+        value = resolve_secret(str(ref), settings, tenant_slug=slug, enforce_tenant_prefix=enforce) if isinstance(ref, str) else ''
         if value:
             out[key] = value
     return out
@@ -152,7 +155,7 @@ def prepare_delivery(db: Session, delivery: WebhookDelivery, integration: Integr
     if not registry.has(integration.kind):
         return Prepared(None, None, {}, {}, f'unknown channel kind {integration.kind}')
     event = build_event(db, integration.tenant_id, delivery.topic, loads(delivery.payload_json, {}), delivery.id, settings)
-    return Prepared(registry.get(integration.kind), event, loads(integration.config_json, {}), resolve_secrets(loads(integration.secret_refs_json, {}), settings))
+    return Prepared(registry.get(integration.kind), event, loads(integration.config_json, {}), resolve_secrets(loads(integration.secret_refs_json, {}), settings, db, integration.tenant_id))
 
 
 async def invoke(prepared: Prepared) -> DeliveryResult:

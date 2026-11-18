@@ -1,21 +1,37 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import ipaddress
+import json
+import re
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
-from defusedxml import ElementTree as DefusedET
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
+from onelogin.saml2.auth import OneLogin_Saml2_Auth
+from onelogin.saml2.settings import OneLogin_Saml2_Settings
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from webauthn import (
+    base64url_to_bytes,
+    generate_authentication_options,
+    generate_registration_options,
+    options_to_json,
+    verify_authentication_response,
+    verify_registration_response,
+)
+from webauthn.helpers import bytes_to_base64url
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    PublicKeyCredentialDescriptor,
+    UserVerificationRequirement,
+)
 
 from ..core.audit import record_audit
 from ..core.config import Settings
@@ -35,7 +51,7 @@ from ..core.security import (
     totp_provisioning_uri,
     verify_password,
 )
-from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, WebAuthnCredential, loads, utcnow
+from ..models import ApiKey, Membership, OidcIdentity, Tenant, User, WebAuthnCredential, utcnow
 from .deps import current_principal, get_db, get_settings, require
 
 router = APIRouter(prefix='/api/v1/auth', tags=['auth'])
@@ -61,20 +77,23 @@ class ChangePasswordBody(BaseModel):
     new_password: str = Field(min_length=14, max_length=512)
 
 
+WEBAUTHN_CEREMONY_SECONDS = 300
+EMAIL_RE = re.compile(r'^[^@\s]{1,64}@[^@\s]{1,190}$')
+
+
+class WebAuthnRegisterBeginBody(BaseModel):
+    enrollment_code: str = Field(default='', max_length=128)
+
+
 class WebAuthnRegisterCompleteBody(BaseModel):
-    credential_id: str = Field(min_length=1, max_length=256)
-    public_key: str = Field(min_length=1, max_length=4096)
-    challenge: str = Field(min_length=1, max_length=256)
+    """`credential` is the browser's PublicKeyCredential from navigator.credentials.create(), serialized as JSON."""
+    credential: dict[str, Any]
     name: str = Field(default='Security Key', max_length=120)
 
 
 class WebAuthnAuthCompleteBody(BaseModel):
-    credential_id: str = Field(min_length=1, max_length=256)
-    challenge: str = Field(min_length=1, max_length=256)
-    signature: str = Field(min_length=1, max_length=1024)
-    sign_count: int = Field(default=1, ge=0)
-    authenticator_data: str = Field(default='', max_length=2048)
-    client_data_json: str = Field(default='', max_length=4096)
+    """`credential` is the browser's PublicKeyCredential from navigator.credentials.get(), serialized as JSON."""
+    credential: dict[str, Any]
 
 
 class ApiKeyBody(BaseModel):
@@ -201,7 +220,7 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db), sett
             db.commit()
             raise Unauthorized('TOTP code required or invalid')
         user.totp_last_counter = counter
-    elif settings.totp_required or (settings.is_production and settings.oidc_issuer):
+    elif settings.totp_required or (settings.is_production and settings.oidc_issuer) or _webauthn_credentials(db, user.id):
         mfa_ok = False
     _clear_failures(request, account_key)
     user.last_login_at = utcnow()
@@ -370,13 +389,11 @@ def totp_enroll(request: Request, body: TotpEnrollBody | None = None, db: Sessio
     user = _session_user(request, db, settings, principal)
     if user.totp_enabled:
         raise Conflict('TOTP already enabled')
-    if settings.totp_require_enrollment_code or user.totp_enrollment_token_hash:
-        code = (body.enrollment_code if body else '') or ''
-        expected_hash = user.totp_enrollment_token_hash
-        given_hash = hashlib.sha256(code.encode()).hexdigest() if code else ''
-        if not expected_hash or not given_hash or not hmac.compare_digest(expected_hash, given_hash):
-            raise Forbidden('A valid admin-issued TOTP enrollment code is required')
-        user.totp_enrollment_token_hash = ''
+    if _webauthn_credentials(db, user.id):
+        if not _server_session_get(request, 'mfa'):
+            raise Forbidden('Complete multi-factor sign-in before adding an authenticator')
+    else:
+        _consume_enrollment_code(user, (body.enrollment_code if body else '') or '', settings.totp_require_enrollment_code)
     secret = totp_generate_secret()
     _server_session_set(request, pending_totp_secret=secret)
     return {'secret': secret, 'uri': totp_provisioning_uri(secret, user.email, settings.app_name)}
@@ -419,110 +436,155 @@ def totp_confirm(body: TotpVerifyBody, request: Request, db: Session = Depends(g
 
 
 # ---------------------------------------------------------------- WebAuthn (passkeys / security keys)
+#
+# The ceremonies are verified by the `webauthn` library (py_webauthn): attestation parsing, origin and RP ID binding,
+# user verification, signature checks and the signature counter. Nothing here trusts a value the browser could invent.
+
+
+def _webauthn_rp(settings: Settings) -> tuple[str, str]:
+    """(rp_id, origin) from BASE_URL. WebAuthn binds every credential to this origin, which is what makes it
+    phishing-resistant: an assertion produced for another site's origin never verifies here."""
+    parsed = urlparse(settings.base_url)
+    origin = f'{parsed.scheme}://{parsed.netloc}'
+    return (parsed.hostname or 'localhost'), origin
+
+
+def _webauthn_credentials(db: Session, user_id: str) -> list[WebAuthnCredential]:
+    return list(db.execute(select(WebAuthnCredential).where(WebAuthnCredential.user_id == user_id)).scalars().all())
+
+
+def _consume_enrollment_code(user: User, code: str, required: bool) -> None:
+    """First-factor enrolment gate shared by TOTP and WebAuthn: when an administrator issued a one-time code (or the
+    deployment requires one), a password alone is not enough to attach an authenticator to the account."""
+    if not (required or user.totp_enrollment_token_hash):
+        return
+    expected = user.totp_enrollment_token_hash or ''
+    given = hashlib.sha256(code.encode()).hexdigest() if code else ''
+    if not expected or not given or not hmac.compare_digest(expected, given):
+        raise Forbidden('Enrollment requires a valid one-time code issued by an administrator')
+    user.totp_enrollment_token_hash = ''
 
 
 @router.post('/webauthn/register/begin')
-def webauthn_register_begin(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+def webauthn_register_begin(request: Request, body: WebAuthnRegisterBeginBody | None = None, db: Session = Depends(get_db),
+                            settings: Settings = Depends(get_settings),
                             principal: Principal | None = Depends(current_principal)):
     user = _session_user(request, db, settings, principal)
-    challenge = secrets.token_urlsafe(32)
-    _server_session_set(request, webauthn_register_challenge=challenge)
-    return {'challenge': challenge, 'rp': {'name': settings.app_name, 'id': settings.base_url.split('://')[-1].split(':')[0]},
-            'user': {'id': user.id, 'name': user.email, 'displayName': user.display_name or user.email}}
-
-
-def _b64url_decode(val: str) -> bytes:
-    padded = val.strip() + '=' * (-len(val.strip()) % 4)
-    return base64.urlsafe_b64decode(padded)
-
-
-def _verify_webauthn_assertion(cred: WebAuthnCredential, body: WebAuthnAuthCompleteBody) -> bool:
-    if cred.public_key.lstrip().startswith('-----BEGIN PUBLIC KEY-----'):
-        if not body.authenticator_data or not body.client_data_json:
-            return False
-        try:
-            from cryptography.exceptions import InvalidSignature
-            from cryptography.hazmat.primitives import hashes, serialization
-            from cryptography.hazmat.primitives.asymmetric import ec
-
-            auth_data = _b64url_decode(body.authenticator_data)
-            client_data_bytes = _b64url_decode(body.client_data_json)
-            sig_bytes = _b64url_decode(body.signature)
-            client_data = loads(client_data_bytes.decode('utf-8', errors='replace'), {})
-            if not isinstance(client_data, dict) or client_data.get('type') != 'webauthn.get':
-                return False
-            if str(client_data.get('challenge') or '') != body.challenge:
-                return False
-            if len(auth_data) < 37 or (auth_data[32] & 0x01) == 0:  # require UP (user present) bit
-                return False
-            pub = serialization.load_pem_public_key(cred.public_key.encode('utf-8'))
-            if not isinstance(pub, ec.EllipticCurvePublicKey):
-                return False
-            signed_payload = auth_data + hashlib.sha256(client_data_bytes).digest()
-            pub.verify(sig_bytes, signed_payload, ec.ECDSA(hashes.SHA256()))
-            return True
-        except (ValueError, TypeError, InvalidSignature):
-            return False
-    expected_sig = hmac.new(cred.public_key.encode(), f'{body.challenge}:{body.sign_count}'.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected_sig, body.signature)
+    existing = _webauthn_credentials(db, user.id)
+    has_factor = bool(user.totp_enabled or existing)
+    if has_factor and not _server_session_get(request, 'mfa'):
+        # Adding an authenticator is itself a privileged act: it needs the factor the account already has.
+        raise Forbidden('Complete multi-factor sign-in before adding an authenticator')
+    if not has_factor:
+        _consume_enrollment_code(user, (body.enrollment_code if body else '') or '', settings.totp_require_enrollment_code)
+    rp_id, _ = _webauthn_rp(settings)
+    options = generate_registration_options(
+        rp_id=rp_id, rp_name='Argus', user_name=user.email, user_id=user.id.encode(),
+        user_display_name=user.display_name or user.email,
+        exclude_credentials=[PublicKeyCredentialDescriptor(id=base64url_to_bytes(c.credential_id)) for c in existing],
+        authenticator_selection=AuthenticatorSelectionCriteria(user_verification=UserVerificationRequirement.REQUIRED),
+    )
+    _server_session_set(request, pending_webauthn_reg=bytes_to_base64url(options.challenge), pending_webauthn_reg_at=time.time())
+    return json.loads(options_to_json(options))
 
 
 @router.post('/webauthn/register/complete', status_code=201)
 def webauthn_register_complete(body: WebAuthnRegisterCompleteBody, request: Request, db: Session = Depends(get_db),
-                               settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+                               settings: Settings = Depends(get_settings),
+                               principal: Principal | None = Depends(current_principal)):
     user = _session_user(request, db, settings, principal)
-    expected = _server_session_pop(request, 'webauthn_register_challenge', '')
-    if not expected or not hmac.compare_digest(expected, body.challenge):
-        raise Unauthorized('Invalid or expired WebAuthn registration challenge')
-    if db.execute(select(WebAuthnCredential).where(WebAuthnCredential.credential_id == body.credential_id)).scalar_one_or_none():
-        raise Conflict('WebAuthn credential already registered')
-    cred = WebAuthnCredential(user_id=user.id, credential_id=body.credential_id, public_key=body.public_key, name=body.name)
+    challenge = _server_session_pop(request, 'pending_webauthn_reg', None)
+    started = _server_session_pop(request, 'pending_webauthn_reg_at', 0) or 0
+    if not challenge or time.time() - float(started) > WEBAUTHN_CEREMONY_SECONDS:
+        raise Unauthorized('No registration in progress; start again')
+    existing = _webauthn_credentials(db, user.id)
+    had_factor = bool(user.totp_enabled or existing)
+    if had_factor and not _server_session_get(request, 'mfa'):
+        raise Forbidden('Complete multi-factor sign-in before adding an authenticator')
+    rp_id, origin = _webauthn_rp(settings)
+    try:
+        verified = verify_registration_response(
+            credential=body.credential, expected_challenge=base64url_to_bytes(str(challenge)),
+            expected_rp_id=rp_id, expected_origin=origin, require_user_verification=True)
+    except Exception as exc:  # noqa: BLE001 - the library raises several types; every one of them means "not verified"
+        raise Unauthorized('WebAuthn registration could not be verified') from exc
+    credential_id = bytes_to_base64url(verified.credential_id)
+    if db.execute(select(WebAuthnCredential.id).where(WebAuthnCredential.credential_id == credential_id)).first():
+        raise Conflict('Credential already registered')
+    cred = WebAuthnCredential(user_id=user.id, credential_id=credential_id,
+                              public_key=bytes_to_base64url(verified.credential_public_key),
+                              sign_count=int(verified.sign_count), name=body.name.strip() or 'Security Key')
     db.add(cred)
     db.flush()
     tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
-    if tenant_id:
-        set_tenant_context(db, tenant_id)
-        record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
-                     'auth.webauthn_registered', cred.id, {'name': cred.name})
-    return {'id': cred.id, 'credential_id': cred.credential_id, 'name': cred.name, 'created_at': cred.created_at}
+    csrf = str(_server_session_get(request, 'csrf') or '')
+    if not had_factor:
+        # First authenticator on the account: every other session predates it, so end them and re-issue this one
+        # as MFA-satisfied (the user just proved possession and user verification).
+        prev_issued = _server_session_get(request, 'issued_at')
+        inv_ts = max(time.time(), (float(prev_issued) if isinstance(prev_issued, (int, float)) else 0.0) + 1e-6)
+        user.sessions_invalidated_at = datetime.fromtimestamp(inv_ts, tz=UTC)
+        old_sid = str(request.session.get('sid') or '')
+        store = getattr(request.app.state, 'session_store', None)
+        if old_sid and store is not None:
+            store.revoke(old_sid)
+        csrf = _establish_session(request, user, tenant_id, True, issued_at=max(time.time(), inv_ts + 0.001))['csrf']
+    set_tenant_context(db, tenant_id)
+    record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
+                 'auth.webauthn_registered', user.id, {'credential': credential_id[:16], 'name': cred.name})
+    return {'ok': True, 'id': cred.id, 'credential_id': credential_id, 'csrf': csrf}
 
 
 @router.post('/webauthn/authenticate/begin')
 def webauthn_auth_begin(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
                         principal: Principal | None = Depends(current_principal)):
     user = _session_user(request, db, settings, principal)
-    creds = db.execute(select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)).scalars().all()
+    creds = _webauthn_credentials(db, user.id)
     if not creds:
-        raise NotFound('No WebAuthn credentials registered for this user')
-    challenge = secrets.token_urlsafe(32)
-    _server_session_set(request, webauthn_auth_challenge=challenge)
-    return {'challenge': challenge, 'allowCredentials': [{'type': 'public-key', 'id': c.credential_id} for c in creds]}
+        raise Conflict('No WebAuthn credentials registered')
+    rp_id, _ = _webauthn_rp(settings)
+    options = generate_authentication_options(
+        rp_id=rp_id, user_verification=UserVerificationRequirement.REQUIRED,
+        allow_credentials=[PublicKeyCredentialDescriptor(id=base64url_to_bytes(c.credential_id)) for c in creds])
+    _server_session_set(request, pending_webauthn_auth=bytes_to_base64url(options.challenge), pending_webauthn_auth_at=time.time())
+    return json.loads(options_to_json(options))
 
 
 @router.post('/webauthn/authenticate/complete')
 def webauthn_auth_complete(body: WebAuthnAuthCompleteBody, request: Request, db: Session = Depends(get_db),
-                           settings: Settings = Depends(get_settings), principal: Principal | None = Depends(current_principal)):
+                           settings: Settings = Depends(get_settings),
+                           principal: Principal | None = Depends(current_principal)):
     user = _session_user(request, db, settings, principal)
-    expected_challenge = _server_session_pop(request, 'webauthn_auth_challenge', '')
-    if not expected_challenge or not hmac.compare_digest(expected_challenge, body.challenge):
-        raise Unauthorized('Invalid or expired WebAuthn authentication challenge')
+    key = f'webauthn:{user.id}'
+    _throttle(request, settings, key)
+    challenge = _server_session_pop(request, 'pending_webauthn_auth', None)
+    started = _server_session_pop(request, 'pending_webauthn_auth_at', 0) or 0
+    if not challenge or time.time() - float(started) > WEBAUTHN_CEREMONY_SECONDS:
+        raise Unauthorized('No authentication in progress; start again')
+    raw_id = str(body.credential.get('id') or '')
     cred = db.execute(select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id,
-                                                       WebAuthnCredential.credential_id == body.credential_id)).scalar_one_or_none()
-    if cred is None:
-        raise Unauthorized('Unknown WebAuthn credential')
-    if not _verify_webauthn_assertion(cred, body):
-        raise Unauthorized('Invalid WebAuthn assertion signature')
-    if body.sign_count <= cred.sign_count:
-        raise Unauthorized('WebAuthn clone/replay detected: sign_count did not advance')
-    cred.sign_count = body.sign_count
+                                                       WebAuthnCredential.credential_id == raw_id)).scalar_one_or_none()
+    rp_id, origin = _webauthn_rp(settings)
+    try:
+        if cred is None:
+            raise ValueError('unknown credential')
+        verified = verify_authentication_response(
+            credential=body.credential, expected_challenge=base64url_to_bytes(str(challenge)),
+            expected_rp_id=rp_id, expected_origin=origin, credential_public_key=base64url_to_bytes(cred.public_key),
+            credential_current_sign_count=int(cred.sign_count or 0), require_user_verification=True)
+    except Exception as exc:  # noqa: BLE001 - see registration: any library error means "not verified"
+        _record_failure(request, key)
+        raise Unauthorized('WebAuthn assertion could not be verified') from exc
+    _clear_failures(request, key)
+    cred.sign_count = int(verified.new_sign_count)
     cred.last_used_at = utcnow()
-    _server_session_set(request, mfa=True)
+    new_csrf = str(_server_session_get(request, 'csrf') or secrets.token_urlsafe(32))
+    _server_session_set(request, mfa=True, csrf=new_csrf)
     tenant_id = str(_server_session_get(request, 'tenant_id', '') or (principal.tenant_id if principal else ''))
-    if tenant_id:
-        set_tenant_context(db, tenant_id)
-        record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
-                     'auth.webauthn_verified', cred.id)
-    return {'ok': True, 'mfa': True, 'csrf': _server_session_get(request, 'csrf')}
+    set_tenant_context(db, tenant_id)
+    record_audit(db, Principal(tenant_id=tenant_id, role=Role.viewer, user_id=user.id, email=user.email),
+                 'auth.webauthn_verified', user.id, {'credential': cred.credential_id[:16]})
+    return {'ok': True, 'csrf': new_csrf}
 
 
 # ---------------------------------------------------------------- OIDC & SAML
@@ -597,7 +659,7 @@ async def oidc_callback(request: Request, code: str = '', state: str = '', db: S
     if allowed and email.split('@')[-1] not in allowed:
         raise Forbidden('Email domain is not allowed')
     mfa_ok = _oidc_mfa_satisfied(claims, settings)
-    if settings.oidc_required_acr and settings.totp_required and not mfa_ok:
+    if settings.oidc_required_acr and not mfa_ok:
         raise Forbidden('OIDC token does not satisfy OIDC_REQUIRED_ACR')
     identity = db.execute(select(OidcIdentity).where(OidcIdentity.issuer == doc.issuer, OidcIdentity.subject == claims['sub'])).scalar_one_or_none()
     user = db.get(User, identity.user_id) if identity else None
@@ -632,127 +694,132 @@ async def oidc_callback(request: Request, code: str = '', state: str = '', db: S
     return RedirectResponse('/', status_code=302)
 
 
+# SAML 2.0 is handled by python3-saml (the OneLogin toolkit): XML signature verification against the pinned IdP
+# certificate, Destination/Recipient/Audience/time-window checks and InResponseTo matching all happen in the library,
+# in strict mode. Argus adds only what the toolkit leaves to the application: one-time AuthnRequest IDs (which also
+# makes a captured response unreplayable) and the mapping from the verified assertion to an Argus account.
+
+_SAML_PENDING: dict[str, tuple[str, float]] = {}  # fallback when no shared session store is configured
+SAML_REQUEST_TTL = 600
+
+
+def _saml_configured(settings: Settings) -> bool:
+    return bool(settings.saml_idp_entity_id and settings.saml_idp_sso_url and settings.saml_idp_cert_pem)
+
+
+def _saml_toolkit_settings(settings: Settings) -> dict[str, Any]:
+    base = settings.base_url.rstrip('/')
+    return {
+        'strict': True,
+        'debug': False,
+        'sp': {
+            'entityId': f'{base}/api/v1/auth/saml/metadata',
+            'assertionConsumerService': {'url': f'{base}/api/v1/auth/saml/acs',
+                                         'binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'},
+            'NameIDFormat': 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+        },
+        'idp': {
+            'entityId': settings.saml_idp_entity_id,
+            'singleSignOnService': {'url': settings.saml_idp_sso_url,
+                                    'binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect'},
+            'x509cert': settings.saml_idp_cert_pem,
+        },
+        'security': {
+            'wantAssertionsSigned': True,      # an unsigned assertion is never accepted
+            'wantNameId': True,
+            'wantAttributeStatement': False,   # an IdP that sends no attributes is still a valid sign-in
+            'rejectDeprecatedAlgorithm': True,  # no SHA-1 signatures or digests
+            'requestedAuthnContext': False,
+            'allowRepeatAttributeName': False,
+        },
+    }
+
+
+def _saml_auth(settings: Settings, request: Request, post: dict[str, str] | None = None) -> OneLogin_Saml2_Auth:
+    # Host and scheme come from BASE_URL, never from request headers, so Destination and Recipient are checked
+    # against the address the operator configured rather than one the caller supplied.
+    parsed = urlparse(settings.base_url)
+    req = {'https': 'on' if parsed.scheme == 'https' else 'off', 'http_host': parsed.netloc,
+           'script_name': request.url.path, 'get_data': dict(request.query_params), 'post_data': post or {}}
+    return OneLogin_Saml2_Auth(req, old_settings=_saml_toolkit_settings(settings))
+
+
+def _saml_remember_request(request: Request, request_id: str) -> str:
+    """Record an issued AuthnRequest ID and return the RelayState handle that finds it again. The IdP posts the
+    response cross-site, where the session cookie is not sent, so the handle travels in RelayState instead."""
+    store = getattr(request.app.state, 'session_store', None)
+    if store is not None:
+        return str(store.create({'saml_request_id': request_id}, ttl=SAML_REQUEST_TTL))
+    now = time.time()
+    for key in [k for k, (_, exp) in _SAML_PENDING.items() if exp <= now]:
+        _SAML_PENDING.pop(key, None)
+    handle = secrets.token_urlsafe(24)
+    _SAML_PENDING[handle] = (request_id, now + SAML_REQUEST_TTL)
+    return handle
+
+
+def _saml_take_request(request: Request, handle: str) -> str:
+    """One-time lookup: the request ID is consumed, so a response can be accepted at most once."""
+    if not handle:
+        return ''
+    store = getattr(request.app.state, 'session_store', None)
+    if store is not None:
+        data = store.get(handle) or {}
+        store.revoke(handle)
+        return str(data.get('saml_request_id') or '')
+    request_id, exp = _SAML_PENDING.pop(handle, ('', 0.0))
+    return request_id if exp > time.time() else ''
+
+
 @router.get('/saml/metadata')
 def saml_metadata(settings: Settings = Depends(get_settings)):
-    if not settings.saml_idp_entity_id:
+    if not _saml_configured(settings):
         raise NotFound('SAML is not configured')
-    entity_id = settings.base_url.rstrip('/') + '/api/v1/auth/saml/metadata'
-    acs_url = settings.base_url.rstrip('/') + '/api/v1/auth/saml/acs'
-    xml = (
-        f'<?xml version="1.0" encoding="UTF-8"?>'
-        f'<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="{entity_id}">'
-        f'<SPSSODescriptor AuthnRequestsSigned="true" WantAssertionsSigned="true" '
-        f'protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
-        f'<AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" '
-        f'Location="{acs_url}" index="0" isDefault="true"/>'
-        f'</SPSSODescriptor></EntityDescriptor>'
-    )
-    return Response(content=xml, media_type='application/samlmetadata+xml')
+    sp = OneLogin_Saml2_Settings(_saml_toolkit_settings(settings), sp_validation_only=True)
+    return Response(content=sp.get_sp_metadata(), media_type='application/samlmetadata+xml')
 
 
-_SAML_SEEN_IDS: dict[str, float] = {}
-
-
-def _parse_saml_ts(raw: str) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(raw.strip().replace('Z', '+00:00'))
-        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
-    except ValueError:
-        return None
-
-
-def _verify_saml_signature(saml_b64: str, signature: str, settings: Settings) -> bool:
-    cert_pem = getattr(settings, 'saml_idp_cert_pem', '') or ''
-    if cert_pem.strip():
-        try:
-            from cryptography import x509
-            from cryptography.exceptions import InvalidSignature
-            from cryptography.hazmat.primitives import hashes
-            from cryptography.hazmat.primitives.asymmetric import padding, rsa
-
-            cert = x509.load_pem_x509_certificate(cert_pem.encode('utf-8'))
-            pub = cert.public_key()
-            if not isinstance(pub, rsa.RSAPublicKey):
-                return False
-            try:
-                sig_bytes = bytes.fromhex(signature)
-            except ValueError:
-                sig_bytes = base64.b64decode(signature)
-            pub.verify(sig_bytes, saml_b64.encode('utf-8'), padding.PKCS1v15(), hashes.SHA256())
-            return True
-        except (ValueError, TypeError, InvalidSignature):
-            return False
-    if settings.saml_signing_secret:
-        expected_sig = hmac.new(settings.saml_signing_secret.encode(), saml_b64.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected_sig, signature)
-    return False
-
-
-def _extract_saml_form_or_json(raw_body: str) -> tuple[str, str]:
-    if raw_body.lstrip().startswith('{'):
-        data = loads(raw_body, {})
-        if isinstance(data, dict):
-            return str(data.get('SAMLResponse') or ''), str(data.get('Signature') or '')
-        return '', ''
-    parsed = parse_qs(raw_body)
-    return (parsed.get('SAMLResponse') or [''])[0], (parsed.get('Signature') or [''])[0]
-
-
-def _validate_saml_conditions_and_replay(root: Any, settings: Settings) -> None:
-    now_dt = utcnow()
-    skew = timedelta(seconds=60)
-    acs_url = settings.base_url.rstrip('/') + '/api/v1/auth/saml/acs'
-    for el in root.iter():
-        if el.tag.endswith('Conditions'):
-            nb = _parse_saml_ts(el.attrib.get('NotBefore', ''))
-            noa = _parse_saml_ts(el.attrib.get('NotOnOrAfter', ''))
-            if (nb and now_dt < nb - skew) or (noa and now_dt >= noa + skew):
-                raise Unauthorized('SAML assertion is expired or not yet valid')
-        elif el.tag.endswith('SubjectConfirmationData'):
-            noa = _parse_saml_ts(el.attrib.get('NotOnOrAfter', ''))
-            recipient = el.attrib.get('Recipient', '').strip()
-            if noa and now_dt >= noa + skew:
-                raise Unauthorized('SAML SubjectConfirmationData has expired')
-            if recipient and recipient != acs_url:
-                raise Unauthorized('SAML Recipient mismatch')
-    assertion_id = next((el.attrib.get('ID', '').strip() for el in root.iter() if el.tag.endswith('Assertion') and el.attrib.get('ID')), '') or root.attrib.get('ID', '').strip()
-    if assertion_id:
-        now_ts = time.time()
-        if len(_SAML_SEEN_IDS) > 4096:
-            for k in [k for k, exp in _SAML_SEEN_IDS.items() if exp <= now_ts]:
-                _SAML_SEEN_IDS.pop(k, None)
-        if _SAML_SEEN_IDS.get(assertion_id, 0.0) > now_ts:
-            raise Unauthorized('SAML assertion replay detected')
-        _SAML_SEEN_IDS[assertion_id] = now_ts + 3600.0
+@router.get('/saml/login')
+def saml_login(request: Request, settings: Settings = Depends(get_settings)):
+    if not _saml_configured(settings):
+        raise NotFound('SAML is not configured')
+    auth = _saml_auth(settings, request)
+    # The toolkit builds the redirect; RelayState is replaced with our one-time handle for the request it just made.
+    url = auth.login(return_to='pending')
+    handle = _saml_remember_request(request, auth.get_last_request_id())
+    return RedirectResponse(url.replace('RelayState=pending', f'RelayState={handle}'), status_code=302)
 
 
 @router.post('/saml/acs')
 async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
-    if not settings.saml_idp_entity_id or not (settings.saml_signing_secret or getattr(settings, 'saml_idp_cert_pem', '')):
+    if not _saml_configured(settings):
         raise NotFound('SAML is not configured')
-    raw_body = (await request.body()).decode('utf-8', errors='replace')
-    SAMLResponse, Signature = _extract_saml_form_or_json(raw_body)
-    if not SAMLResponse or not Signature:
-        raise Unauthorized('Missing SAMLResponse or Signature')
-    if not _verify_saml_signature(SAMLResponse, Signature, settings):
-        raise Unauthorized('Invalid SAML assertion signature')
+    form = parse_qs((await request.body()).decode('utf-8', 'replace'))
+    post = {k: v[0] for k, v in form.items() if v}
+    request_id = _saml_take_request(request, post.get('RelayState', ''))
+    if not post.get('SAMLResponse') or not request_id:
+        # No matching sign-in started here: IdP-initiated and replayed responses both end up on this branch.
+        raise Unauthorized('SAML response does not match a sign-in started from Argus')
+    auth = _saml_auth(settings, request, post)
     try:
-        raw_xml = base64.b64decode(SAMLResponse)
-        root = DefusedET.fromstring(raw_xml)
-    except (ValueError, DefusedET.ParseError) as exc:
-        raise Unauthorized('Malformed SAML XML') from exc
-    issuer = next((el.text.strip() for el in root.iter() if el.tag.endswith('Issuer') and el.text), '')
-    if issuer != settings.saml_idp_entity_id:
-        raise Unauthorized('SAML Issuer mismatch')
-    _validate_saml_conditions_and_replay(root, settings)
-    email = next((el.text.strip().lower() for el in root.iter() if el.tag.endswith('NameID') and el.text), '')
-    if not email:
-        raise Unauthorized('SAML assertion missing NameID email')
-    groups = [el.text.strip() for el in root.iter() if el.tag.endswith('AttributeValue') and el.text]
-    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if not user:
+        auth.process_response(request_id=request_id)
+    except Exception as exc:  # noqa: BLE001 - malformed input surfaces as several toolkit and XML error types
+        raise Unauthorized('SAML response could not be verified') from exc
+    if auth.get_errors() or not auth.is_authenticated():
+        raise Unauthorized('SAML response could not be verified')
+    required_ctx = {x.strip() for x in (settings.saml_required_authn_context or '').split(',') if x.strip()}
+    if required_ctx and not (required_ctx & set(auth.get_last_authn_contexts() or [])):
+        raise Forbidden('The identity provider did not report the required authentication strength')
+    subject = str(auth.get_nameid() or '').strip()
+    email = subject.lower()
+    if not EMAIL_RE.match(email):
+        raise Unauthorized('SAML assertion did not carry an email NameID')
+    issuer = settings.saml_idp_entity_id
+    identity = db.execute(select(OidcIdentity).where(OidcIdentity.issuer == issuer, OidcIdentity.subject == subject)).scalar_one_or_none()
+    user = db.get(User, identity.user_id) if identity else None
+    if user is None:
+        user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if user is None:
         if not settings.oidc_auto_provision:
             raise Forbidden('User is not provisioned')
         user = User(email=email, display_name=email.split('@')[0])
@@ -761,16 +828,22 @@ async def saml_acs(request: Request, db: Session = Depends(get_db), settings: Se
         tenant = db.execute(select(Tenant).where(Tenant.slug == settings.default_tenant_slug)).scalar_one()
         db.add(Membership(user_id=user.id, tenant_id=tenant.id, role=settings.oidc_default_role))
         db.flush()
+    if not user.is_active:
+        raise Forbidden('Account is disabled')
+    if identity is None:
+        db.add(OidcIdentity(user_id=user.id, issuer=issuer, subject=subject))
+    # Only the configured group attribute is read; other attribute values never grant a role.
+    groups = [str(g) for g in (auth.get_attributes() or {}).get(settings.saml_group_attribute, []) if g]
     _apply_idp_groups(db, user, groups, settings)
     memberships = _memberships(db, user.id)
     if not memberships:
         raise Forbidden('User has no tenant membership')
     user.last_login_at = utcnow()
-    payload = _establish_session(request, user, memberships[0][1].id, True)
+    _establish_session(request, user, memberships[0][1].id, True)
     set_tenant_context(db, memberships[0][1].id)
     record_audit(db, Principal(tenant_id=memberships[0][1].id, role=Role(memberships[0][0].role), user_id=user.id, email=user.email),
                  'auth.login', user.id, {'method': 'saml', 'issuer': issuer})
-    return payload
+    return RedirectResponse('/', status_code=303)
 
 
 # ---------------------------------------------------------------- API keys

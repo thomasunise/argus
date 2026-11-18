@@ -261,7 +261,7 @@ async def test_integration(integration_id: str, request: Request, db: Session = 
     row = _get(db, principal, integration_id)
     direction, impl = _kind(row.kind)
     if direction == 'inbound':
-        secrets = resolve_secrets(loads(row.secret_refs_json, {}), settings)
+        secrets = resolve_secrets(loads(row.secret_refs_json, {}), settings, db, row.tenant_id)
         missing = [f for f in loads(row.secret_refs_json, {}) if f not in secrets]
         record_audit(db, principal, 'integrations.test', row.id, {'kind': row.kind, 'direction': direction, 'secrets_resolved': not missing})
         return {'ok': not missing, 'direction': 'inbound', 'kind': row.kind, 'secrets_resolved': sorted(secrets), 'secrets_missing': missing,

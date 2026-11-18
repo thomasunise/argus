@@ -17,9 +17,11 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
+from ..core import audit as audit_log
 from ..core.audit import record_audit
-from ..core.db import session_scope
+from ..core.db import session_scope, set_tenant_context
 from ..core.rbac import system_principal
+from ..core.telemetry import AUDIT_OUTBOX_BACKLOG
 from ..models import Tenant, dumps, loads, utcnow
 from ..models.ops import BackupRecord
 from . import retention
@@ -102,6 +104,25 @@ def run_retention(db_factory, settings, tenant_id: str, *, actor=None, record_em
     return {'deleted': deleted, 'rows': sum(deleted.values())}
 
 
+_AUDIT_BACKLOG: dict[str, int] = {}  # per tenant, as last seen by this worker
+
+
+def maintain_audit(db_factory, tenant_id: str, *, anchor: bool = False) -> dict:
+    """Retry undelivered audit records for one tenant and optionally anchor its chain head in the external sink.
+    The backlog gauge is what an operator alerts on: it should sit at zero."""
+    with session_scope(db_factory) as db:
+        set_tenant_context(db, tenant_id)
+        result: dict = dict(audit_log.flush_outbox_backlog(db, tenant_id=tenant_id, limit=1000))
+        if anchor:
+            head = audit_log.write_chain_head(db, tenant_id)
+            result['anchored_entry_id'] = head['head_entry_id']
+    _AUDIT_BACKLOG[tenant_id] = int(result.get('backlog') or 0)
+    AUDIT_OUTBOX_BACKLOG.set(sum(_AUDIT_BACKLOG.values()))
+    if result.get('failed'):
+        log.error('audit sink delivery is failing for tenant %s: %s record(s) still undelivered', tenant_id, result.get('backlog'))
+    return result
+
+
 def last_retention_run(tenant: Tenant) -> datetime | None:
     raw = (loads(tenant.settings_json, {}).get('retention_state') or {}).get('last_run_at')
     try:
@@ -166,6 +187,28 @@ async def schedule_tick(app, now: float | None = None) -> list[str]:
     return enqueued
 
 
+async def audit_tick(app, now: float | None = None) -> list[str]:
+    """Enqueue audit maintenance for every active tenant. Each tick retries records the external sink has not
+    acknowledged; the first tick of each hour also writes the chain head there, so deleting the newest entries from
+    the database is detectable from outside it. Idempotency keys make this safe to call from every replica."""
+    if not audit_log.sinks_configured():
+        return []
+    now = time.time() if now is None else now
+
+    def _tenants() -> list[str]:
+        with session_scope(app.state.db_factory) as db:
+            return list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
+
+    bucket = int(now // SCHEDULER_TICK_SECONDS)
+    anchor = int(now // 3600) != int((now - SCHEDULER_TICK_SECONDS) // 3600)
+    enqueued: list[str] = []
+    for tenant_id in await asyncio.to_thread(_tenants):
+        job = await app.state.queue.enqueue('audit.maintain', {'tenant_id': tenant_id, 'anchor': anchor}, tenant_id=tenant_id,
+                                            idempotency_key=f'audit.maintain:{tenant_id}:{bucket}', lease_seconds=600, priority=7)
+        enqueued.append(job.id)
+    return enqueued
+
+
 def setup(app) -> None:
     settings = app.state.settings
     queue = app.state.queue
@@ -193,8 +236,15 @@ def setup(app) -> None:
         await ctx.heartbeat()
         return result
 
+    @queue.handler('audit.maintain')
+    async def _audit_maintain(job, ctx):
+        tenant_id = job.payload.get('tenant_id') or job.tenant_id
+        if tenant_id != job.tenant_id:
+            raise PermissionError('job tenant does not match payload tenant')
+        return await asyncio.to_thread(maintain_audit, ctx.db_factory, tenant_id, anchor=bool(job.payload.get('anchor')))
+
     async def _start(app) -> None:
-        if settings.app_env == 'test' or not (settings.backup_enabled or settings.retention_enabled):
+        if settings.app_env == 'test' or not (settings.backup_enabled or settings.retention_enabled or audit_log.sinks_configured()):
             return
         from ..main import spawn
 
@@ -208,6 +258,7 @@ async def _scheduler(app) -> None:
     while True:
         try:
             await schedule_tick(app)
+            await audit_tick(app)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -215,4 +266,4 @@ async def _scheduler(app) -> None:
         await asyncio.sleep(SCHEDULER_TICK_SECONDS)
 
 
-__all__ = ['setup', 'run_backup', 'run_retention', 'schedule_tick', 'platform_tenant_id', 'BackupError']
+__all__ = ['setup', 'run_backup', 'run_retention', 'maintain_audit', 'schedule_tick', 'audit_tick', 'platform_tenant_id', 'BackupError']

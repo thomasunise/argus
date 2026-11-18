@@ -21,7 +21,7 @@ from ..core.config import Settings
 from ..core.db import session_scope, set_tenant_context
 from ..core.findings import upsert_event
 from ..core.rbac import system_principal
-from ..core.security import resolve_secret
+from ..core.security import resolve_secret, tenant_secret_scope
 from ..core.telemetry import COLLECTOR_RUNS
 from ..models import Tenant, dumps, loads, utcnow
 from ..models.collectors import CollectorConfig, CollectorRun
@@ -37,13 +37,14 @@ HEARTBEAT_SECONDS = 20
 # ---------------------------------------------------------------- helpers
 
 
-def resolved_config(config: CollectorConfig, settings: Settings) -> tuple[dict[str, Any], list[str]]:
+def resolved_config(config: CollectorConfig, settings: Settings, db: Session | None = None) -> tuple[dict[str, Any], list[str]]:
     """Merge non-secret config with secret values resolved from their references.
     Returns (config, names of secret fields whose reference resolved to nothing)."""
     merged: dict[str, Any] = dict(loads(config.config_json, {}))
     missing: list[str] = []
+    slug, enforce = tenant_secret_scope(db, settings, config.tenant_id)
     for field, ref in (loads(config.secret_refs_json, {}) or {}).items():
-        value = resolve_secret(str(ref), settings)
+        value = resolve_secret(str(ref), settings, tenant_slug=slug, enforce_tenant_prefix=enforce)
         if value:
             merged[field] = value
         else:
@@ -156,7 +157,7 @@ async def execute_run(app, settings: Settings, db_factory, tenant_id: str, confi
             config.last_error = run.error
             COLLECTOR_RUNS.labels(config.collector, 'failed').inc()
             return {'run_id': run_id, 'status': run.status}
-        merged, missing = resolved_config(config, settings)
+        merged, missing = resolved_config(config, settings, db)
         run.status, run.started_at, run.job_id = 'running', utcnow(), job_id or run.job_id
         config.last_run_at = utcnow()
         since = config.last_success_at

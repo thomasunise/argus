@@ -21,7 +21,7 @@ from ..core.errors import Forbidden, RateLimited, Unauthorized
 from ..core.rbac import Principal, Role, has
 from ..core.security import hash_api_key, parse_api_key
 from ..core.telemetry import resolve_client_ip
-from ..models import ApiKey, Membership, Tenant, User, loads, utcnow
+from ..models import ApiKey, Membership, Tenant, User, WebAuthnCredential, loads, utcnow
 
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
 
@@ -197,6 +197,9 @@ def _principal_from_session(db: Session, request: Request, settings: Settings) -
         return None
     if user.totp_enabled and not session.get('mfa'):
         return None
+    if not session.get('mfa') and db.execute(
+            select(WebAuthnCredential.id).where(WebAuthnCredential.user_id == user.id).limit(1)).first() is not None:
+        return None  # a registered passkey is a second factor; a password-only session does not satisfy it
     if user.sessions_invalidated_at is not None and issued_at <= user.sessions_invalidated_at.timestamp():
         return None
     if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:

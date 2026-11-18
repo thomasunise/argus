@@ -340,6 +340,10 @@ def _flush_outbox(session: Session) -> None:
                         log.debug('could not record audit_outbox failure', exc_info=True)
 
 
+def sinks_configured() -> bool:
+    return bool(_sinks)
+
+
 def flush_outbox_backlog(db: Session, *, tenant_id: str = '', limit: int = 200) -> dict[str, int]:
     """Deliver pending rows from `audit_outbox` with retries. Returns counts of delivered and failed rows."""
     now = utcnow()

@@ -50,7 +50,7 @@ def run_scale_benchmark(n_events: int = 500, n_requests: int = 120, n_jobs: int 
             database_url=f"sqlite:///{tmp_path / 'scale.db'}",
             session_secret='scale-bench-session-secret-longer-than-32-bytes',  # noqa: S106
             admin_password='scale-bench-admin-password-123456',  # noqa: S106
-            ingest_api_key='argus_scale01_ingest_key_benchmark_long_enough',
+            ingest_api_key='argus_5ca1e001_ingest-key-for-the-scale-benchmark-0123456789',
             data_encryption_key='scale-bench-dek-longer-than-32-characters',
             audit_signing_key='scale-bench-audit-signing-key-32-chars',
             password_scrypt_n=2 ** 14,

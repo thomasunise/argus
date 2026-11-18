@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from ..core.audit import record_audit
 from ..core.db import get_scoped, scoped
 from ..core.errors import NotFound
 from ..core.findings import SEVERITIES, event_to_dict
@@ -83,6 +84,7 @@ def get_event(event_id: str, db: Session = Depends(get_db), principal: Principal
     event = get_scoped(db, SecurityEvent, principal, event_id)
     if event is None:
         raise NotFound('Event not found')
+    record_audit(db, principal, 'events.viewed', event.id, {'source': event.source, 'severity': event.severity})
     data = event_to_dict(event)
     related: Any = db.execute(scoped(SecurityEvent, principal).where(SecurityEvent.id != event.id, SecurityEvent.actor == event.actor,
                                                                 SecurityEvent.actor != '').order_by(SecurityEvent.received_at.desc()).limit(10)).scalars().all()

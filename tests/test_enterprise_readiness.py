@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -142,60 +141,9 @@ def test_phase2_mock_oidc_callback_acr_and_group_mapping(app, client, monkeypatc
         app.state.settings.oidc_group_role_map = ''
 
 
-def test_phase2_webauthn_register_and_authenticate_flow(owner):
-    client, headers = owner
-    begin = client.post('/api/v1/auth/webauthn/register/begin', headers=headers)
-    assert begin.status_code == 200
-    challenge = begin.json()['challenge']
-    secret = 'passkey-shared-secret-key-material-123'
-    comp = client.post(
-        '/api/v1/auth/webauthn/register/complete',
-        json={'credential_id': 'cred-001', 'public_key': secret, 'challenge': challenge, 'name': 'YubiKey'},
-        headers=headers,
-    )
-    assert comp.status_code == 201 and comp.json()['credential_id'] == 'cred-001'
-
-    auth_begin = client.post('/api/v1/auth/webauthn/authenticate/begin', headers=headers)
-    assert auth_begin.status_code == 200
-    ch2 = auth_begin.json()['challenge']
-    sig2 = hmac.new(secret.encode(), f'{ch2}:1'.encode(), hashlib.sha256).hexdigest()
-    auth_done = client.post(
-        '/api/v1/auth/webauthn/authenticate/complete',
-        json={'credential_id': 'cred-001', 'challenge': ch2, 'signature': sig2, 'sign_count': 1},
-        headers=headers,
-    )
-    assert auth_done.status_code == 200 and auth_done.json()['mfa'] is True
-
-
-def test_phase2_saml_metadata_and_acs_login(app, client):
-    app.state.settings.saml_idp_entity_id = 'https://idp.corp.example/saml'
-    app.state.settings.saml_signing_secret = 'saml-hmac-signing-secret-key-32b'
-    app.state.settings.oidc_group_role_map = 'saml-analysts=default:analyst'
-    try:
-        meta = client.get('/api/v1/auth/saml/metadata')
-        assert meta.status_code == 200 and 'EntityDescriptor' in meta.text
-        xml = (
-            '<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol">'
-            '<Issuer>https://idp.corp.example/saml</Issuer>'
-            '<Assertion><Subject><NameID>saml-user@test.local</NameID></Subject>'
-            '<AttributeStatement><Attribute Name="groups"><AttributeValue>saml-analysts</AttributeValue></Attribute></AttributeStatement>'
-            '</Assertion></Response>'
-        )
-        b64 = base64.b64encode(xml.encode()).decode()
-        sig = hmac.new(app.state.settings.saml_signing_secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
-        resp = client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': b64, 'Signature': sig})
-        assert resp.status_code == 200
-        sess = client.get('/api/v1/auth/session').json()
-        assert sess['authenticated'] and sess['user']['email'] == 'saml-user@test.local' and sess['role'] == 'analyst'
-    finally:
-        app.state.settings.saml_idp_entity_id = ''
-        app.state.settings.saml_signing_secret = ''
-        app.state.settings.oidc_group_role_map = ''
-
-
 def test_phase2_scim_provisioning_and_deprovisioning_revokes_keys(app, client):
-    app.state.settings.scim_bearer_token = 'scim-secret-bearer-token-123456'
-    scim_headers = {'Authorization': 'Bearer scim-secret-bearer-token-123456'}
+    app.state.settings.scim_bearer_token = 'scim-secret-bearer-token-0123456789abcdef'
+    scim_headers = {'Authorization': 'Bearer scim-secret-bearer-token-0123456789abcdef'}
     try:
         created = client.post(
             '/api/v1/scim/v2/Users',
@@ -533,7 +481,7 @@ def test_phase3_trusted_types_csp_header_present(client):
     resp = client.get('/health')
     csp = resp.headers.get('content-security-policy', '')
     assert "require-trusted-types-for 'script'" in csp
-    assert 'trusted-types argus-html default' in csp
+    assert 'trusted-types argus-html argus-parse default' in csp
 
 
 def test_phase3_cross_tenant_sweep_blocks_all_object_access(owner, second_tenant, app, default_tenant_id):
@@ -766,78 +714,6 @@ def test_audit_review_opaque_session_cookie_csrf_and_must_change_password(app, c
     # 5. Deleting session from server store (simulating Redis deletion on another replica) fails closed without fallback
     app.state.session_store._mem.clear()
     assert client.get('/api/v1/ops/jobs', headers=new_headers).status_code == 401
-
-
-def test_audit_review_webauthn_es256_and_saml_replay_and_expiry(app, owner, client):
-    import json
-
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-
-    owner_client, headers = owner
-    # 1. Real P-256 ECDSA (ES256) WebAuthn registration and assertion verification
-    priv_key = ec.generate_private_key(ec.SECP256R1())
-    pub_pem = priv_key.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode('utf-8')
-    reg_begin = owner_client.post('/api/v1/auth/webauthn/register/begin', headers=headers).json()
-    reg_done = owner_client.post(
-        '/api/v1/auth/webauthn/register/complete',
-        json={'credential_id': 'es256-cred-1', 'public_key': pub_pem, 'challenge': reg_begin['challenge'], 'name': 'ES256 Passkey'},
-        headers=headers,
-    )
-    assert reg_done.status_code == 201
-
-    auth_begin = owner_client.post('/api/v1/auth/webauthn/authenticate/begin', headers=headers).json()
-    ch = auth_begin['challenge']
-    auth_data = hashlib.sha256(b'127.0.0.1').digest() + bytes([0x01]) + (1).to_bytes(4, 'big')
-    client_data = json.dumps({'type': 'webauthn.get', 'challenge': ch, 'origin': 'http://127.0.0.1:8080'}).encode('utf-8')
-    der_sig = priv_key.sign(auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
-    auth_done = owner_client.post(
-        '/api/v1/auth/webauthn/authenticate/complete',
-        json={
-            'credential_id': 'es256-cred-1',
-            'challenge': ch,
-            'signature': base64.urlsafe_b64encode(der_sig).decode().rstrip('='),
-            'authenticator_data': base64.urlsafe_b64encode(auth_data).decode().rstrip('='),
-            'client_data_json': base64.urlsafe_b64encode(client_data).decode().rstrip('='),
-            'sign_count': 1,
-        },
-        headers=headers,
-    )
-    assert auth_done.status_code == 200 and auth_done.json()['mfa'] is True
-
-    # 2. SAML assertion expiry and ID replay protection
-    app.state.settings.saml_idp_entity_id = 'https://idp.corp.example/saml'
-    app.state.settings.saml_signing_secret = 'saml-hmac-signing-secret-key-32b'
-    try:
-        expired_ts = (utcnow() - timedelta(minutes=10)).isoformat()
-        exp_xml = (
-            f'<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol">'
-            f'<Issuer>https://idp.corp.example/saml</Issuer>'
-            f'<Assertion ID="assert-exp-1"><Conditions NotOnOrAfter="{expired_ts}"/>'
-            f'<Subject><NameID>saml-user@test.local</NameID></Subject></Assertion></Response>'
-        )
-        exp_b64 = base64.b64encode(exp_xml.encode()).decode()
-        exp_sig = hmac.new(app.state.settings.saml_signing_secret.encode(), exp_b64.encode(), hashlib.sha256).hexdigest()
-        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': exp_b64, 'Signature': exp_sig}).status_code == 401
-
-        valid_ts = (utcnow() + timedelta(minutes=10)).isoformat()
-        ok_xml = (
-            f'<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol">'
-            f'<Issuer>https://idp.corp.example/saml</Issuer>'
-            f'<Assertion ID="assert-once-99"><Conditions NotOnOrAfter="{valid_ts}"/>'
-            f'<Subject><NameID>saml-user@test.local</NameID></Subject></Assertion></Response>'
-        )
-        ok_b64 = base64.b64encode(ok_xml.encode()).decode()
-        ok_sig = hmac.new(app.state.settings.saml_signing_secret.encode(), ok_b64.encode(), hashlib.sha256).hexdigest()
-        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': ok_b64, 'Signature': ok_sig}).status_code == 200
-        # Replaying the exact same signed assertion ID must be rejected
-        assert client.post('/api/v1/auth/saml/acs', json={'SAMLResponse': ok_b64, 'Signature': ok_sig}).status_code == 401
-    finally:
-        app.state.settings.saml_idp_entity_id = ''
-        app.state.settings.saml_signing_secret = ''
 
 
 @respx.mock

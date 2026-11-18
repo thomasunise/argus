@@ -26,7 +26,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(120), default='')
     password_hash: Mapped[str] = mapped_column(String(512), default='')
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
-    totp_secret: Mapped[str] = mapped_column(EncryptedText(), default='')
+    totp_secret: Mapped[str] = mapped_column(EncryptedText(tenant_bound=False), default='')
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_last_counter: Mapped[int] = mapped_column(Integer, default=0)  # last accepted time step; a code is never accepted twice
     totp_enrollment_token_hash: Mapped[str] = mapped_column(String(64), default='')

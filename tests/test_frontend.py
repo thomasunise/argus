@@ -237,6 +237,33 @@ def test_login_shows_shell_and_session(session, server):
     assert not s.errors, s.errors
 
 
+def test_sanitizer_runs_in_the_browser_under_trusted_types(session, server):
+    """The console's HTML sanitizer parses with the browser's own parser. This checks it in a real engine, with the
+    Trusted Types policy the page enforces, against spellings a pattern match over the source text gets wrong."""
+    s = session
+    s.login(ADMIN_EMAIL, ADMIN_PASSWORD)
+    wait_overview(s)
+    result = s.page.evaluate("""async () => {
+        const ui = await import('/static/ui.js');
+        const attacks = ['<svg/onload=window.__pwned=1>', '<img/src=x/onerror=window.__pwned=1>', '<a href="java&#115;cript:window.__pwned=1">x</a>',
+                         '<iframe srcdoc="<script>window.__pwned=1</script>"></iframe>', '<details open ontoggle=window.__pwned=1>'];
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const cleaned = attacks.map((a) => ui.sanitizeHtmlString(a));
+        for (const a of attacks) ui.setHtml(host, a);
+        ui.setHtml(host, '<table><tbody><tr><td><a href="#/findings">open</a></td></tr></tbody></table>');
+        const kept = !!host.querySelector('tr td a[href="#/findings"]');
+        await new Promise((r) => setTimeout(r, 200));
+        host.remove();
+        return {cleaned, kept, pwned: window.__pwned === 1};
+    }""")
+    assert result['pwned'] is False and result['kept'] is True
+    for markup in result['cleaned']:
+        assert 'onload' not in markup and 'onerror' not in markup and 'ontoggle' not in markup
+        assert 'script' not in markup.lower() and '<iframe' not in markup
+    assert not [e for e in s.errors if 'TrustedHTML' in e or 'trusted' in e.lower()], s.errors
+
+
 def test_wrong_password_is_reported_inline(session):
     page = session.page
     page.goto(session.url + '/')

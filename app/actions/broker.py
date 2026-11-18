@@ -36,6 +36,7 @@ from .identity import (
     approval_to_dict,
     approvals_satisfied,
     cooling_off_reason,
+    federation_reason,
     identity_of,
     request_detail,
     request_to_dict,
@@ -236,6 +237,8 @@ def approve(db: Session, principal: Principal, request_id: str, decision: str, c
             raise Conflict('you have already decided this request')
         if decision == 'approve' and (cool_reason := cooling_off_reason(db, me, req.requested_by, req.tenant_id)):
             raise Forbidden(cool_reason)
+        if decision == 'approve' and (fed_reason := federation_reason(db, me, _cfg().federated_approvers_required)):
+            raise Forbidden(fed_reason)
         approval = ActionApproval(tenant_id=req.tenant_id, request_id=req.id, approver_id=me, approver_role=str(principal.role),
                                   can_approve_critical=policy.can_fill_owner_slot(principal), decision=decision, comment=redact(comment or '')[:2000])
         db.add(approval)

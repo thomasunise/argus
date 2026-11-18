@@ -182,7 +182,7 @@ async def interactions(integration_id: str, request: Request, db: Session = Depe
     tenant = db.get(Tenant, row.tenant_id)
     if tenant is None or not tenant.is_active:
         raise _reject()
-    secrets = resolve_secrets(loads(row.secret_refs_json, {}), request.app.state.settings)
+    secrets = resolve_secrets(loads(row.secret_refs_json, {}), request.app.state.settings, db, row.tenant_id)
     now = time.time()
     if not verify(secrets.get('signing_secret', ''), timestamp, body, signature, now) or _seen(request.app, signature, now):
         raise _reject()

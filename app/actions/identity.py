@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..core.db import scoped
 from ..core.rbac import Principal
 from ..core.security import redact
-from ..models import ApiKey, Membership, User, loads, utcnow
+from ..models import ApiKey, Membership, OidcIdentity, User, loads, utcnow
 from ..models.actions import ActionApproval, ActionRequest, ActionRun
 from . import policy
 
@@ -74,12 +74,37 @@ def cooling_off_reason(db: Session | None, approver_actor: str, requester_actor:
         creator = (membership.created_by if membership else '') or (user.created_by if user else '')
         if req_uid and creator and creator == req_uid:
             return 'an account created by the requester cannot approve their actions'
+        if req_uid:
+            req_user = db.get(User, req_uid)
+            req_membership = db.execute(select(Membership).where(Membership.user_id == req_uid,
+                                                                 Membership.tenant_id == tenant_id)).scalar_one_or_none()
+            req_creator = (req_membership.created_by if req_membership else '') or (req_user.created_by if req_user else '')
+            if req_creator and req_creator == app_uid:
+                return 'you created the requesting account, so you cannot approve its actions'
         if creator:
             created_at = (membership.created_at if membership and membership.created_by else None) or (user.created_at if user else None)
             if created_at is not None:
                 aware_ts = created_at if created_at.tzinfo else created_at.replace(tzinfo=UTC)
                 if now - aware_ts < timedelta(hours=24):
                     return 'cooling-off rule: accounts created in the last 24 hours cannot approve actions'
+    return ''
+
+
+def federation_reason(db: Session | None, approver_actor: str, required: bool) -> str:
+    """When federated approvers are required, an approval only counts from a person the identity provider vouches for.
+
+    Local password accounts and keys minted by them can be created by any administrator, so two-person approval built
+    on them is only as strong as one administrator's honesty. An IdP-linked account cannot be fabricated from inside
+    Argus."""
+    if not required or db is None:
+        return ''
+    ident = identity_of(db, approver_actor)
+    uid = ident[len('user:'):] if ident.startswith('user:') else ''
+    if not uid:
+        return 'approvals require an account linked to the identity provider'
+    linked = db.execute(select(OidcIdentity.id).where(OidcIdentity.user_id == uid).limit(1)).first()
+    if linked is None:
+        return 'approvals require an account linked to the identity provider; sign in through SSO first'
     return ''
 
 

@@ -15,6 +15,7 @@ import struct
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -265,6 +266,21 @@ def secret_ref_allowed(ref: str, settings: Settings, *, tenant_slug: str = '',
                 return False, f'secrets:{value} must be namespaced with tenant prefix {slug_raw}/'
         return True, ''
     return False, 'unknown secret reference scheme'
+
+
+def tenant_secret_scope(db: Any, settings: Settings, tenant_id: str) -> tuple[str, bool]:
+    """(tenant slug, enforce) for resolving a reference that a tenant supplied.
+
+    Isolation is on when TENANT_SECRET_ISOLATION=true, and by default as soon as the deployment holds more than one
+    tenant. A tenant that cannot be identified gets a slug nothing is namespaced to, so the lookup fails closed."""
+    if settings.tenant_secret_isolation is False or db is None:
+        return '', False
+    from sqlalchemy import select
+
+    from ..models import Tenant
+    slugs = dict(db.execute(select(Tenant.id, Tenant.slug)).all())
+    enforce = settings.tenant_secret_isolation is True or len(slugs) > 1
+    return (slugs.get(tenant_id) or f'unknown-tenant-{tenant_id}'), enforce
 
 
 def resolve_secret(ref: str, settings: Settings, *, tenant_slug: str = '', enforce_tenant_prefix: bool = False) -> str:

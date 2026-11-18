@@ -99,7 +99,7 @@ async def run_sync(db_factory, settings: Settings, tenant_id: str, integration_i
             if not integration.enabled:
                 return {'accepted': 0, 'skipped': 'integration disabled'}
             config = loads(integration.config_json, {})
-            secrets = resolve_secrets(loads(integration.secret_refs_json, {}), settings)
+            secrets = resolve_secrets(loads(integration.secret_refs_json, {}), settings, db, integration.tenant_id)
             auth = (secrets['username'], secrets.get('password', '')) if secrets.get('username') else None
             state = loads(integration.state_json, {})
         else:

@@ -12,6 +12,7 @@ import hashlib
 import os
 import secrets
 import threading
+from contextvars import ContextVar
 
 PREFIX = 'enc:v1:'
 PREFIX_V2 = 'enc:v2:'
@@ -50,6 +51,11 @@ def _tenant_key(master: bytes, tenant_id: str) -> bytes:
     if cache_key not in _tenant_dek_cache:
         _tenant_dek_cache[cache_key] = hmac.new(master, f'argus-dek:v2:{tenant_id}'.encode(), hashlib.sha256).digest()
     return _tenant_dek_cache[cache_key]
+
+
+# The tenant whose rows the ORM is writing right now. core.db sets it for the duration of a flush from the session's
+# tenant context, and models.base.EncryptedText reads it, so tenant-scoped columns are sealed under that tenant's key.
+flush_tenant: ContextVar[str] = ContextVar('argus_flush_tenant', default='')
 
 
 def bind_aad(*, tenant_id: str = '', table: str = '', column: str = '', row_id: str = '') -> str:

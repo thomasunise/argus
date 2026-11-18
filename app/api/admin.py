@@ -22,7 +22,7 @@ from ..core.config import AI_PROVIDERS, Settings
 from ..core.db import session_scope, set_tenant_context
 from ..core.errors import Conflict, Forbidden, NotFound
 from ..core.findings import SEVERITIES
-from ..core.rbac import ROLE_ORDER, Principal, Role, role_at_least
+from ..core.rbac import ALL_PERMISSIONS, ROLE_ORDER, Principal, Role, role_at_least
 from ..core.security import hash_password
 from ..models import ApiKey, Asset, AuditEntry, Finding, Membership, SecurityEvent, Tenant, User, dumps, loads, utcnow
 from ._common import BadRequest, like
@@ -144,6 +144,31 @@ def _assert_can_assign(principal: Principal, role: Role, current: str | None = N
         raise Forbidden('Cannot grant a role above your own')
 
 
+def _clean_permissions(principal: Principal, requested: list[str], target_user_id: str | None = None,
+                       current: list[str] | None = None) -> list[str]:
+    """Validate a custom-permission list before it is stored on a membership.
+
+    A grant is a known permission the granter holds themselves; nobody can hand out more than they have, and nobody
+    edits their own grants. A deny entry ('-perm') only ever removes access, so any admin may add one, but removing an
+    existing deny is a grant of that permission and is held to the same ceiling."""
+    wanted = sorted({str(p).strip() for p in requested if str(p).strip()})
+    before = set(current or [])
+    if set(wanted) == before:
+        return wanted
+    if target_user_id and target_user_id == principal.user_id:
+        raise Forbidden('You cannot change your own permissions')
+    for entry in wanted:
+        name = entry[1:] if entry.startswith('-') else entry
+        if name not in ALL_PERMISSIONS:
+            raise BadRequest(f'unknown permission: {name}', code='unknown_permission')
+        if not entry.startswith('-') and entry not in before and not principal.can(name):
+            raise Forbidden(f'Cannot grant a permission you do not hold: {name}')
+    for entry in before - set(wanted):
+        if entry.startswith('-') and not principal.can(entry[1:]):
+            raise Forbidden(f'Cannot restore a permission you do not hold: {entry[1:]}')
+    return wanted
+
+
 def _temp_password() -> str:
     return secrets.token_urlsafe(18)
 
@@ -234,6 +259,7 @@ def create_user(body: UserBody, db: Session = Depends(get_db), principal: Princi
     if not EMAIL_RE.match(email):
         raise BadRequest('email is not valid', code='invalid_email')
     _assert_can_assign(principal, body.role)
+    permissions = _clean_permissions(principal, body.permissions)
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     response: dict[str, Any] = {}
     if user is not None:
@@ -261,7 +287,7 @@ def create_user(body: UserBody, db: Session = Depends(get_db), principal: Princi
         record_audit(db, principal, 'admin.user_created', user.id, {'email': email, 'invite': body.invite, 'password_set': bool(password_hash)})
     creator = (principal.user_id or principal.actor)[:36]
     membership = Membership(user_id=user.id, tenant_id=principal.tenant_id, role=body.role.value,
-                            permissions_json=dumps(sorted(set(body.permissions))), created_by=creator)
+                            permissions_json=dumps(permissions), created_by=creator)
     db.add(membership)
     db.flush()
     record_audit(db, principal, 'admin.membership_created', user.id, {'email': email, 'role': body.role.value, 'new_user': created})
@@ -380,7 +406,12 @@ def set_role(body: MembershipBody, db: Session = Depends(get_db), principal: Pri
         raise NotFound('User not found in this tenant')  # memberships are created through POST /admin/users only
     _assert_can_assign(principal, body.role, membership.role)
     if body.permissions is not None:
-        membership.permissions_json = dumps(sorted(set(body.permissions)))
+        existing = loads(membership.permissions_json or '[]', [])
+        cleaned = _clean_permissions(principal, body.permissions, user.id, existing)
+        if cleaned != sorted(existing):
+            membership.permissions_json = dumps(cleaned)
+            record_audit(db, principal, 'admin.permissions_changed', user.id,
+                         {'email': user.email, 'from': sorted(existing), 'to': cleaned})
     if membership.role == body.role.value:
         return _member_dict(user, membership)
     if membership.role == Role.owner.value:

@@ -89,7 +89,11 @@ def _from_tenant(platform: str, key: str, settings: Settings, tenant_settings: d
     if not isinstance(ref, str) or ref.startswith('literal:') or not ref.startswith(_REF_PREFIXES):
         return ''  # refs only; a literal secret in tenant settings is ignored on purpose (never resolved, whatever the setting)
     tenant_slug = str((tenant_settings or {}).get('_tenant_slug') or '')
-    enforce_prefix = bool((tenant_settings or {}).get('enforce_tenant_secret_prefix'))
+    ts = tenant_settings or {}
+    if settings.tenant_secret_isolation is None:
+        enforce_prefix = bool(ts.get('enforce_tenant_secret_prefix') or ts.get('_multi_tenant'))
+    else:
+        enforce_prefix = settings.tenant_secret_isolation
     return resolve_secret(ref, settings, tenant_slug=tenant_slug, enforce_tenant_prefix=enforce_prefix)
 
 

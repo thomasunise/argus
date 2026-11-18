@@ -23,20 +23,68 @@ export function html(strings, ...values) {
   return new SafeHtml(out);
 }
 
-/** Strip executable elements, inline event handlers, and script-bearing URI schemes without invoking DOM sinks. */
+// ---------------------------------------------------------------- HTML sanitizer
+//
+// Markup is parsed by the browser into an inert <template> document (nothing in it runs or loads), cleaned as a DOM
+// tree, and serialized again. Working on the parsed tree is the point: it sees exactly what the browser will see, so
+// spellings a pattern match over the source text gets wrong, such as <svg/onload=...>, are just attributes here.
+
+const DROPPED_ELEMENTS = new Set([
+  'script', 'style', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'base', 'meta', 'link', 'noscript',
+  'template', 'portal', 'slot', 'math', 'foreignobject', 'animate', 'animatetransform', 'animatemotion', 'set',
+]);
+const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'poster', 'data', 'background', 'ping']);
+const DROPPED_ATTRIBUTES = new Set(['srcdoc', 'srcset']);
+
+function urlAllowed(value, attribute) {
+  const raw = String(value ?? '').trim();
+  if (raw === '' || raw.startsWith('#')) return true;
+  let parsed;
+  try {
+    parsed = new URL(raw, 'https://argus.invalid/'); // relative links resolve against a dummy origin and pass as https
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') return true;
+  return attribute === 'src' && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(raw);
+}
+
+function cleanTree(root) {
+  for (const node of [...root.querySelectorAll('*')]) {
+    if (DROPPED_ELEMENTS.has(node.localName.toLowerCase())) {
+      node.remove();
+      continue;
+    }
+    for (const attr of [...node.attributes]) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on') || DROPPED_ATTRIBUTES.has(name) || (URL_ATTRIBUTES.has(name) && !urlAllowed(attr.value, name))) {
+        node.removeAttribute(attr.name);
+      }
+    }
+  }
+}
+
+// Under Trusted Types, handing a string to the parser is itself a guarded sink. This policy exists only to feed the
+// inert template below; its output never reaches the live document without passing through cleanTree first.
+const PARSE_POLICY = (() => {
+  if (typeof window === 'undefined' || !window.trustedTypes || !window.trustedTypes.createPolicy) return null;
+  try {
+    return window.trustedTypes.createPolicy('argus-parse', { createHTML: (input) => input });
+  } catch {
+    return null;
+  }
+})();
+const TRUSTED_TYPES_ENFORCED = typeof window !== 'undefined' && !!(window.trustedTypes && window.trustedTypes.createPolicy);
+
+/** Return `input` with executable elements, event-handler attributes and script-bearing URLs removed. */
 export function sanitizeHtmlString(input) {
-  let out = String(input ?? '');
-  out = out.replace(/<(script|iframe|object|embed|applet|base|meta)\b[\s\S]*?(?:<\/\1\s*>|>|$)/gi, '');
-  out = out.replace(/<([a-zA-Z][a-zA-Z0-9:-]*)(\s[^>]*)?>/g, (full, tag, attrs) => {
-    if (!attrs) return full;
-    let clean = attrs.replace(/\s+on[a-zA-Z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-    clean = clean.replace(
-      /(\s+(?:href|src|action|formaction|xlink:href)\s*=\s*)(?:"\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^"]*"|'\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^']*'|(?:\s*(?:javascript|vbscript|data\s*:\s*text\/html)[^\s>]*))/gi,
-      '$1"#"',
-    );
-    return `<${tag}${clean}>`;
-  });
-  return out;
+  const text = String(input ?? '');
+  if (text === '' || typeof document === 'undefined') return text === '' ? '' : esc(text);
+  if (TRUSTED_TYPES_ENFORCED && !PARSE_POLICY) return esc(text); // cannot parse safely: show the markup as text
+  const template = document.createElement('template');
+  template.innerHTML = PARSE_POLICY ? PARSE_POLICY.createHTML(text) : text;
+  cleanTree(template.content);
+  return template.innerHTML;
 }
 
 const TRUSTED_POLICIES = (() => {

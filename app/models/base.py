@@ -63,10 +63,13 @@ class EncryptedText(TypeDecorator):
     impl = Text
     cache_ok = True
 
-    def __init__(self, *, table: str = '', column: str = '') -> None:
+    def __init__(self, *, table: str = '', column: str = '', tenant_bound: bool = True) -> None:
         super().__init__()
         self.table = table
         self.column = column
+        # Columns on tenant-scoped tables are sealed under the writing tenant's key. Account-level columns
+        # (users.*) belong to no single tenant and pass tenant_bound=False.
+        self.tenant_bound = tenant_bound
 
     def _aad(self) -> str:
         if not self.table and not self.column:
@@ -78,7 +81,8 @@ class EncryptedText(TypeDecorator):
     def process_bind_param(self, value, dialect):
         from ..core import crypto
 
-        return crypto.encrypt(value, aad=self._aad())
+        tenant_id = crypto.flush_tenant.get() if self.tenant_bound else ''
+        return crypto.encrypt(value, tenant_id=tenant_id, aad=self._aad())
 
     def process_result_value(self, value, dialect):
         from ..core import crypto
