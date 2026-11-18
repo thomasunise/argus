@@ -29,7 +29,10 @@ COPY requirements.txt requirements.lock.txt requirements.hashes.txt requirements
 RUN pip install --upgrade "pip==$(sed -n 's/^pip==//p' requirements.lock.txt | tr -d '\r')" setuptools wheel \
  && pip install --require-hashes --no-deps -r requirements.hashes.txt \
  && pip check \
- && if [ "$EXTRAS" = "1" ]; then pip install -r requirements-optional.txt -c requirements.lock.txt; fi
+ && if [ "$EXTRAS" = "1" ]; then pip install -r requirements-optional.txt -c requirements.lock.txt; fi \
+ && pip uninstall -y wheel pip
+# pip is a build tool: nothing installs packages at runtime, and it carries its own vendored
+# libraries (msgpack, urllib3, an old setuptools) that image scanners report against the image.
 
 # ---------------------------------------------------------------- source stage
 # The application tree is assembled here and copied into the runtime image as one layer. Files left
@@ -69,6 +72,7 @@ RUN apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends libpq5 ca-certificates tini curl \
  && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/local/lib/python3*/site-packages/pip /usr/local/lib/python3*/site-packages/pip-*.dist-info /usr/local/bin/pip* \
  && groupadd -r -g 10001 argus \
  && useradd -r -u 10001 -g argus -d /app -s /usr/sbin/nologin argus
 WORKDIR /app

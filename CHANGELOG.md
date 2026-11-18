@@ -20,6 +20,7 @@ All notable changes to Argus are documented in this file.
 ### Build
 - The image installs dependencies with `pip --require-hashes` from `requirements.hashes.txt` (`scripts/lock_hashes.py`; CI checks it matches the lock).
 - Offensive modules are removed in a separate build stage, so the default image carries them in no layer.
+- pip is removed from the runtime image. The image scan was failing on pip's own vendored libraries (msgpack, urllib3, setuptools), which is why the Docker job was red on `main`.
 - New dependencies: `webauthn`, `python3-saml` (with `lxml`, `xmlsec`, `isodate`, `cbor2`, `pyOpenSSL`, `pyasn1`).
 
 ### Docs

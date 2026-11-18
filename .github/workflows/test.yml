@@ -194,7 +194,8 @@ jobs:
           curl -fsS http://127.0.0.1:8080/health; echo
           test "$(docker exec argus-ci id -u)" = "10001"
           docker exec argus-ci python scripts/migrate.py --current | grep -q 'Rev' || { echo "no alembic revision applied"; exit 1; }
-          docker exec argus-ci sh -c 'pip show pytest >/dev/null 2>&1' && { echo "test tooling must not ship in the image"; exit 1; } || true
+          docker exec argus-ci python -c 'import pytest' >/dev/null 2>&1 && { echo "test tooling must not ship in the image"; exit 1; } || true
+          docker exec argus-ci python -c 'import pip' >/dev/null 2>&1 && { echo "pip must not ship in the runtime image"; exit 1; } || true
       - name: Day-1 smoke test against the single container (SQLite, in-process queue)
         env:
           ARGUS_URL: http://127.0.0.1:8080
